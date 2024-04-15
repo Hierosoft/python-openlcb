@@ -145,6 +145,10 @@ class DatagramService:
 
         One and only one listener should reply positively or negatively to the
         datagram and return true.
+
+        Args:
+            listener (function): A function that accepts a DatagramReadMemo
+                as an argument.
         '''
         self.listeners.append(listener)
 
@@ -218,8 +222,7 @@ class DatagramService:
                 "Outstanding and replied-to memos don't match on rejected"
             )
 
-        currentOutstandingMemo = None
-        # FIXME: unused currentOutstandingMemo. Is any code incomplete here?
+        self.currentOutstandingMemo = None
 
         # fire the callback
         memo.rejectedReply(memo)
@@ -228,8 +231,7 @@ class DatagramService:
 
     def handleLinkQuiesce(self, message):
         '''Link quiesced before outage: stop operation'''
-        quiesced = True
-        # FIXME: unused quiesced. Is any code incomplete here?
+        self.quiesced = True
 
     def handleLinkRestarted(self, message):
         '''Link restarted after outage:
@@ -272,8 +274,8 @@ class DatagramService:
         """Send a positive reply to a received datagram.
 
         Args:
-            dg (_type_): Datagram memo being responded to.
-            flags (Optional[__type__]): Flag byte to be returned to sender, see
+            dg (DatagramReadMemo): Datagram memo being responded to.
+            flags (Optional[int]): Flag byte to be returned to sender, see
                 Datagram S&TN for meaning. Defaults to 0.
         """
         message = Message(MTI.Datagram_Received_OK, self.linkLayer.localNodeID,
@@ -284,8 +286,8 @@ class DatagramService:
         """Send a negative reply to a received datagram.
 
         Args:
-            dg (_type_): Datagram memo being responded to.
-            err (_type_): Error code(s) to be returned to sender,
+            dg (DatagramReadMemo): Datagram memo being responded to.
+            err (int): Error code(s) to be returned to sender,
                 see Datagram S&TN for meaning.
         """
         data0 = ((err >> 8) & 0xFF)
