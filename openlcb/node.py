@@ -27,6 +27,7 @@ class Node:
         if pipSet is None : self.pipSet = set([])
         self.state = Node.State.Uninitialized
         self.events = LocalEventStore()
+        self.cdi = None   # Added to allow storage of received CDI image data
 
     def __str__(self):
         return "Node ("+str(self.id)+")"
