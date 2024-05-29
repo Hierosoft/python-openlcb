@@ -109,8 +109,10 @@ class MemoryService:
 
     def requestMemoryRead(self, memo):
         '''Request a read operation start.
+
         - If okReply in the memo is triggered, it will be followed by a
           dataReply.
+
         - A rejectedReply will not be followed by a dataReply.
 
         Args:
@@ -227,10 +229,10 @@ class MemoryService:
                 self.spaceLengthCallback = None
                 return True
             # normal reply
-            address = (int(dmemo.data[3]) << 24
-                       + int(dmemo.data[4]) << 16
-                       + int(dmemo.data[5]) << 8
-                       + int(dmemo.data[6]))
+            address = (int(dmemo.data[3]) << 24) \
+                       + (int(dmemo.data[4]) << 16) \
+                       + (int(dmemo.data[5]) << 8) \
+                       + int(dmemo.data[6])
             self.spaceLengthCallback(address)
             self.spaceLengthCallback = None
         else:
@@ -268,7 +270,7 @@ class MemoryService:
         # send request
         dgReqMemo = DatagramWriteMemo(
             nodeID,
-            [DatagramService.ProtocolID.MemoryOperation.rawValue, 0x84, space]
+            [DatagramService.ProtocolID.MemoryOperation.value, 0x84, space]
         )
         self.service.sendDatagram(dgReqMemo)
 
