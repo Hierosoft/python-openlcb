@@ -268,7 +268,8 @@ class MemoryService:
         # send request
         dgReqMemo = DatagramWriteMemo(
             nodeID,
-            [DatagramService.ProtocolID.MemoryOperation.rawValue, 0x84, space]
+            #[DatagramService.ProtocolID.MemoryOperation.rawValue, 0x84, space]
+            [DatagramService.ProtocolID.MemoryOperation.value, 0x84, space]
         )
         self.service.sendDatagram(dgReqMemo)
 
