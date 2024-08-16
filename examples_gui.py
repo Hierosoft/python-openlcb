@@ -16,6 +16,8 @@ import os
 import subprocess
 import sys
 import tkinter as tk
+
+from logging import getLogger
 from tkinter import ttk
 from collections import OrderedDict
 
@@ -23,7 +25,12 @@ from examples_settings import Settings
 
 zeroconf_enabled = False
 try:
-    from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
+    from zeroconf import (
+        ServiceBrowser,
+        ServiceListener,
+        Zeroconf,
+        InterfaceChoice,
+    )
     zeroconf_enabled = True
 except ImportError:
     class Zeroconf:
@@ -37,6 +44,13 @@ except ImportError:
     class ServiceBrowser:
         """Placeholder for when zeroconf is *not* present"""
         pass
+
+if zeroconf_enabled:
+    # ifaddr is a requirement for known zeroconf versions, so try importing it.
+    import ifaddr
+
+
+logger = getLogger(__name__)
 
 
 class MyListener(ServiceListener):
@@ -104,6 +118,8 @@ class MainForm(ttk.Frame):
         self.zeroconf = None
         self.listener = None
         self.browser = None
+        self.browsers = {}
+        self.zeroconfs = {}
         self.errors = []
         try:
             self.settings = Settings()
@@ -121,12 +137,38 @@ class MainForm(ttk.Frame):
         self.w1.after(1, self.on_form_loaded)  # must go after gui
         self.example_modules = OrderedDict()
         self.example_buttons = OrderedDict()
-        if zeroconf_enabled:
-            self.zeroconf = Zeroconf()
-            self.listener = MyListener()
-            self.listener.update_service = self.update_service
-            self.listener.remove_service = self.remove_service
-            self.listener.add_service = self.add_service
+        # self.initialize_zeroconf()
+
+    def count_network_adapters(self):
+        return len(ifaddr.get_adapters())
+    
+    def initialize_zeroconf(self, adapter, index=None):
+        if not zeroconf_enabled:
+            return
+        if not adapter:
+            adapters = ifaddr.get_adapters()
+            if len(adapters) < 1:
+                self.set_status("There are no network adapters.")
+                return
+            if index is None:
+                index = 0
+            elif index >= len(adapters):
+                raise ValueError("Invalid index={} for {} network adapter(s)."
+                                 .format(index, len(adapters)))
+            adapter = adapters[index]
+            logger.warning("Selecting adapter {}: {}"
+                           .format(index, adapter.nice_name))
+        ip_addresses = [ip.ip for ip in adapter.ips]
+        self.zeroconf = Zeroconf(interfaces=ip_addresses)
+        self.zeroconfs[adapter.nice_name] = self.zeroconf
+        logger.warning(
+            f"[initialize_zeroconf] Using interface[{index}]:"
+            f" {adapter.nice_name} with IP addresses: {ip_addresses}")
+        self.listener = MyListener()
+        self.listener.update_service = self.update_service
+        self.listener.remove_service = self.remove_service
+        self.listener.add_service = self.add_service
+        return adapter
 
     def on_form_loaded(self):
         self.load_settings()
@@ -505,29 +547,51 @@ class MainForm(ttk.Frame):
                 'service_name',
                 f"Found {name} on Wi-Fi/LAN. Select an option above."
             )
-            print(f"Service {name} added, service info: {info}")
+            logger.warning(f"Service {name} added, service info: {info}")
         else:
-            print(f"Warning: {name} was already added.")
+            logger.warning(f"Warning: {name} was already added.")
         self.show_services()
 
     def detect_hosts(self, servicetype="_openlcb-can._tcp.local."):
         if not zeroconf_enabled:
             self.set_status("The Python zeroconf package is not installed.")
             return
-        if not self.zeroconf:
-            self.set_status("Zeroconf was not initialized.")
+        adapters = ifaddr.get_adapters()
+        if not adapters:
+            self.set_status("No network adapters were found.")
             return
-        if not self.listener:
-            self.set_status("Listener was not initialized.")
-            return
-        if self.browser:
-            self.set_status("Already listening for {} devices."
-                            .format(self.servicetype))
-            return
-        self.servicetype = servicetype
-        self.browser = ServiceBrowser(self.zeroconf, self.servicetype,
-                                      self.listener)
-        self.set_status("Detecting hosts...")
+
+        index = None  # non-None to force single adapter
+
+        if index is not None:
+            adapter = self.initialize_zeroconf(None, index=index)
+            if adapter is None:
+                # initialize_zeroconf should already have shown error
+                # self.set_status("Adapter {} not found in {} adapter(s)"
+                #                 .format(index, len(adapters)))
+                return
+            adapters = [adapter]
+
+        logger.warning("Checking {} network adapter(s)".format(len(adapters)))
+        for index, adapter in enumerate(adapters):
+            # adapter =
+            if adapter.nice_name not in self.zeroconfs:
+                self.initialize_zeroconf(adapter, index=index)
+            if not self.zeroconf:
+                self.set_status("Zeroconf was not initialized.")
+                return
+            if not self.listener:
+                self.set_status("Listener was not initialized.")
+                return
+            if self.browsers.get(adapter.nice_name):
+                self.set_status("Already listening for {} devices."
+                                .format(self.servicetype))
+                continue
+            self.servicetype = servicetype
+            self.browser = ServiceBrowser(self.zeroconf, self.servicetype,
+                                          self.listener)
+            self.browsers[adapter.nice_name] = self.browser
+        self.set_status("Detecting hosts using {}...".format(list(self.browsers.keys())))
 
     def detect_nodes(self):
         self.set_status("Detecting nodes...")
