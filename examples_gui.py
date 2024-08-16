@@ -30,6 +30,8 @@ try:
         ServiceListener,
         Zeroconf,
         InterfaceChoice,
+        ZeroconfServiceTypes,
+        IPVersion,
     )
     zeroconf_enabled = True
 except ImportError:
@@ -95,11 +97,8 @@ class MainForm(ttk.Frame):
       as settings.
 
     Attributes:
-        w1 (Union[Tk,Frame]): The Tk (first and only Window typically). It is
-            set automatically to self.winfo_toplevel() by gui method.
-        parent (Union[Tk,Frame]): Tk (same as self.w1 in that case) or tk.Frame
-            instance, whichever contains self.
-        fields (list[DataField]): A list of settings.
+        all_servicetypes (list[ServiceType]): A list of all service
+            types for zeroconf (only set this to override default).
         example_buttons (OrderedDict[Button]): The example module name is the
             key and the Button instance is the value.
         example_modules (OrderedDict[str]): The example
@@ -107,6 +106,11 @@ class MainForm(ttk.Frame):
             examples are made modular, the value will not be nessary, but
             for now just run the file in another Python instance (See
             run_example method).
+        fields (list[DataField]): A list of settings.
+        parent (Union[Tk,Frame]): Tk (same as self.w1 in that case) or tk.Frame
+            instance, whichever contains self.
+        w1 (Union[Tk,Frame]): The Tk (first and only Window typically). It is
+            set automatically to self.winfo_toplevel() by gui method.
 
     Args:
         parent (Union[Tk,Frame,0]): The Tk (first and only Window typically) or
@@ -121,6 +125,7 @@ class MainForm(ttk.Frame):
         self.browsers = {}
         self.zeroconfs = {}
         self.errors = []
+        self.all_servicetypes = None
         try:
             self.settings = Settings()
         except json.decoder.JSONDecodeError as ex:
@@ -551,6 +556,14 @@ class MainForm(ttk.Frame):
         else:
             logger.warning(f"Warning: {name} was already added.")
         self.show_services()
+    
+    def load_all_servicetypes(self):
+        # TODO: do this on another thread to avoid blocking the GUI
+        self.all_servicetypes = list(
+            ZeroconfServiceTypes.find(
+                zc=self.zeroconf, ip_version=IPVersion.V4Only
+            )
+        )
 
     def detect_hosts(self, servicetype="_openlcb-can._tcp.local."):
         if not zeroconf_enabled:
@@ -560,6 +573,9 @@ class MainForm(ttk.Frame):
         if not adapters:
             self.set_status("No network adapters were found.")
             return
+        
+        if not self.all_servicetypes:  # For debugging Windows 11 only
+            self.load_all_servicetypes()
 
         index = None  # non-None to force single adapter
 
@@ -588,8 +604,13 @@ class MainForm(ttk.Frame):
                                 .format(self.servicetype))
                 continue
             self.servicetype = servicetype
-            self.browser = ServiceBrowser(self.zeroconf, self.servicetype,
-                                          self.listener)
+            if self.all_servicetypes:
+                self.servicetype = self.all_servicetypes
+            self.browser = ServiceBrowser(
+                self.zeroconf,
+                self.servicetype,
+                self.listener,
+            )
             self.browsers[adapter.nice_name] = self.browser
         self.set_status("Detecting hosts using {}...".format(list(self.browsers.keys())))
 
