@@ -13,10 +13,12 @@ Purpose: Provide an easy way to enter settings for examples and run them.
 """
 import json
 import os
+import platform
 import subprocess
 import sys
-import tkinter as tk
+import time
 
+import tkinter as tk
 from logging import getLogger
 from tkinter import ttk
 from collections import OrderedDict
@@ -52,8 +54,42 @@ if zeroconf_enabled:
     import ifaddr
 
 
+def toggle_wifi():
+    """Restart the WiFi adapter to try to work around issue #49
+    "No MDNS services are listed by zeroconf when using Windows 11".
+
+    The workaround is proposed at
+    <https://superuser.com/a/1649821/1001420>
+    """
+    system = platform.system()
+
+    if system == "Windows":
+        disable_command = 'netsh interface set interface "Wi-Fi" admin=disable'
+        enable_command = 'netsh interface set interface "Wi-Fi" admin=enable'
+    elif system == "Darwin":
+        disable_command = 'networksetup -setairportpower en0 off'
+        enable_command = 'networksetup -setairportpower en0 on'
+    else:  # Assuming Linux-like
+        disable_command = 'nmcli radio wifi off'
+        enable_command = 'nmcli radio wifi on'
+
+    subprocess.run(disable_command, shell=True)
+    print("Wi-Fi disabled")
+
+    time.sleep(5)  # wait 5 seconds
+
+    subprocess.run(enable_command, shell=True)
+    print("Wi-Fi enabled")
+
+
 logger = getLogger(__name__)
 
+logger.warning(
+    "toggling wifi to attempt to work around"
+    " [No MDNS services are listed by zeroconf when using Windows"
+    " 11](https://github.com/bobjacobsen/python-openlcb/issues/49#top)")
+toggle_wifi()
+print("Done toggling wifi")
 
 class MyListener(ServiceListener):
     pass
