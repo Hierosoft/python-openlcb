@@ -360,11 +360,11 @@ class MainForm(ttk.Frame):
         self.row = 0
         self.add_field("service_name",
                        "TCP Service name (optional, sets host&port)",
-                       gui_class=ttk.Combobox, tooltip="")
-        self.fields["service_name"].var.trace('w', self.on_service_name_change)
-        self.add_field("host", "IP address/hostname",
+                       gui_class=ttk.Combobox, tooltip="",
                        command=self.detect_hosts,
                        command_text="Detect")
+        self.fields["service_name"].var.trace('w', self.on_service_name_change)
+        self.add_field("host", "IP address/hostname")
         self.add_field(
             "port",
             "Port",
