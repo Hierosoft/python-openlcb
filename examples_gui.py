@@ -52,6 +52,9 @@ if zeroconf_enabled:
     import ifaddr
 
 
+logger = getLogger(__name__)
+
+
 class MyListener(ServiceListener):
     pass
 
