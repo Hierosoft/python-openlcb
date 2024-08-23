@@ -632,6 +632,7 @@ class MainForm(ttk.Frame):
                 return 3
             adapters = [adapter]
         if not adapters:
+            logger.warning("Checking network using all adapters.")
             return self.initialize_browser(None, servicetype)
         logger.warning("Checking {} network adapter(s)".format(len(adapters)))
         for _, adapter in enumerate(adapters):
@@ -662,7 +663,10 @@ class MainForm(ttk.Frame):
             return 1
         self.servicetype = servicetype
         if self.all_servicetypes:
+            logger.warning(f"Looking for {self.all_servicetypes}...")
             self.servicetype = self.all_servicetypes
+        else:
+            logger.warning(f"Looking for {self.servicetype}...")
         self.browser = ServiceBrowser(
             self.zeroconf,
             self.servicetype,
