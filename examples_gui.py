@@ -13,10 +13,8 @@ Purpose: Provide an easy way to enter settings for examples and run them.
 """
 import json
 import os
-import platform
 import subprocess
 import sys
-import time
 
 import tkinter as tk
 from logging import getLogger
@@ -53,43 +51,6 @@ if zeroconf_enabled:
     # ifaddr is a requirement for known zeroconf versions, so try importing it.
     import ifaddr
 
-
-def toggle_wifi():
-    """Restart the WiFi adapter to try to work around issue #49
-    "No MDNS services are listed by zeroconf when using Windows 11".
-
-    The workaround is proposed at
-    <https://superuser.com/a/1649821/1001420>
-    """
-    system = platform.system()
-
-    if system == "Windows":
-        disable_command = 'netsh interface set interface "Wi-Fi" admin=disable'
-        enable_command = 'netsh interface set interface "Wi-Fi" admin=enable'
-    elif system == "Darwin":
-        disable_command = 'networksetup -setairportpower en0 off'
-        enable_command = 'networksetup -setairportpower en0 on'
-    else:  # Assuming Linux-like
-        disable_command = 'nmcli radio wifi off'
-        enable_command = 'nmcli radio wifi on'
-
-    subprocess.run(disable_command, shell=True)
-    print("Wi-Fi disabled")
-
-    time.sleep(5)  # wait 5 seconds
-
-    subprocess.run(enable_command, shell=True)
-    print("Wi-Fi enabled")
-
-
-logger = getLogger(__name__)
-
-logger.warning(
-    "toggling wifi to attempt to work around"
-    " [No MDNS services are listed by zeroconf when using Windows"
-    " 11](https://github.com/bobjacobsen/python-openlcb/issues/49#top)")
-toggle_wifi()
-print("Done toggling wifi")
 
 class MyListener(ServiceListener):
     pass
@@ -182,34 +143,59 @@ class MainForm(ttk.Frame):
 
     def count_network_adapters(self):
         return len(ifaddr.get_adapters())
-    
-    def initialize_zeroconf(self, adapter, index=None):
-        if not zeroconf_enabled:
-            return
-        if not adapter:
+
+    def select_adapter(self, adapters, index):
+        if not adapters:
             adapters = ifaddr.get_adapters()
-            if len(adapters) < 1:
-                self.set_status("There are no network adapters.")
-                return
-            if index is None:
-                index = 0
-            elif index >= len(adapters):
-                raise ValueError("Invalid index={} for {} network adapter(s)."
-                                 .format(index, len(adapters)))
-            adapter = adapters[index]
-            logger.warning("Selecting adapter {}: {}"
-                           .format(index, adapter.nice_name))
+        if len(adapters) < 1:
+            self.set_status("There are no network adapters.")
+            return
+        if index is None:
+            index = 0
+        elif index >= len(adapters):
+            raise ValueError("Invalid index={} for {} network adapter(s)."
+                                .format(index, len(adapters)))
+        adapter = adapters[index]
+        # logger.warning("Selecting adapter {}: {}"
+        #                 .format(index, adapter.nice_name))
         ip_addresses = [ip.ip for ip in adapter.ips]
-        self.zeroconf = Zeroconf(interfaces=ip_addresses)
-        self.zeroconfs[adapter.nice_name] = self.zeroconf
         logger.warning(
-            f"[initialize_zeroconf] Using interface[{index}]:"
+            f"[select_adapter] Using interface[{index}]:"
             f" {adapter.nice_name} with IP addresses: {ip_addresses}")
+
+        return adapter
+
+    def _initialize_zeroconf(self, localhost_ip_addresses):
+        if localhost_ip_addresses:
+            zeroconf = Zeroconf(interfaces=localhost_ip_addresses)
+        else:
+            zeroconf = Zeroconf()
+        self.zeroconf = zeroconf
         self.listener = MyListener()
         self.listener.update_service = self.update_service
         self.listener.remove_service = self.remove_service
         self.listener.add_service = self.add_service
-        return adapter
+        return zeroconf
+
+    def initialize_zeroconf(self, adapter=None):
+        if not zeroconf_enabled:
+            return
+        if adapter:
+            zeroconf = self.zeroconfs.get(adapter.nice_name)
+            if zeroconf:
+                logger.warning(
+                    f"zeroconf is already initialized for {adapter.nice_name}")
+                self.zeroconf = zeroconf
+                return
+        else:
+            self.zeroconf = self._initialize_zeroconf(None)
+            return
+        # else allow re-initializing only if using a different network adapter
+        ip_addresses = [ip.ip for ip in adapter.ips]
+        self.zeroconf = self._initialize_zeroconf(
+            localhost_ip_addresses=ip_addresses
+        )
+        self.zeroconfs[adapter.nice_name] = self.zeroconf
 
     def on_form_loaded(self):
         self.load_settings()
@@ -592,8 +578,13 @@ class MainForm(ttk.Frame):
         else:
             logger.warning(f"Warning: {name} was already added.")
         self.show_services()
-    
+
     def load_all_servicetypes(self):
+        """Get all servicetypes on the network
+        (Not relevant to LCC devices on TCP network, except perhaps for
+        older firmware revisions of throttles that only list a _tcp
+        server and not _openlcb-can).
+        """
         # TODO: do this on another thread to avoid blocking the GUI
         self.all_servicetypes = list(
             ZeroconfServiceTypes.find(
@@ -601,54 +592,82 @@ class MainForm(ttk.Frame):
             )
         )
 
-    def detect_hosts(self, servicetype="_openlcb-can._tcp.local."):
+    def detect_hosts(self, servicetype="_openlcb-can._tcp.local.",
+                     adapters=None, adapter_index=None):
+        """Detect hosts by adapter.
+
+        Args:
+            adapters (list[ifaddr._shared.Adapter], optional): zeroconf
+                uses all adapters by default, so setting this is only
+                useful for streamlining streamlining the UI list or
+                detection speed. Example: Start with
+                ifaddr.get_adapters() then let the user choose one.
+            adapter_index (int, optional): An adapter index in
+                adapters (or if adapters not set, this index must
+                be one in ifaddr.get_adapters()). Defaults to None
+                (all adapters).
+        """
         if not zeroconf_enabled:
             self.set_status("The Python zeroconf package is not installed.")
-            return
-        adapters = ifaddr.get_adapters()
-        if not adapters:
-            self.set_status("No network adapters were found.")
-            return
-        
-        if not self.all_servicetypes:  # For debugging Windows 11 only
-            self.load_all_servicetypes()
+            return 5
 
-        index = None  # non-None to force single adapter
+        if (adapters is not None) and (not adapters):
+            self.set_status("No network adapters were selected.")
+            return 4
+        # else use all of them (or adapter_index)
 
-        if index is not None:
-            adapter = self.initialize_zeroconf(None, index=index)
+        # if not self.all_servicetypes:  # For debugging Windows 11 only
+        #     self.load_all_servicetypes()
+
+        if adapter_index is not None:
+            adapter = self.select_adapter(adapters, adapter_index)
+            self.initialize_zeroconf(adapter=adapter)
             if adapter is None:
-                # initialize_zeroconf should already have shown error
+                # select_adapter should already have shown error
                 # self.set_status("Adapter {} not found in {} adapter(s)"
                 #                 .format(index, len(adapters)))
-                return
+                return 3
             adapters = [adapter]
-
+        if not adapters:
+            return self.initialize_browser(None, servicetype)
         logger.warning("Checking {} network adapter(s)".format(len(adapters)))
-        for index, adapter in enumerate(adapters):
-            # adapter =
-            if adapter.nice_name not in self.zeroconfs:
-                self.initialize_zeroconf(adapter, index=index)
-            if not self.zeroconf:
-                self.set_status("Zeroconf was not initialized.")
-                return
-            if not self.listener:
-                self.set_status("Listener was not initialized.")
-                return
-            if self.browsers.get(adapter.nice_name):
-                self.set_status("Already listening for {} devices."
-                                .format(self.servicetype))
-                continue
-            self.servicetype = servicetype
-            if self.all_servicetypes:
-                self.servicetype = self.all_servicetypes
-            self.browser = ServiceBrowser(
-                self.zeroconf,
-                self.servicetype,
-                self.listener,
-            )
+        for _, adapter in enumerate(adapters):
+            code = self.initialize_browser(adapter, servicetype)
+            if code > 1:
+                return code
+            # elif code == 1:  # minor issue (usually: already scanning it)
+        self.set_status(
+            "Detecting hosts using {}...".format(list(self.browsers.keys())))
+        return 0
+
+    def initialize_browser(self, adapter, servicetype):
+        """Initialize the zeroconf service browser.
+        Returns:
+            int: 1 if already listening on the adapter, 2 if zeroconf is
+                not ready (Cannot initialize any browsers in that case).
+        """
+        self.initialize_zeroconf(adapter=adapter)  # all adapters if None
+        if not self.zeroconf:
+            self.set_status("Zeroconf was not initialized.")
+            return 2
+        if not self.listener:
+            self.set_status("Listener was not initialized.")
+            return 2
+        if adapter and self.browsers.get(adapter.nice_name):
+            self.set_status("Already listening for {} devices."
+                            .format(self.servicetype))
+            return 1
+        self.servicetype = servicetype
+        if self.all_servicetypes:
+            self.servicetype = self.all_servicetypes
+        self.browser = ServiceBrowser(
+            self.zeroconf,
+            self.servicetype,
+            self.listener,
+        )
+        if adapter:
             self.browsers[adapter.nice_name] = self.browser
-        self.set_status("Detecting hosts using {}...".format(list(self.browsers.keys())))
+        return 0
 
     def detect_nodes(self):
         self.set_status("Detecting nodes...")
