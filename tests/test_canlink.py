@@ -404,7 +404,7 @@ class TestCanLinkClass(unittest.TestCase):
         self.assertEqual(messageLayer.receivedMessages[1].destination,
                          NodeID(0x05_01_01_01_03_01))
 
-    def testSimpleDatagrm(self):  # Test start=yes, end=yes frame
+    def testSimpleDatagram(self):  # Test start=yes, end=yes frame
         canPhysicalLayer = CanPhysicalLayerSimulation()
         canLink = CanLink(NodeID("05.01.01.01.03.01"))
         canLink.linkPhysicalLayer(canPhysicalLayer)
@@ -440,7 +440,7 @@ class TestCanLinkClass(unittest.TestCase):
         self.assertEqual(messageLayer.receivedMessages[1].data[2], 12)
         self.assertEqual(messageLayer.receivedMessages[1].data[3], 13)
 
-    def testThreeFrameDatagrm(self):
+    def testThreeFrameDatagram(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
         canLink = CanLink(NodeID("05.01.01.01.03.01"))
         canLink.linkPhysicalLayer(canPhysicalLayer)

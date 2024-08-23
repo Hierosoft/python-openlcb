@@ -103,7 +103,7 @@ class MainForm(ttk.Frame):
             key and the Button instance is the value.
         example_modules (OrderedDict[str]): The example
             module name is the key, and the full path is the value. If
-            examples are made modular, the value will not be nessary, but
+            examples are made modular, the value will not be necessary, but
             for now just run the file in another Python instance (See
             run_example method).
         fields (list[DataField]): A list of settings.

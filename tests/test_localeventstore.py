@@ -5,7 +5,7 @@ from openlcb.localeventstore import LocalEventStore
 from openlcb.eventid import EventID
 
 
-class TestLocalEventStorelass(unittest.TestCase):
+class TestLocalEventStoreClass(unittest.TestCase):
 
     def testConsumes(self) :
         store = LocalEventStore()

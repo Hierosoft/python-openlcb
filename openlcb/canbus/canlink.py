@@ -299,7 +299,7 @@ class CanLink(LinkLayer):
                     msg = Message(mti, sourceID, destID, self.accumulator[key])
                     self.fireListeners(msg)
 
-                    #    remove accumulution
+                    #    remove accumulation
                     self.accumulator[key] = None
             else:
                 #    addressed message case
@@ -336,7 +336,7 @@ class CanLink(LinkLayer):
                         logging.warning("Dropping non-start frame without"
                                         " accumulation started: {}"
                                         "".format(frame))
-                        return  # early return to stop processing of this grame
+                        return  # early return to stop processing of this frame
 
                 #    add this data
                 if len(frame.data) > 2:
@@ -352,7 +352,7 @@ class CanLink(LinkLayer):
                         msg.originalMTI = ((frame.header >> 12) & 0xFFF)
                     self.fireListeners(msg)
 
-                    # remove accumulution
+                    # remove accumulation
                     self.accumulator[key] = None
 
             # end addressed message case
@@ -477,7 +477,7 @@ class CanLink(LinkLayer):
 
         #    multiple frames
         retval = []
-        for i in range(0, nSegments-2+1):  # first enty of 2 has full data
+        for i in range(0, nSegments-2+1):  # first entry of 2 has full data
             nextEntry = (data[i*8:i*8+7+1]).copy()
             retval.append(nextEntry)
 
@@ -510,7 +510,7 @@ class CanLink(LinkLayer):
 
         #    multiple frames
         retval = []
-        for i in range(0, nSegments-2+1):  # first enty of 2 has full data
+        for i in range(0, nSegments-2+1):  # first entry of 2 has full data
             nextEntry = [part0 | 0x30, part1]+(data[i*6:i*6+5+1]).copy()
             retval.append(nextEntry)
 

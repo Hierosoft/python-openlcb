@@ -63,7 +63,7 @@ class SNIP:
 
         Zero indexed.
         Is aware of the 2nd version code byte.
-        Logs and returns -1 if the string isn't found withn the buffer
+        Logs and returns -1 if the string isn't found within the buffer
         '''
 
         if n == 0:

@@ -164,7 +164,7 @@ class MyHandler(xml.sax.handler.ContentHandler):
     def startElement(self, name, attrs):
         print("Start: ", name)
         if attrs is not None and attrs :
-            print("  Atributes: ", attrs.getNames())
+            print("  Attributes: ", attrs.getNames())
 
     def endElement(self, name):
         print(name, "content:", self._flushCharBuffer())
