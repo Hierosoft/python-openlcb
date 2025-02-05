@@ -161,48 +161,51 @@ import xml.sax  # noqa: E402
 
 
 class MyHandler(xml.sax.handler.ContentHandler):
-    """XML SAX callbacks in a handler object"""
+    """XML SAX callbacks in a handler object
+
+    Attributes:
+        _chunks (list[str]): Collects chunks of data.
+            This is implementation-specific, and not
+            required if streaming (parser.feed).
+    """
+
     def __init__(self):
-        self._charBuffer = bytearray()
+        self._chunks = []
 
     def startElement(self, name, attrs):
-        """_summary_
-
-        Args:
-            name (_type_): _description_
-            attrs (_type_): _description_
-        """
+        """See xml.sax.handler.ContentHandler documentation."""
         print("Start: ", name)
         if attrs is not None and attrs :
             print("  Attributes: ", attrs.getNames())
 
     def endElement(self, name):
-        """_summary_
-
-        Args:
-            name (_type_): _description_
-        """
+        """See xml.sax.handler.ContentHandler documentation."""
         print(name, "content:", self._flushCharBuffer())
         print("End: ", name)
         pass
 
     def _flushCharBuffer(self):
         """Decode the buffer, clear it, and return all content.
+        See xml.sax.handler.ContentHandler documentation.
 
         Returns:
             str: The content of the bytes buffer decoded as utf-8.
         """
-        s = self._charBuffer.decode("utf-8")
-        self._charBuffer.clear()
+        s = ''.join(self._chunks)
+        self._chunks.clear()
         return s
 
     def characters(self, data):
-        """Received characters handler
+        """Received characters handler.
+        See xml.sax.handler.ContentHandler documentation.
+
         Args:
             data (Union[bytearray, bytes, list[int]]): any
               data (any type accepted by bytearray extend).
         """
-        self._charBuffer.extend(data)
+        if not isinstance(data, str):
+            raise TypeError("Expected str, got {}".format(type(data).__name__))
+        self._chunks.append(data)
 
 
 handler = MyHandler()

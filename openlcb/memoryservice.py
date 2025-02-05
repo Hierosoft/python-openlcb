@@ -5,7 +5,7 @@ Created by Bob Jacobsen on 6/1/22.
 
 TODO: Read requests are serialized, but write requests are not yet
 
-Datagram retry handles the link being queisced/restarted, so it's not
+Datagram retry handles the link being quiesced/restarted, so it's not
 explicitly handled here.
 
 Does memory read and write requests.
@@ -44,11 +44,11 @@ class MemoryReadMemo:
         rejectedReply (Callable[MemoryReadMemo]): Callback function to handle
             rejected read responses.
             The callback will receive this MemoryReadMemo instance.
-        dataReply (Callable[MemoryReadMemo]): Callback function to handle successful
-            read responses (called after okReply which is handled by
-            MemoryService). The callback will receive the data read from
-            memory. This is passed as a MemoryReadMemo object with the
-            data member set
+        dataReply (Callable[MemoryReadMemo]): Callback function to
+            handle successful read responses (called after okReply which
+            is handled by MemoryService). The callback will receive the
+            data read from memory. This is passed as a MemoryReadMemo
+            object with the data member set.
 
     Attributes:
         data(bytearray): The data that was read.
@@ -310,8 +310,8 @@ class MemoryService:
             space (int): Encoded memory space identifier. This can be a
                 value within a specific range, as defined in the
                 `spaceDecode` method.
-            nodeID (NodeID): ID of remote node from which the memory space length is
-                requested.
+            nodeID (NodeID): ID of remote node from which the memory
+                space length is requested.
             callback (Callable): Callback function that will receive the
                 response. The callback will receive an integer address
                 as a parameter, representing the address of the

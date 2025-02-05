@@ -46,7 +46,7 @@ class SNIP:
         self.updateSnipDataFromStrings()
         self.index = 0
 
-    # OLCB Strings are fixed length null terminated.
+    # OpenLCB Strings are fixed length null terminated.
     # We don't (yet) support later versions with e.g. larger strings, etc.
 
     def getStringN(self, n):
@@ -123,7 +123,6 @@ class SNIP:
             terminate_i = min(null_i, terminate_i)
         # terminate_i should point at the first zero or exclusive end
         return self.data[first:terminate_i].decode("utf-8")
-
 
     def addData(self, in_data):
         '''

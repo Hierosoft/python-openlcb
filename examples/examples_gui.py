@@ -102,6 +102,7 @@ class MainForm(ttk.Frame):
     """
 
     def __init__(self, parent):
+        self.run_button = None
         self.zeroconf = None
         self.listener = None
         self.browser = None
@@ -222,12 +223,26 @@ class MainForm(ttk.Frame):
         args = (sys.executable, module_path)
         self.set_status("Running {} (see console for results)..."
                         "".format(module_name))
-        self.proc = subprocess.Popen(
-            args,
-            shell=True,
-            # close_fds=True, close file descriptors >= 3 before running
-            # stdin=None, stdout=None, stderr=None,
-        )
+
+        self.enable_buttons(False)
+        try:
+            self.proc = subprocess.Popen(
+                args,
+                shell=True,
+                # close_fds=True, close file descriptors >= 3 before running
+                # stdin=None, stdout=None, stderr=None,
+            )
+        finally:
+            self.enable_buttons(True)
+
+    def enable_buttons(self, enable):
+        state = tk.NORMAL if enable else tk.DISABLED
+        if self.run_button:
+            self.run_button.configure(state=state)
+        for field in self.fields.values():
+            if not hasattr(field, 'button') or not field.button:
+                continue
+            field.button.configure(state=state)
 
     def load_settings(self):
         # import json
