@@ -110,7 +110,7 @@ def datagramWrite():
 
     writeMemo = DatagramWriteMemo(
         NodeID(farNodeID),
-        [0x20, 0x43, 0x00, 0x00, 0x00, 0x00, 0x14],
+        bytearray([0x20, 0x43, 0x00, 0x00, 0x00, 0x00, 0x14]),
         writeCallBackCheck
     )
     datagramService.sendDatagram(writeMemo)
