@@ -57,6 +57,7 @@
 			"physicallayer",
 			"Poikilos",
 			"pyproject",
+			"pyserial",
 			"servicetype",
 			"settingtypes",
 			"setuptools",

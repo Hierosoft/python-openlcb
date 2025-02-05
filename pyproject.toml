@@ -38,8 +38,8 @@ requires-python = ">= 3.8"
 # ^ allows version to be overridden by a git tag using
 #   setuptools_scm, or by a __version__ Python attribute.
 #   See https://packaging.python.org/en/latest/guides/single-sourcing-package-version/#single-sourcing-the-version
-# dependencies = [
-# ]
+dependencies = ["pyserial"]
+# ^ "pyserial" package has correct serial module (not the "serial" package).
 
 [project.optional-dependencies]
 gui = ["zeroconf"]
