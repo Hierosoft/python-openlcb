@@ -16,11 +16,17 @@ import os
 import platform
 import subprocess
 import sys
+import threading
 import tkinter as tk
 from tkinter import ttk
 from collections import OrderedDict
 
+from tkexamples.cdiframe import CDIFrame
+
 from examples_settings import Settings
+# ^ adds parent of module to sys.path, so openlcb imports *after* this
+
+from openlcb import emit_cast
 from openlcb.tcplink.mdnsconventions import id_from_tcp_service_name
 
 zeroconf_enabled = False
@@ -109,6 +115,7 @@ class MainForm(ttk.Frame):
         self.listener = None
         self.browser = None
         self.errors = []
+        self.root = parent
         try:
             self.settings = Settings()
         except json.decoder.JSONDecodeError as ex:
@@ -399,12 +406,32 @@ class MainForm(ttk.Frame):
         self.notebook.grid(sticky=tk.NSEW, row=self.row, column=0,
                            columnspan=self.column_count)
         self.row += 1
+        self.cdi_row = 0
+        # region based on ttk Forest Theme
+        self.cdi_tab = ttk.Frame(self.notebook)
+        self.cdi_tab.columnconfigure(index=0, weight=1)
+        self.cdi_tab.columnconfigure(index=1, weight=1)
+        self.cdi_tab.rowconfigure(index=0, weight=1)
+        self.cdi_tab.rowconfigure(index=1, weight=1)
+        self.notebook.add(self.cdi_tab, text="Node Configuration (CDI)")
+        # endregion based on ttk Forest Theme
+
+        self.cdi_connect_button = ttk.Button(
+            self.cdi_tab,
+            text="Connect",
+            command=self.cdi_connect_clicked,
+        )
+        self.cdi_connect_button.grid(row=self.cdi_row)
+        self.cdi_row += 1
+        self.cdi_frame = CDIFrame(self.cdi_tab)
+        self.cdi_frame.grid(row=self.cdi_row)
+
         self.example_tab = ttk.Frame(self.notebook)
         self.example_tab.columnconfigure(index=0, weight=1)
         self.example_tab.columnconfigure(index=1, weight=1)
         self.example_tab.rowconfigure(index=0, weight=1)
         self.example_tab.rowconfigure(index=1, weight=1)
-        self.notebook.add(self.example_tab, text="Examples")
+        self.notebook.add(self.example_tab, text="Other Examples")
 
         self.example_group_box = self.example_tab
 
@@ -424,6 +451,39 @@ class MainForm(ttk.Frame):
         # for row in range(self.row_count):
         #     self.rowconfigure(row, weight=1)
         # self.rowconfigure(self.row_count-1, weight=1)  # make last row expand
+
+    def callback(self, event_d):
+        """Handle a dict event from a different thread
+        (this type of event is specific to examples)
+        """
+        # Trigger the main thread (only the main thread can access the GUI)
+        self.root.after(0, self._callback, event_d)
+
+    def _callback(self, event_d):
+        message = event_d.get('message')
+        if message:
+            self.set_status(message)
+
+    def cdi_connect_clicked(self):
+        host_var = self.fields.get('host')
+        host = host_var.get()
+        port_var = self.fields.get('port')
+        port = port_var.get()
+        if port:
+            port = int(port)
+        else:
+            raise TypeError("Expected int, got {}".format(emit_cast(port)))
+        localNodeID_var = self.fields.get('localNodeID')
+        localNodeID = localNodeID_var.get()
+        # self.cdi_frame.connect(host, port, localNodeID)
+        threading.Thread(
+            target=self.cdi_frame.connect,
+            args=(host, port, localNodeID),
+            kwargs={'callback': self.callback},
+            daemon=True,
+        ).start()
+        self.cdi_connect_button.configure(state=tk.DISABLED)
+        # daemon=True ensures the thread does not block program exit if the user closes the application.
 
     def set_id_from_name(self):
         id = self.get_id_from_name(update_button=True)

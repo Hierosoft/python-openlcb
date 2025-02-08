@@ -8,12 +8,19 @@ import os
 import shutil
 import sys
 
+from logging import getLogger
+logger = getLogger(__name__)
+
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 if os.path.isfile(os.path.join(REPO_DIR, "openlcb", "__init__.py")):
     # User is running from the repo
     #   (generally true if using examples_settings)
     sys.path.insert(0, REPO_DIR)
-
+else:
+    logger.warning(
+        "Reverting to installed copy if present (or imports will fail),"
+        " since test running from repo but could not find openlcb in {}."
+        .format(repr(REPO_DIR)))
 CONFIGS_DIR = os.path.dirname(os.path.realpath(__file__))
 
 DEFAULT_SETTINGS = {
