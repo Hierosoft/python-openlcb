@@ -104,6 +104,7 @@ class MainForm(ttk.Frame):
 
     def __init__(self, parent):
         self.run_button = None
+        self.examples_label = None
         self.zeroconf = None
         self.listener = None
         self.browser = None
@@ -137,8 +138,9 @@ class MainForm(ttk.Frame):
         count = self.show_next_error()
         if not count:
             self.set_status(
-                "Welcome! Select an example. Run also saves settings."
+                "Welcome!"
             )
+        # else show_next_error should have already set status label text.
 
     def show_next_error(self):
         if not self.errors:
@@ -153,11 +155,37 @@ class MainForm(ttk.Frame):
         for module_name, button in self.example_buttons.items():
             button.grid_forget()
             self.row -= 1
+        if self.examples_label:
+            self.examples_label.grid_forget()
+            self.examples_label = None
+        if self.run_button:
+            self.run_button.grid_forget()
+            self.run_button = None
         self.example_buttons.clear()
         self.example_modules.clear()
 
     def load_examples(self):
         self.remove_examples()
+        self.example_row = 0
+        self.examples_label = ttk.Label(
+            self.example_tab,
+            text=("These examples run in the background without a GUI."
+                  "\nHowever, the interface above can setup settings.json"
+                  "\n (usable by any of them, saved when run is clicked)."),
+        )
+        self.examples_label.grid(row=0, column=1)
+
+        self.run_button = ttk.Button(
+            self.example_tab,
+            text="Run",
+            command=self.run_example,
+            # command=lambda x=name: self.run_example(module_name=x),
+            # x=name is necessary for early binding, otherwise all
+            # lambdas will have the *last* value in the loop.
+        )
+        self.run_button.grid(row=0, column=0, sticky=tk.W)
+        self.example_row += 1
+
         repo_dir = os.path.dirname(os.path.realpath(__file__))
         self.example_var = tk.IntVar()  # Shared by *all* in radio group.
         # ^ The value refers to an entry in examples:
@@ -171,7 +199,7 @@ class MainForm(ttk.Frame):
             name, _ = os.path.splitext(sub)  # name, dot+extension
             self.example_modules[name] = sub_path
             button = ttk.Radiobutton(
-                self,
+                self.example_group_box,
                 text=name,
                 variable=self.example_var,
                 value=len(self.examples),
@@ -180,19 +208,9 @@ class MainForm(ttk.Frame):
                 # lambdas will have the *last* value in the loop.
             )
             self.examples.append(name)
-            button.grid(row=self.row, column=1)
+            button.grid(row=self.example_row, column=0, sticky=tk.W)
             self.example_buttons[name] = button
-            self.row += 1
-        self.run_button = ttk.Button(
-            self,
-            text="Run",
-            command=self.run_example,
-            # command=lambda x=name: self.run_example(module_name=x),
-            # x=name is necessary for early binding, otherwise all
-            # lambdas will have the *last* value in the loop.
-        )
-        self.run_button.grid(row=self.row, column=1)
-        self.row += 1
+            self.example_row += 1
 
     def run_example(self, module_name=None):
         """Run the selected example.
@@ -375,6 +393,20 @@ class MainForm(ttk.Frame):
             gui_class=ttk.Checkbutton,
             text="Trace",
         )
+
+        # NOTE: load_examples (See on_form_loaded) fills Examples tab.
+        self.notebook = ttk.Notebook(self)
+        self.notebook.grid(sticky=tk.NSEW, row=self.row, column=0,
+                           columnspan=self.column_count)
+        self.row += 1
+        self.example_tab = ttk.Frame(self.notebook)
+        self.example_tab.columnconfigure(index=0, weight=1)
+        self.example_tab.columnconfigure(index=1, weight=1)
+        self.example_tab.rowconfigure(index=0, weight=1)
+        self.example_tab.rowconfigure(index=1, weight=1)
+        self.notebook.add(self.example_tab, text="Examples")
+
+        self.example_group_box = self.example_tab
 
         # The status widget is the only widget other than self which
         #   is directly inside the parent widget (forces it to bottom):
@@ -627,7 +659,7 @@ def main():
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
     window_w = round(screen_w / 2)
-    window_h = round(screen_h * .75)
+    window_h = round(screen_h * .9)
     root.geometry("{}x{}".format(
         window_w,
         window_h,
