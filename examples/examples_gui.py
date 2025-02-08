@@ -13,6 +13,7 @@ Purpose: Provide an easy way to enter settings for examples and run them.
 """
 import json
 import os
+import platform
 import subprocess
 import sys
 import tkinter as tk
@@ -601,6 +602,28 @@ class MainForm(ttk.Frame):
 
 def main():
     root = tk.Tk()
+    root.style = ttk.Style()
+    if platform.system() == "Windows":
+        if 'winnative' in root.style.theme_names():
+            root.style.theme_use('winnative')
+    elif platform.system() == "Darwin":
+        if 'aqua' in root.style.theme_names():
+            root.style.theme_use('aqua')
+    else:
+        # Linux (such as Linux Mint 22.1) usually has
+        # 'clam', 'alt', 'default', 'classic'
+        if 'alt' in root.style.theme_names():
+            # Use 'alt' since:
+            # - 'default' and 'classic' (like 'default' but fatter
+            #   shading lines) may be motif-like :( (diamond-shaped
+            #   radio buttons etc)
+            # - 'clam' is "3D" (Windows 95-like, warm gray)
+            # - 'alt' is "3D" (Windows 2000-like, cool gray)
+            root.style.theme_use('alt')
+        else:
+            print("No theme selected. Themes: {}"
+                  .format(root.style.theme_names()))
+
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
     window_w = round(screen_w / 2)
