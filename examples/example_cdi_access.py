@@ -42,9 +42,9 @@ from openlcb.memoryservice import (
 # farNodeID = "02.01.57.00.04.9C"
 # endregion moved to settings
 
-s = TcpSocket()
+sock = TcpSocket()
 # s.settimeout(30)
-s.connect(settings['host'], settings['port'])
+sock.connect(settings['host'], settings['port'])
 
 
 # print("RR, SR are raw socket interface receive and send;"
@@ -53,7 +53,7 @@ s.connect(settings['host'], settings['port'])
 
 def sendToSocket(string):
     # print("      SR: {}".format(string.strip()))
-    s.send(string)
+    sock.send(string)
 
 
 def printFrame(frame):
@@ -253,7 +253,7 @@ thread.start()
 
 # process resulting activity
 while True:
-    received = s.receive()
+    received = sock.receive()
     # print("      RR: {}".format(received.strip()))
     # pass to link processor
     canPhysicalLayerGridConnect.receiveString(received)
