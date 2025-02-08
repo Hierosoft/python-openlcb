@@ -458,7 +458,7 @@ class MainForm(ttk.Frame):
         self.host_column = self.column
         self.column += 1
         self.fields[key] = field
-        if gui_class in (ttk.Checkbutton, tk.Checkbutton):
+        if gui_class in (ttk.Checkbutton, ttk.Checkbutton):
             field.var = tk.BooleanVar(self.w1)
             # field.var.set(True)
             field.widget = gui_class(
