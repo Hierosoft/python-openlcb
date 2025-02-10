@@ -62,7 +62,7 @@ from openlcb.memoryservice import (
 import xml.sax  # noqa: E402
 
 
-class CDIFrame(ttk.Frame, xml.sax.handler.ContentHandler):
+class CDIForm(ttk.Frame, xml.sax.handler.ContentHandler):
     def __init__(self, *args, **kwargs):
         self.parent = None
         if args:
@@ -81,6 +81,7 @@ class CDIFrame(ttk.Frame, xml.sax.handler.ContentHandler):
 
     def callback_msg(self, msg):
         if self.callback:
+            print("CDIForm callback_msg({})".format(repr(msg)))
             self.callback({
                 'message': msg,
             })
@@ -97,14 +98,16 @@ class CDIFrame(ttk.Frame, xml.sax.handler.ContentHandler):
         self.sock = TcpSocket()
         # s.settimeout(30)
         self.sock.connect(host, port)
-        logger.warning("CanPhysicalLayerGridConnect...")
+        self.callback_msg("CanPhysicalLayerGridConnect...")
         self.canPhysicalLayerGridConnect = CanPhysicalLayerGridConnect(self.sendToSocket)
         self.canPhysicalLayerGridConnect.registerFrameReceivedListener(self.printFrame)
 
 
         self.callback_msg("CanLink...")
         self.canLink = CanLink(NodeID(localNodeID))
+        self.callback_msg("CanLink...linkPhysicalLayer...")
         self.canLink.linkPhysicalLayer(self.canPhysicalLayerGridConnect)
+        self.callback_msg("CanLink...linkPhysicalLayer...registerMessageReceivedListener...")
         self.canLink.registerMessageReceivedListener(self.printMessage)
 
         self.callback_msg("DatagramService...")

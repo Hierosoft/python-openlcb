@@ -17,11 +17,17 @@ import platform
 import subprocess
 import sys
 import threading
-import tkinter as tk
+try:
+    import tkinter as tk
+except ImportError:
+    print("\nYou must first install python3-tk if using apt or other system"
+          " that requires tkinter to be in a separate package from Python.",
+          file=sys.stderr)
+    raise
 from tkinter import ttk
 from collections import OrderedDict
 
-from tkexamples.cdiframe import CDIFrame
+from tkexamples.cdiframe import CDIForm
 
 from examples_settings import Settings
 # ^ adds parent of module to sys.path, so openlcb imports *after* this
@@ -423,7 +429,7 @@ class MainForm(ttk.Frame):
         )
         self.cdi_connect_button.grid(row=self.cdi_row)
         self.cdi_row += 1
-        self.cdi_frame = CDIFrame(self.cdi_tab)
+        self.cdi_frame = CDIForm(self.cdi_tab)
         self.cdi_frame.grid(row=self.cdi_row)
 
         self.example_tab = ttk.Frame(self.notebook)
