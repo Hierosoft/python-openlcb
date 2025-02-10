@@ -27,7 +27,7 @@ except ImportError:
 from tkinter import ttk
 from collections import OrderedDict
 
-from tkexamples.cdiframe import CDIForm
+from examples.tkexamples.cdiform import CDIForm
 
 from examples_settings import Settings
 # ^ adds parent of module to sys.path, so openlcb imports *after* this
@@ -429,8 +429,8 @@ class MainForm(ttk.Frame):
         )
         self.cdi_connect_button.grid(row=self.cdi_row)
         self.cdi_row += 1
-        self.cdi_frame = CDIForm(self.cdi_tab)
-        self.cdi_frame.grid(row=self.cdi_row)
+        self.cdi_form = CDIForm(self.cdi_tab)
+        self.cdi_form.grid(row=self.cdi_row)
 
         self.example_tab = ttk.Frame(self.notebook)
         self.example_tab.columnconfigure(index=0, weight=1)
@@ -481,9 +481,9 @@ class MainForm(ttk.Frame):
             raise TypeError("Expected int, got {}".format(emit_cast(port)))
         localNodeID_var = self.fields.get('localNodeID')
         localNodeID = localNodeID_var.get()
-        # self.cdi_frame.connect(host, port, localNodeID)
+        # self.cdi_form.connect(host, port, localNodeID)
         threading.Thread(
-            target=self.cdi_frame.connect,
+            target=self.cdi_form.connect,
             args=(host, port, localNodeID),
             kwargs={'callback': self.callback},
             daemon=True,
