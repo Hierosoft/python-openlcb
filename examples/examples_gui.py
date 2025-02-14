@@ -17,6 +17,9 @@ import platform
 import subprocess
 import sys
 import threading
+
+from logging import getLogger
+
 try:
     import tkinter as tk
 except ImportError:
@@ -52,6 +55,8 @@ except ImportError:
         """Placeholder for when zeroconf is *not* present"""
         pass
 
+logger = getLogger(__name__)
+
 
 class MyListener(ServiceListener):
     pass
@@ -74,6 +79,8 @@ class DataField():
         self.widget = None
         self.button = None
         self.tooltip = None
+        self.groups = None
+        self.segment = None
 
     def get(self):
         return self.var.get()
@@ -134,7 +141,7 @@ class MainForm(ttk.Frame):
         self.detected_services = OrderedDict()
         self.fields = OrderedDict()
         self.proc = None
-        self.gui(parent)
+        self._gui(parent)
         self.w1.after(1, self.on_form_loaded)  # must go after gui
         self.example_modules = OrderedDict()
         self.example_buttons = OrderedDict()
@@ -311,7 +318,7 @@ class MainForm(ttk.Frame):
             self.settings[key] = value
         self.settings.save()
 
-    def gui(self, parent):
+    def _gui(self, parent):
         print("Using {}".format(self.settings.settings_path))
         # import json
         # print(json.dumps(self.settings._meta, indent=1, sort_keys=True))
@@ -427,7 +434,16 @@ class MainForm(ttk.Frame):
             text="Connect",
             command=self.cdi_connect_clicked,
         )
-        self.cdi_connect_button.grid(row=self.cdi_row)
+        self.cdi_connect_button.grid(row=self.cdi_row, column=0)
+
+        self.cdi_refresh_button = ttk.Button(
+            self.cdi_tab,
+            text="Refresh",
+            command=self.cdi_refresh_clicked,
+            state=tk.DISABLED,  # enabled on connect success callback
+        )
+        self.cdi_refresh_button.grid(row=self.cdi_row, column=1)
+
         self.cdi_row += 1
         self.cdi_form = CDIForm(self.cdi_tab)
         self.cdi_form.grid(row=self.cdi_row)
@@ -458,7 +474,7 @@ class MainForm(ttk.Frame):
         #     self.rowconfigure(row, weight=1)
         # self.rowconfigure(self.row_count-1, weight=1)  # make last row expand
 
-    def callback(self, event_d):
+    def connect_callback(self, event_d):
         """Handle a dict event from a different thread
         (this type of event is specific to examples)
         """
@@ -468,6 +484,16 @@ class MainForm(ttk.Frame):
     def _callback(self, event_d):
         message = event_d.get('message')
         if message:
+            self.set_status(message)
+        done = event_d.get('done')
+        if done:
+            self.cdi_refresh_button.configure(state=tk.NORMAL)
+            if message:
+                logger.warning(
+                    "Done, but skipped message: {}".format(repr(message)))
+            # if not message:
+            message = 'Done. Ready to load CDI (click "Refresh")'
+            print(message)
             self.set_status(message)
 
     def cdi_connect_clicked(self):
@@ -485,11 +511,33 @@ class MainForm(ttk.Frame):
         threading.Thread(
             target=self.cdi_form.connect,
             args=(host, port, localNodeID),
-            kwargs={'callback': self.callback},
+            kwargs={'callback': self.connect_callback},
             daemon=True,
         ).start()
         self.cdi_connect_button.configure(state=tk.DISABLED)
+        self.cdi_refresh_button.configure(state=tk.DISABLED)
         # daemon=True ensures the thread does not block program exit if the user closes the application.
+
+    def cdi_refresh_clicked(self):
+        self.cdi_connect_button.configure(state=tk.DISABLED)
+        self.cdi_refresh_button.configure(state=tk.DISABLED)
+        farNodeID = self.get_value('farNodeID')
+        if not farNodeID:
+            self.set_status('Set "Far node ID" first.')
+            return
+        print("Querying farNodeID={}".format(repr(farNodeID)))
+        threading.Thread(
+            target=self.cdi_form.downloadCDI,
+            args=(farNodeID,),
+            kwargs={'callback': self.cdi_form.cdi_refresh_callback},
+            daemon=True,
+        ).start()
+
+    def get_value(self, key):
+        field = self.fields.get(key)
+        if not field:
+            raise KeyError("Invalid form field {}".format(repr(key)))
+        return field.get()
 
     def set_id_from_name(self):
         id = self.get_id_from_name(update_button=True)
