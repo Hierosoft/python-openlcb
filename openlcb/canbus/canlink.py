@@ -403,10 +403,10 @@ class CanLink(LinkLayer):
                 header |= ((dddAlias) & 0xFFF) << 12
             except KeyboardInterrupt:
                 raise
-            except:
+            except Exception as ex:
                 logging.warning(
-                    "Did not know destination = {} on datagram send"
-                    "".format(msg.source)
+                    "Did not know destination = {} on datagram send ({}: {})"
+                    "".format(msg.destination, type(ex).__name__, ex)
                 )
 
             if len(msg.data) <= 8:

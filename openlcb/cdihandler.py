@@ -13,11 +13,12 @@ Contributors: Poikilos, Bob Jacobsen (code from example_cdi_access)
 import json
 import platform
 import subprocess
-from collections import OrderedDict
+import time
 import sys
 import xml.sax  # noqa: E402
 import xml.etree.ElementTree as ET
 
+from collections import OrderedDict
 from logging import getLogger
 
 from openlcb.canbus.tcpsocket import TcpSocket
@@ -151,7 +152,7 @@ class CDIHandler(xml.sax.handler.ContentHandler):
         We will fire it on a separate thread to give time for other nodes to
         reply to AME
         """
-        # time.sleep(1)
+        time.sleep(1)
 
         # read 64 bytes from the CDI space starting at address zero
         memMemo = MemoryReadMemo(NodeID(farNodeID), 64, 0xFF, offset,
