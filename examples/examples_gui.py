@@ -775,10 +775,14 @@ def main():
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
     window_w = round(screen_w / 2)
-    window_h = round(screen_h * .9)
-    root.geometry("{}x{}".format(
+    window_h = round(screen_h * .8)
+    x = (screen_w - window_w) // 2
+    y = (screen_h - window_h) // 12
+    root.geometry("{}x{}+{}+{}".format(
         window_w,
         window_h,
+        x,
+        y,
     ))  # WxH+X+Y format
     root.minsize = (window_w, window_h)
     main_form = MainForm(root)
