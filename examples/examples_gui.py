@@ -30,10 +30,10 @@ except ImportError:
 from tkinter import ttk
 from collections import OrderedDict
 
-from examples.tkexamples.cdiform import CDIForm
-
 from examples_settings import Settings
 # ^ adds parent of module to sys.path, so openlcb imports *after* this
+
+from examples.tkexamples.cdiform import CDIForm
 
 from openlcb import emit_cast
 from openlcb.tcplink.mdnsconventions import id_from_tcp_service_name
