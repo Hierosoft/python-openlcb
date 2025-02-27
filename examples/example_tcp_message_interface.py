@@ -33,11 +33,11 @@ from openlcb.mti import MTI
 # localNodeID = "05.01.01.01.03.01"
 # endregion moved to settings
 
-s = TcpSocket()
+sock = TcpSocket()
 # s.settimeout(30)
 print("Using settings:")
 print(settings.dumps())
-s.connect(settings['host'], settings['port'])
+sock.connect(settings['host'], settings['port'])
 
 print("RR, SR are raw socket interface receive and send; "
       " RM, SM are message interface")
@@ -50,7 +50,7 @@ def sendToSocket(data):
     #         .format(type(data).__name__, data)
     #     )
     print("      SR: {}".format(data))
-    s.send(data)
+    sock.send(data)
 
 
 def printMessage(msg):
@@ -75,7 +75,7 @@ tcpLinkLayer.sendMessage(message)
 
 # process resulting activity
 while True:
-    received = s.receive()
+    received = sock.receive()
     print("      RR: {}".format(received))
     # pass to link processor
     tcpLinkLayer.receiveListener(received)

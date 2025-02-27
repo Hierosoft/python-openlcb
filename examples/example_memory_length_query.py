@@ -43,9 +43,9 @@ localNodeID = "05.01.01.01.03.01"
 farNodeID = "09.00.99.03.00.35"
 # endregion replaced by settings
 
-s = TcpSocket()
+sock = TcpSocket()
 # s.settimeout(30)
-s.connect(settings['host'], settings['port'])
+sock.connect(settings['host'], settings['port'])
 
 print("RR, SR are raw socket interface receive and send;"
       " RL, SL are link interface; RM, SM are message interface")
@@ -53,7 +53,7 @@ print("RR, SR are raw socket interface receive and send;"
 
 def sendToSocket(string):
     print("      SR: {}".format(string.strip()))
-    s.send(string)
+    sock.send(string)
 
 
 def printFrame(frame):
@@ -140,7 +140,7 @@ thread.start()
 
 # process resulting activity
 while True:
-    received = s.receive()
+    received = sock.receive()
     print("      RR: {}".format(received.strip()))
     # pass to link processor
     canPhysicalLayerGridConnect.receiveString(received)

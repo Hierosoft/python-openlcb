@@ -48,9 +48,9 @@ from queue import Empty
 # timeout = 0.5
 # endregion replaced by settings
 
-s = TcpSocket()
+sock = TcpSocket()
 # s.settimeout(30)
-s.connect(settings['host'], settings['port'])
+sock.connect(settings['host'], settings['port'])
 
 if settings['trace'] :
     print("RR, SR are raw socket interface receive and send;"
@@ -59,7 +59,7 @@ if settings['trace'] :
 
 def sendToSocket(string) :
     if settings['trace'] : print("   SR: "+string.strip())
-    s.send(string)
+    sock.send(string)
 
 
 def receiveFrame(frame) :
@@ -110,7 +110,7 @@ def receiveLoop() :
     if settings['trace'] : print("      SL : link up")
     canPhysicalLayerGridConnect.physicalLayerUp()
     while True:
-        input = s.receive()
+        input = sock.receive()
         if settings['trace'] : print("   RR: "+input.strip())
         # pass to link processor
         canPhysicalLayerGridConnect.receiveString(input)

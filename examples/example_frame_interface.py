@@ -31,9 +31,9 @@ from openlcb.canbus.controlframe import ControlFrame
 # port = 12021
 # endregion replaced by settings
 
-s = TcpSocket()
+sock = TcpSocket()
 # s.settimeout(30)
-s.connect(settings['host'], settings['port'])
+sock.connect(settings['host'], settings['port'])
 
 print("RR, SR are raw socket interface receive and send;"
       " RL, SL are link (frame) interface")
@@ -41,7 +41,7 @@ print("RR, SR are raw socket interface receive and send;"
 
 def sendToSocket(string):
     print("   SR: {}".format(string.strip()))
-    s.send(string)
+    sock.send(string)
 
 
 def printFrame(frame):
@@ -58,7 +58,7 @@ canPhysicalLayerGridConnect.sendCanFrame(frame)
 
 # display response - should be RID from nodes
 while True:
-    received = s.receive()
+    received = sock.receive()
     print("   RR: {}".format(received.strip()))
     # pass to link processor
     canPhysicalLayerGridConnect.receiveString(received)

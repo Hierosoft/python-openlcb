@@ -44,10 +44,10 @@ from openlcb.node import Node
 # farNodeID = "09.00.99.03.00.35"
 # endregion moved to settings
 
-s = TcpSocket()
+sock = TcpSocket()
 # s.settimeout(30)
 try:
-    s.connect(settings['host'], settings['port'])
+    sock.connect(settings['host'], settings['port'])
 except socket.gaierror:
     print("Failure accessing {}:{}"
           .format(settings.get('host'), settings.get('port')))
@@ -59,7 +59,7 @@ print("RR, SR are raw socket interface receive and send;"
 
 def sendToSocket(string):
     print("      SR: {}".format(string.strip()))
-    s.send(string)
+    sock.send(string)
 
 
 def printFrame(frame):
@@ -153,7 +153,7 @@ canLink.sendMessage(message)
 
 # process resulting activity
 while True:
-    input = s.receive()
+    input = sock.receive()
     print("      RR: "+input.strip())
     # pass to link processor
     canPhysicalLayerGridConnect.receiveString(input)
