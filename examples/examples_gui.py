@@ -516,7 +516,8 @@ class MainForm(ttk.Frame):
         ).start()
         self.cdi_connect_button.configure(state=tk.DISABLED)
         self.cdi_refresh_button.configure(state=tk.DISABLED)
-        # daemon=True ensures the thread does not block program exit if the user closes the application.
+        # daemon=True ensures the thread does not block program exit if
+        #   the user closes the application.
 
     def cdi_refresh_clicked(self):
         self.cdi_connect_button.configure(state=tk.DISABLED)
@@ -546,7 +547,8 @@ class MainForm(ttk.Frame):
         self.fields['farNodeID'].var.set(id)
 
     def get_id_from_name(self, update_button=False):
-        lcc_id = id_from_tcp_service_name(self.fields['service_name'].var.get())
+        lcc_id = id_from_tcp_service_name(
+            self.fields['service_name'].var.get())
         if update_button:
             if not lcc_id:
                 self.fields["service_name"].button.configure(state=tk.DISABLED)
