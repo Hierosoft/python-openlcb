@@ -488,13 +488,11 @@ class MainForm(ttk.Frame):
         done = event_d.get('done')
         if done:
             self.cdi_refresh_button.configure(state=tk.NORMAL)
+            custom_message = 'Ready to load CDI (click "Refresh").'
             if message:
-                logger.warning(
-                    "Done, but skipped message: {}".format(repr(message)))
-            # if not message:
-            message = 'Done. Ready to load CDI (click "Refresh")'
-            print(message)
-            self.set_status(message)
+                custom_message += " " + message
+            print(custom_message)
+            self.set_status(custom_message)
 
     def cdi_connect_clicked(self):
         host_var = self.fields.get('host')
@@ -508,6 +506,7 @@ class MainForm(ttk.Frame):
         localNodeID_var = self.fields.get('localNodeID')
         localNodeID = localNodeID_var.get()
         # self.cdi_form.connect(host, port, localNodeID)
+        self.save_settings()
         threading.Thread(
             target=self.cdi_form.connect,
             args=(host, port, localNodeID),
