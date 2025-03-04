@@ -63,6 +63,8 @@ class CDIHandler(xml.sax.handler.ContentHandler):
         # ^ In case some parsing step happens early,
         #   prepare these for _callback_msg.
         super().__init__()  # takes no arguments
+        self._parser = xml.sax.make_parser()
+        self._parser.setContentHandler(self)
 
         self._realtime = True
 
@@ -79,6 +81,8 @@ class CDIHandler(xml.sax.handler.ContentHandler):
         self._memoryService = None
         self._resultingCDI = None
         # endregion connect
+
+        self._connecting_t = None
 
     def _reset_tree(self):
         self.etree = ET.Element("root")
@@ -143,8 +147,35 @@ class CDIHandler(xml.sax.handler.ContentHandler):
         if callback:
             callback(event_d)
 
-        return event_d  # return it in case running synchronously (no thread)
+        self._connecting_t = time.perf_counter()
 
+        while time.perf_counter() - self._connecting_t < .2:
+            # Wait 200 ms for all nodes to announce, as per
+            #   section 6.2.1 of CAN Frame Transfer Standard
+            #   (sendMessage requires )
+            try:
+                received = self._sock.receive()
+                # print("      RR: {}".format(received.strip()))
+                # pass to link processor
+                self._canPhysicalLayerGridConnect.receiveString(received)
+                # ^ will trigger self._printFrame since that was added
+                #   via registerFrameReceivedListener during connect.
+            except RuntimeError as ex:
+                # May be raised by canbus.tcpsocket.TCPSocket.receive
+                # manually. Usually "socket connection broken" due to
+                # no more bytes to read, but ok if "\0" terminator
+                # was reached.
+                if not self._string_terminated:
+                    # This boolean is managed by the memoryReadSuccess
+                    # callback.
+                    callback({  # same as self._download_callback here
+                        'error': "{}: {}".format(type(ex).__name__, ex),
+                        'done': True,  # stop progress in gui/other main thread
+                    })
+                    raise  # re-raise since incomplete (prevent done OK state)
+                break
+
+        return event_d  # return it in case running synchronously (no thread)
 
     def _memoryRead(self, farNodeID, offset):
         """Create and send a read datagram.
@@ -197,7 +228,7 @@ class CDIHandler(xml.sax.handler.ContentHandler):
                         'error': "{}: {}".format(type(ex).__name__, ex),
                         'done': True,  # stop progress in gui/other main thread
                     })
-                    raise # re-raise since incomplete (prevent done OK state)
+                    raise  # re-raise since incomplete (prevent done OK state)
                 break
         # If we got here, the RuntimeError was ok since the
         #   null terminator '\0' was reached (otherwise re-raise occurs above)
@@ -226,8 +257,8 @@ class CDIHandler(xml.sax.handler.ContentHandler):
             DatagramReadMemo: The datagram object
 
         Returns:
-            bool: Always False (True would mean we sent a reply to the datagram,
-                but let the MemoryService do that).
+            bool: Always False (True would mean we sent a reply to the
+                datagram, but let the MemoryService do that).
         """
         # print("Datagram receive call back: {}".format(memo.data))
         return False
@@ -282,7 +313,7 @@ class CDIHandler(xml.sax.handler.ContentHandler):
                 self._callback_msg("Done loading CDI.")
             # done reading
         if self._realtime:
-            self.feed(chunk_str)  # startElement, endElement etc. are automatic
+            self._parser.feed(chunk_str)  # auto-calls startElement/endElement
 
     def _memoryReadFail(self, memo):
         error = "memory read failed: {}".format(memo.data)
@@ -304,8 +335,12 @@ class CDIHandler(xml.sax.handler.ContentHandler):
         el = ET.SubElement(self._open_el, "element1")
         # if self._tag_stack:
         #     parent = self._tag_stack[-1]
-        self._callback_msg(
-            "loaded: {}{}".format(tab, ET.tostring(el, encoding="unicode")))
+        event_d = {'name': name, 'end': False, 'attrs': attrs}
+        if self._download_callback:
+            self._download_callback(event_d)
+
+        # self._callback_msg(
+        #     "loaded: {}{}".format(tab, ET.tostring(el, encoding="unicode")))
         self._tag_stack.append(el)
         self._open_el = el
 
@@ -336,15 +371,15 @@ class CDIHandler(xml.sax.handler.ContentHandler):
     def endElement(self, name):
         """See xml.sax.handler.ContentHandler documentation."""
         indent = len(self._tag_stack)
+        tab = "  " * indent
         top_el = self._tag_stack[-1]
         if name != top_el.tag:
             print(tab+"Warning: </{}> before </{}>".format(name, top_el.tag))
         elif indent:  # top element found and indent not 0
             indent -= 1  # dedent since scope ended
-        tab = "  " * indent
         # print(tab, name, "content:", self._flushCharBuffer())
         print(tab, "End: ", name)
-        event_d = {'name': name}
+        event_d = {'name': name, 'end': True}
         if not self._tag_stack:
             event_d['error'] = "</{}> before any start tag".format(name)
             print(tab+"Warning: {}".format(event_d['error']))
