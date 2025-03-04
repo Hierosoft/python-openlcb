@@ -20,7 +20,7 @@ Multi-frame addressed messages are accumulated in parallel
 
 from enum import Enum
 
-import logging
+from logging import getLogger
 
 from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.controlframe import ControlFrame
@@ -29,6 +29,8 @@ from openlcb.linklayer import LinkLayer
 from openlcb.message import Message
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
+
+logger = getLogger(__name__)
 
 
 class CanLink(LinkLayer):
@@ -45,7 +47,18 @@ class CanLink(LinkLayer):
         self.nextInternallyAssignedNodeID = 1
         LinkLayer.__init__(self, localNodeID)
 
-    def linkPhysicalLayer(self, cpl):  # CanPhysicalLayer
+    def linkPhysicalLayer(self, cpl):
+        """Set the physical layer to use.
+        Also registers self.receiveListener as a listener on the given
+        physical layer. Before using sendMessage, wait for the
+        connection phase to finish, as the phase receives aliases
+        (populating nodeIdToAlias) and reserves a unique alias as per
+        section 6.2.1 of CAN Frame Transfer Standard:
+        https://openlcb.org/wp-content/uploads/2021/08/S-9.7.2.1-CanFrameTransfer-2021-04-25.pdf
+
+        Args:
+            cpl (CanPhysicalLayer): The physical layer to use.
+        """
         self.link = cpl
         cpl.registerFrameReceivedListener(self.receiveListener)
 
@@ -56,6 +69,9 @@ class CanLink(LinkLayer):
 
     def receiveListener(self, frame):
         """Call the correct handler if any for a received frame.
+        Typically this is called by CanPhysicalLayer since the
+        linkPhysicalLayer method in this class registers this method as
+        a listener in the given CanPhysicalLayer instance.
 
         Args:
             frame (CanFrame): Any CanFrame, OpenLCB/LCC or not (if
@@ -68,11 +84,14 @@ class CanLink(LinkLayer):
             self.handleReceivedLinkRestarted(frame)
         elif control_frame in (ControlFrame.LinkCollision,  # noqa: E501
                                ControlFrame.LinkError):
-            logging.warning("Unexpected error report {:08X}"
-                            "".format(frame.header))
+            logger.warning(
+                "Unexpected error report {:08X}"
+                .format(frame.header))
         elif control_frame == ControlFrame.LinkDown:
             self.handleReceivedLinkDown(frame)
         elif control_frame == ControlFrame.CID:
+            # NOTE: We may process other bits of frame.header
+            #   that were stripped from control_frame
             self.handleReceivedCID(frame)
         elif control_frame == ControlFrame.RID:
             self.handleReceivedRID(frame)
@@ -88,18 +107,22 @@ class CanLink(LinkLayer):
                                ControlFrame.EIR3):
             pass   # ignored upon receipt
         elif control_frame == ControlFrame.Data:
+            # NOTE: We may process other bits of frame.header
+            #   that were stripped from control_frame
             self.handleReceivedData(frame)
         elif (control_frame
               == ControlFrame.UnknownFormat):
-            logging.warning("Unexpected CAN header 0x{:08X}"
-                            "".format(frame.header))
+            logger.warning(
+                "Unexpected CAN header 0x{:08X}"
+                .format(frame.header))
         else:
             # This should never happen due to how
             #   decodeControlFrameFormat works, but this is a "not
             #   implemented" output for ensuring completeness (If this
             #   case occurs, some code is missing above).
-            logging.warning("Invalid control frame format 0x{:08X}"
-                            "".format(control_frame))
+            logger.warning(
+                "Invalid control frame format 0x{:08X}"
+                .format(control_frame))
 
     def handleReceivedLinkUp(self, frame):
         """Link started, update state, start process to create alias.
@@ -137,6 +160,10 @@ class CanLink(LinkLayer):
         self.state = CanLink.State.Permitted
         # add to map
         self.aliasToNodeID[self.localAlias] = self.localNodeID
+        logger.info(
+            "defineAndReserveAlias setting nodeIdToAlias[{}]"
+            " from a datagram from an unknown source"
+            .format(self.localNodeID))
         self.nodeIdToAlias[self.localNodeID] = self.localAlias
         #    send AME with no NodeID to get full alias map
         self.link.sendCanFrame(CanFrame(ControlFrame.AME.value,
@@ -162,8 +189,12 @@ class CanLink(LinkLayer):
         #    notify upper levels
         self.linkStateChange(self.state)
 
-    # invoked when the link layer comes up and down
-    def linkStateChange(self, state):  # state is of the State enum
+    def linkStateChange(self, state):
+        """invoked when the link layer comes up and down
+
+        Args:
+            state (CanLink.State): See CanLink.
+        """
         if state == CanLink.State.Permitted:
             msg = Message(MTI.Link_Layer_Up, NodeID(0), None, bytearray())
         else:
@@ -171,6 +202,10 @@ class CanLink(LinkLayer):
         self.fireListeners(msg)
 
     def handleReceivedCID(self, frame):  # CanFrame
+        """Handle a Check ID (CID) frame only if addressed to us
+        (used to verify node uniqueness). Additional arguments may be
+        encoded in lower bits of frame.header (below ControlFrame.CID).
+        """
         #    Does this carry our alias?
         if (frame.header & 0xFFF) != self.localAlias:
             return  # no match
@@ -179,10 +214,15 @@ class CanLink(LinkLayer):
                                         self.localAlias))
 
     def handleReceivedRID(self, frame):  # CanFrame
+        """Handle a Reserve ID (RID) frame
+        (used for alias reservation)."""
         if self.checkAndHandleAliasCollision(frame):
             return
 
     def handleReceivedAMD(self, frame):  # CanFrame
+        """Handle an Alias Map Definition (AMD) frame
+        (Defines a mapping between an alias and a full Node ID).
+        """
         if self.checkAndHandleAliasCollision(frame):
             return
         # check for matching node ID, which is a collision
@@ -195,9 +235,15 @@ class CanLink(LinkLayer):
         #    This defines an alias, so store it
         alias = frame.header & 0xFFF
         self.aliasToNodeID[alias] = nodeID
+        logger.info(
+            "handleReceivedAMD setting nodeIdToAlias[{}]"
+            .format(nodeID))
         self.nodeIdToAlias[nodeID] = alias
 
     def handleReceivedAME(self, frame):  # CanFrame
+        """Handle an Alias Mapping Enquiry (AME) frame
+        (a node requested alias information from other nodes).
+        """
         if self.checkAndHandleAliasCollision(frame):
             return
         if self.state != CanLink.State.Permitted:
@@ -214,6 +260,9 @@ class CanLink(LinkLayer):
             self.link.sendCanFrame(returnFrame)
 
     def handleReceivedAMR(self, frame):  # CanFrame
+        """Handle an Alias Map Reset (AMR) frame
+        (A node is asking to remove an alias from mappings).
+        """
         if (self.checkAndHandleAliasCollision(frame)):
             return
         #    Alias Map Reset - drop from maps
@@ -228,6 +277,10 @@ class CanLink(LinkLayer):
             pass
 
     def handleReceivedData(self, frame):  # CanFrame
+        """Handle a data frame.
+        Additional arguments may be encoded in lower bits (below
+        ControlFrame.Data) in frame.header.
+        """
         if self.checkAndHandleAliasCollision(frame):
             return
         #    get proper MTI
@@ -243,18 +296,24 @@ class CanLink(LinkLayer):
             #    VerifiedNodeID but not AMD
             if mti == MTI.Verified_NodeID:
                 sourceID = NodeID(frame.data)
-                logging.info("Verified_NodeID from unknown source alias: {},"
-                             " continue with observed ID {}"
-                             "".format(frame, sourceID))
+                logger.info(
+                    "Verified_NodeID from unknown source alias: {},"
+                    " continue with observed ID {}"
+                    .format(frame, sourceID))
             else:
                 sourceID = NodeID(self.nextInternallyAssignedNodeID)
                 self.nextInternallyAssignedNodeID += 1
-                logging.warning("message from unknown source alias: {},"
-                                " continue with created ID {}"
-                                "".format(frame, sourceID))
+                logger.warning(
+                    "message from unknown source alias: {},"
+                    " continue with created ID {}"
+                    .format(frame, sourceID))
 
             #    register that internally-generated nodeID-alias association
             self.aliasToNodeID[frame.header & 0xFFF] = sourceID
+            logger.info(
+                "handleReceivedData setting nodeIdToAlias[{}]"
+                " from a datagram from an unknown source"
+                .format(sourceID))
             self.nodeIdToAlias[sourceID] = frame.header & 0xFFF
 
         destID = NodeID(0)
@@ -273,12 +332,17 @@ class CanLink(LinkLayer):
                     destID = self.aliasToNodeID[destAlias]
                 else:
                     destID = NodeID(self.nextInternallyAssignedNodeID)
-                    logging.warning("message from unknown dest alias: {},"
-                                    " continue with {}"
-                                    .format(str(frame), str(destID)))
+                    logger.warning(
+                        "message from unknown dest alias: {},"
+                        " continue with {}"
+                        .format(str(frame), str(destID)))
                     #    register that internally-generated nodeID-alias
                     #    association
                     self.aliasToNodeID[destAlias] = destID
+                    logger.info(
+                        "handleReceivedData setting nodeIdToAlias[{}]"
+                        " from a datagram from an unknown node"
+                        .format(destID))
                     self.nodeIdToAlias[destID] = destAlias
 
                 #    check for start and end bits
@@ -291,7 +355,7 @@ class CanLink(LinkLayer):
                     # check for never properly started, this is an error
                     if key not in self.accumulator:
                         #    have not-start frame, but never started
-                        logging.warning(
+                        logger.warning(
                             "Dropping non-start datagram frame"
                             " without accumulation started:"
                             " {}".format(frame)
@@ -327,12 +391,17 @@ class CanLink(LinkLayer):
                     raise
                 except:
                     destID = NodeID(self.nextInternallyAssignedNodeID)
-                    logging.warning("message from unknown dest alias:"
-                                    " 0x{:04X}, continue with 0x{}"
-                                    "".format(destAlias, destID))
+                    logger.warning(
+                        "message from unknown dest alias:"
+                        " 0x{:04X}, continue with 0x{}"
+                        .format(destAlias, destID))
                     #    register that internally-generated nodeID-alias
                     #    association
                     self.aliasToNodeID[destAlias] = destID
+                    logger.info(
+                        "handleReceivedData setting nodeIdToAlias[{}]"
+                        " to destID due to message from unknown dest."
+                        .format(destID))
                     self.nodeIdToAlias[destID] = destAlias
 
                 # check for start and end bits
@@ -345,9 +414,10 @@ class CanLink(LinkLayer):
                     # check for first bit set never seen
                     if key not in self.accumulator:
                         #    have not-start frame, but never started
-                        logging.warning("Dropping non-start frame without"
-                                        " accumulation started: {}"
-                                        "".format(frame))
+                        logger.warning(
+                            "Dropping non-start frame without"
+                            " accumulation started: {}"
+                            .format(frame))
                         return  # early return to stop processing of this gram
 
                 #    add this data
@@ -393,7 +463,7 @@ class CanLink(LinkLayer):
             except KeyboardInterrupt:
                 raise
             except:
-                logging.warning(
+                logger.warning(
                     "Did not know source = {} on datagram send"
                     "".format(msg.source)
                 )
@@ -404,7 +474,7 @@ class CanLink(LinkLayer):
             except KeyboardInterrupt:
                 raise
             except Exception as ex:
-                logging.warning(
+                logger.warning(
                     "Did not know destination = {} on datagram send ({}: {})"
                     "".format(msg.destination, type(ex).__name__, ex)
                 )
@@ -443,8 +513,9 @@ class CanLink(LinkLayer):
             if alias is not None:  # might not know it if error
                 header |= (alias & 0xFFF)
             else:
-                logging.warning("Did not know source = {} on message send"
-                                "".format(msg.source))
+                logger.warning(
+                    "Did not know source = {} on message send"
+                    .format(msg.source))
 
             # Is a destination address needed? Could be long message
             if msg.isAddressed():
@@ -461,8 +532,9 @@ class CanLink(LinkLayer):
                         frame = CanFrame(header, content)
                         self.link.sendCanFrame(frame)
                 else:
-                    logging.warning("Don't know alias for destination = {}"
-                                    "".format(msg.destination or NodeID(0)))
+                    logger.warning(
+                        "Don't know alias for destination = {}"
+                        .format(msg.destination or NodeID(0)))
             else:
                 #    global still can hold data; assume length is correct by
                 #    protocol send the resulting frame
@@ -550,8 +622,9 @@ class CanLink(LinkLayer):
 
     def processCollision(self, frame) :
         ''' Collision! '''
-        logging.warning("alias collision in {}, we restart with AMR"
-                        " and attempt to get new alias".format(frame))
+        logger.warning(
+            "alias collision in {}, we restart with AMR"
+            " and attempt to get new alias".format(frame))
         self.link.sendCanFrame(CanFrame(ControlFrame.AMR.value,
                                         self.localAlias,
                                         self.localNodeID.toArray()))
@@ -602,8 +675,10 @@ class CanLink(LinkLayer):
     def decodeControlFrameFormat(self, frame):
         if (frame.header & 0x0800_0000) == 0x0800_0000:
             # data case; not checking leading 1 bit
+            # NOTE: handleReceivedData can get all header bits via frame
             return ControlFrame.Data
         if (frame.header & 0x4_000_000) != 0:  # CID case
+            # NOTE: handleReceivedCID can get all header bits via frame
             return ControlFrame.CID
 
         try:
@@ -612,8 +687,9 @@ class CanLink(LinkLayer):
         except KeyboardInterrupt:
             raise
         except:
-            logging.warning("Could not decode header 0x{:08X}"
-                            "".format(frame.header))
+            logger.warning(
+                "Could not decode header 0x{:08X}"
+                .format(frame.header))
             return ControlFrame.UnknownFormat
 
     def canHeaderToFullFormat(self, frame):
@@ -625,8 +701,9 @@ class CanLink(LinkLayer):
             try :
                 okMTI = MTI(canMTI)
             except ValueError:
-                logging.warning("unhandled canMTI: {}, marked Unknown"
-                                "".format(frame))
+                logger.warning(
+                    "unhandled canMTI: {}, marked Unknown"
+                    .format(frame))
                 return MTI.Unknown
             return okMTI
 
@@ -635,8 +712,9 @@ class CanLink(LinkLayer):
             return MTI.Datagram
 
         #    not handling reserver and stream type except to log
-        logging.warning("unhandled canMTI: {}, marked Unknown"
-                        "".format(frame))
+        logger.warning(
+            "unhandled canMTI: {}, marked Unknown"
+            .format(frame))
         return MTI.Unknown
 
     class AccumKey:
