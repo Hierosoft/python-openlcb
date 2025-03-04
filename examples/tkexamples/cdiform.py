@@ -17,7 +17,6 @@ from tkinter import ttk
 from logging import getLogger
 
 
-
 logger = getLogger(__name__)
 
 TKEXAMPLES_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -39,8 +38,6 @@ except ImportError as ex:
           file=sys.stderr)
     raise  # sys.exit(1)
 
-
-import xml.sax  # noqa: E402
 
 class CDIForm(ttk.Frame, CDIHandler):
     """A GUI frame to represent the CDI visually as a tree.
@@ -77,7 +74,7 @@ class CDIForm(ttk.Frame, CDIHandler):
         self.grid(sticky=tk.NSEW, row=len(self._top_widgets))
         self.rowconfigure(len(self._top_widgets), weight=1)  # weight=1 allows expansion
         self._top_widgets.append(self._treeview)
-        self._branch = ""  # top level of a Treeview is ""
+        self._populating_stack = []  # no parent when of top of Treeview
         self._current_iid = 0   # id of Treeview element
 
     def clear(self):
@@ -103,11 +100,16 @@ class CDIForm(ttk.Frame, CDIHandler):
             event_d (dict): Document parsing state info:
                 - 'element' (SubElement): The element
                   that has been completely parsed ('</...>' reached)
-                - 'error' (str): Message of failure (requires 'done' if stopped).
+                - 'error' (str): Message of failure (requires 'done' if
+                  stopped).
                 - 'done' (bool): If True, downloadCDI is finished.
                   Though document itself may be incomplete if 'error' is
                   also set, stop tracking status of downloadCDI
                   regardless.
+                - 'end' (bool): False to start a deeper scope, or True
+                  for end tag, which exits current scope (last created
+                  Treeview branch in this case, or top if empty
+                  self._populating_stack).
         """
         done = event_d.get('done')
         error = event_d.get('error')
@@ -123,7 +125,23 @@ class CDIForm(ttk.Frame, CDIHandler):
             self.root.after(0, self.set_status, show_message)
         if done:
             return
-        self.root.after(0, self._add_cdi_element, event_d)
+        if event_d.get('end'):
+            self.root.after(0, self._pop_cdi_element, event_d)
+        else:
+            self.root.after(0, self._add_cdi_element, event_d)
+
+    def _pop_cdi_element(self, event_d):
+        if not self._populating_stack:
+            raise IndexError(
+                "Got stray end tag in top level of XML: {}"
+                .format(event_d))
+            # pop would also raise IndexError, but this message is more clear.
+        return self._populating_stack.pop()
+
+    def _populating_branch(self):
+        if not self._populating_stack:
+            return ""  # "" is the top of a ttk.Treeview
+        return self._populating_stack[-1]
 
     def _add_cdi_element(self, event_d):
         element = event_d.get('element')
@@ -137,12 +155,28 @@ class CDIForm(ttk.Frame, CDIHandler):
         # TODO: handle start tags separately (Branches are too late tobe
         #   created here since all children are done).
         index = "end"  # "end" is at end of current branch (otherwise use int)
-        if tag == "segment":
-            pass
-        elif tag == "group":
-            pass
+        if tag in ("segment", "group"):
+            name = ""
+            for child in element:
+                if child.tag == "name":
+                    name = child.text
+                    break
+            # if not name:
+            name = element.attrs['space']
+            new_branch = self._treeview.insert(
+                self._populating_branch(),
+                index,
+                iid=self._current_iid,
+                text=name,
+            )
+            self._populating_stack.append(new_branch)
+            # values=(), image=None
+            self._current_iid += 1  # TODO: associate with SubElement
         elif tag == "acdi":
+            # "Indicates that certain configuration information in the
+            # node has a standardized simplified format."
             # Configuration Description Information - Standard - section 5.1
+            # (self-closing tag; triggers startElement and endElement)
             pass
         elif tag in ("int", "string", "float"):
             name = ""
@@ -150,8 +184,13 @@ class CDIForm(ttk.Frame, CDIHandler):
                 if child.tag == "name":
                     name = child.text
                     break
-            self._treeview.insert(self._branch, index, iid=self._current_iid,
-                                  text=name)
+            new_branch = self._treeview.insert(
+                self._populating_branch(),
+                index,
+                iid=self._current_iid,
+                text=name,
+            )
+            self._populating_stack.append(new_branch)
             # values=(), image=None
             self._current_iid += 1  # TODO: associate with SubElement
             #  and/or set values keyword argument to create association(s)
