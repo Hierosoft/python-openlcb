@@ -68,7 +68,12 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
                         part1 = (byte1 & 0xF)+9 if byte1 > 0x39 else byte1 & 0xF  # noqa: E501
                         byte2 = self.inboundBuffer[index+11+2*dataItem+1]
                         part2 = (byte2 & 0xF)+9 if byte2 > 0x39 else byte2 & 0xF  # noqa: E501
-                        outData += bytearray([part1 << 4 | part2])
+                        high_nibble = part1 << 4
+                        if part1 > 0xF:  # can't fit more than 0b1111 in nibble
+                            raise ValueError(
+                                "Got {} for high nibble (part1 << 4 == {})."
+                                .format(part1, high_nibble))
+                        outData += bytearray([high_nibble | part2])
                         lastByte += 2
                     # lastByte is index of ; in this message
 
