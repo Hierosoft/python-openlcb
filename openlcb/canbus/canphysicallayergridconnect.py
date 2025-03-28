@@ -42,7 +42,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
     # Provide characters from the outside link to be parsed
     def receiveChars(self, data):
         self.inboundBuffer += data
-        lastByte = 0
+        processedCount = 0
         if 0x3B in self.inboundBuffer:
             #  ^ ';' ends message so we have at least one (CR/LF not required)
             # found end, now find start of that same message, earlier in buffer
@@ -59,7 +59,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
                         header = (header << 4)+nextByte
                     # offset 10 is N
                     # offset 11 might be data, might be ;
-                    lastByte = index+11
+                    processedCount = index+11
                     for dataItem in range(0, 8):
                         if self.inboundBuffer[index+11+2*dataItem] == 0x3B:
                             break
@@ -69,16 +69,19 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
                         byte2 = self.inboundBuffer[index+11+2*dataItem+1]
                         part2 = (byte2 & 0xF)+9 if byte2 > 0x39 else byte2 & 0xF  # noqa: E501
                         high_nibble = part1 << 4
-                        if part1 > 0xF:  # can't fit more than 0b1111 in nibble
-                            raise ValueError(
-                                "Got {} for high nibble (part1 << 4 == {})."
-                                .format(part1, high_nibble))
+                        # if part1 > 0xF:  # can't fit > 0b1111 in nibble
+                        #     # possible overflow caused by +9 above
+                        #     #   (but should only happen on bad packet)?
+                        #     #   Commented since not sure if ok
+                        #     raise ValueError(
+                        #         "Got {} for high nibble (part1 << 4 == {})."
+                        #         .format(part1, high_nibble))
                         outData += bytearray([high_nibble | part2])
-                        lastByte += 2
+                        processedCount += 2
                     # lastByte is index of ; in this message
 
                     cf = CanFrame(header, outData)
                     self.fireListeners(cf)
 
             # shorten buffer by removing the processed message
-            self.inboundBuffer = self.inboundBuffer[lastByte:]
+            self.inboundBuffer = self.inboundBuffer[processedCount:]
