@@ -15,6 +15,16 @@ from openlcb.canbus.canframe import CanFrame
 
 
 class CanPhysicalLayerGridConnect(CanPhysicalLayer):
+    """CAN physical layer subclass for GridConnect
+
+    Args:
+        callback (Callable): A string send method for the platform and
+            hardware being used. It must be associated with an active
+            connection before used as the arg, and must raise exception
+            on failure so that sendAliasAllocationSequence is
+            interrupted in order to prevent canlink.state from
+            proceeding to CanLink.State.Permitted)
+    """
 
     def __init__(self, callback):
         CanPhysicalLayer.__init__(self)

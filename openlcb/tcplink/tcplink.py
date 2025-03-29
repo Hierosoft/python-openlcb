@@ -92,8 +92,9 @@ class TcpLink(LinkLayer):
         and groups them into single OpenLCB messages as needed
 
         Args:
-            messagePart (bytearray) : Raw message data. A single TCP-level message,
-                which may include all or part of a single OpenLCB message.
+            messagePart (bytearray) : Raw message data. A single
+                TCP-level message, which may include all or part of a
+                single OpenLCB message.
         """
         # set the source NodeID from the data
         gatewayNodeID = NodeID(messagePart[5:11])

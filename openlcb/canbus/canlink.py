@@ -22,6 +22,7 @@ from enum import Enum
 
 from logging import getLogger
 
+from openlcb import precise_sleep
 from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.controlframe import ControlFrame
 
@@ -41,6 +42,8 @@ class CanLink(LinkLayer):
         self.localNodeID = localNodeID
         self.state = CanLink.State.Initial
         self.link = None
+        self._frameCount = 0
+        self._reserveAliasCollisions = 0
         self.aliasToNodeID = {}
         self.nodeIdToAlias = {}
         self.accumulator = {}
@@ -63,8 +66,8 @@ class CanLink(LinkLayer):
         cpl.registerFrameReceivedListener(self.receiveListener)
 
     class State(Enum):
-        Initial = 1,  # a special case of .Inhibited where init hasn't started
-        Inhibited = 2,
+        Initial = 1  # a special case of .Inhibited where init hasn't started
+        Inhibited = 2
         Permitted = 3
 
     def receiveListener(self, frame):
@@ -110,8 +113,7 @@ class CanLink(LinkLayer):
             # NOTE: We may process other bits of frame.header
             #   that were stripped from control_frame
             self.handleReceivedData(frame)
-        elif (control_frame
-              == ControlFrame.UnknownFormat):
+        elif (control_frame == ControlFrame.UnknownFormat):
             logger.warning(
                 "Unexpected CAN header 0x{:08X}"
                 .format(frame.header))
@@ -133,9 +135,12 @@ class CanLink(LinkLayer):
         """
         # start the alias allocation in Inhibited state
         self.state = CanLink.State.Inhibited
-        self.defineAndReserveAlias()
-        #    notify upper layers
-        self.linkStateChange(self.state)
+        if self.defineAndReserveAlias():
+            print("[CanLink] Notifying upper layers of LinkUp.")
+        else:
+            logger.warning(
+                "[CanLink] Not notifying upper layers of LinkUp"
+                " since reserve alias failed (will retry).")
 
     def handleReceivedLinkRestarted(self, frame):
         """Send a LinkRestarted message upstream.
@@ -148,10 +153,12 @@ class CanLink(LinkLayer):
         self.fireListeners(msg)
 
     def defineAndReserveAlias(self):
-        self.sendAliasAllocationSequence()
-
-        # TODO: wait 200 msec before declaring ready to go (and doing
-        # steps following the call here)
+        previousLocalAliasSeed = self.localAliasSeed
+        if not self.sendAliasAllocationSequence():
+            logger.warning(
+                "Alias collision for {}. will try again."
+                .format(previousLocalAliasSeed))
+            return False
 
         # send AMD frame, go to Permitted state
         self.link.sendCanFrame(CanFrame(ControlFrame.AMD.value,
@@ -168,6 +175,8 @@ class CanLink(LinkLayer):
         #    send AME with no NodeID to get full alias map
         self.link.sendCanFrame(CanFrame(ControlFrame.AME.value,
                                         self.localAlias))
+        self.linkStateChange(self.state)  # Notify upper layers
+        return True
 
     #    TODO: (restart) Should this set inhibited every time? LinkUp not
     #    called on restart
@@ -188,6 +197,7 @@ class CanLink(LinkLayer):
 
         #    notify upper levels
         self.linkStateChange(self.state)
+
 
     def linkStateChange(self, state):
         """invoked when the link layer comes up and down
@@ -281,6 +291,7 @@ class CanLink(LinkLayer):
         Additional arguments may be encoded in lower bits (below
         ControlFrame.Data) in frame.header.
         """
+        self._frameCount += 1
         if self.checkAndHandleAliasCollision(frame):
             return
         #    get proper MTI
@@ -622,6 +633,7 @@ class CanLink(LinkLayer):
 
     def processCollision(self, frame) :
         ''' Collision! '''
+        self._reserveAliasCollisions += 1
         logger.warning(
             "alias collision in {}, we restart with AMR"
             " and attempt to get new alias".format(frame))
@@ -636,13 +648,66 @@ class CanLink(LinkLayer):
         self.defineAndReserveAlias()
 
     def sendAliasAllocationSequence(self):
-        '''Send the alias allocation sequence'''
+        '''Send the alias allocation sequence
+        This *must not block* the frame receive thread, since we must
+        wait 200ms and start sendAliasAllocationSequence over if
+        transmission error occurs, or an announcement with a Node ID
+        same as ours is received.
+        - In either case this method must *not* complete (*not* sending
+          RID is implied).
+        - In the latter case, our ID must be incremented before
+          sendAliasAllocationSequence starts over, and repeat this until
+          it is unique (no packets with senders matching it are
+          received)
+        - See section 6.2.1 of LCC "CAN Frame Transfer" Standard
+
+        Returns:
+            bool: True if succeeded, False if collision.
+        '''
         self.link.sendCanFrame(CanFrame(7, self.localNodeID, self.localAlias))
         self.link.sendCanFrame(CanFrame(6, self.localNodeID, self.localAlias))
         self.link.sendCanFrame(CanFrame(5, self.localNodeID, self.localAlias))
         self.link.sendCanFrame(CanFrame(4, self.localNodeID, self.localAlias))
+        previousCollisions = self._reserveAliasCollisions
+        previousFrameCount = self._frameCount
+        previousLocalAliasSeed = self.localAliasSeed
+        precise_sleep(.2)  # wait 200ms as per section 6.2.1
+        #  ("Reserving a Node ID Alias") of
+        #  LCC "CAN Frame Transfer" Standard
+        responseCount = self._frameCount - previousFrameCount
+        if responseCount < 1:
+            logger.warning(
+                "sendAliasAllocationSequence is blocking the receive thread"
+                " or the network is taking too long to respond (200ms is LCC"
+                " standard time for all node reservation replies."
+                " If there any other nodes, this is an error and this method"
+                " should *not* continue sending Reserve ID (RID) frame)...")
+        if self._reserveAliasCollisions > previousCollisions:
+            # processCollision will increment the non-unique alias try
+            #   defineAndReserveAlias again (so stop before completing
+            #   the sequence as per Standard)
+            logger.warning(
+                "Cancelled reservation of duplicate local alias seed {}"
+                " (processCollision increments ID to avoid,"
+                " & restarts sequence)."
+                .format(previousLocalAliasSeed))
+            return False
+        if responseCount < 1:
+            logger.warning(
+                "Continuing to send Reservation (RID) anyway"
+                "--no response, so assuming alias seed {} is unique"
+                " (If there are any other nodes on the network then"
+                " a thread, the call order, or network connection failed!)."
+                .format(self.localAliasSeed))
+            # NOTE: If we were to stop here, then we would have to
+            #   trigger defineAndReserveAlias again, since
+            #   processCollision usually does that, but collision didn't
+            #   occur. However, stopping here would not be valid anyway
+            #   since we can't know for sure we aren't the only node,
+            #   and if we are the only node no responses are expected.
         self.link.sendCanFrame(CanFrame(ControlFrame.RID.value,
                                         self.localAlias))
+        return True
 
     def incrementAlias48(self, oldAlias):
         '''

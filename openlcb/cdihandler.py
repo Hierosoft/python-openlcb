@@ -13,6 +13,7 @@ Contributors: Poikilos, Bob Jacobsen (code from example_cdi_access)
 import json
 import platform
 import subprocess
+import threading
 import time
 import sys
 import xml.sax  # noqa: E402
@@ -21,6 +22,7 @@ import xml.etree.ElementTree as ET
 from collections import OrderedDict
 from logging import getLogger
 
+from openlcb import precise_sleep
 from openlcb.canbus.tcpsocket import TcpSocket
 
 from openlcb.canbus.canphysicallayergridconnect import (
@@ -147,44 +149,59 @@ class CDIHandler(xml.sax.handler.ContentHandler):
         if callback:
             callback(event_d)
 
-        self._connecting_t = time.perf_counter()
+        # self._connecting_t = time.perf_counter()
 
-        while time.perf_counter() - self._connecting_t < .2:
-            # Wait 200 ms for all nodes to announce, as per
-            #   section 6.2.1 of CAN Frame Transfer Standard
-            #   (sendMessage requires )
-            try:
-                received = self._sock.receive()
-                # print("      RR: {}".format(received.strip()))
-                # pass to link processor
-                self._canPhysicalLayerGridConnect.receiveString(received)
-                # ^ will trigger self._printFrame since that was added
-                #   via registerFrameReceivedListener during connect.
-            except RuntimeError as ex:
-                # May be raised by canbus.tcpsocket.TCPSocket.receive
-                # manually. Usually "socket connection broken" due to
-                # no more bytes to read, but ok if "\0" terminator
-                # was reached.
-                if not self._string_terminated:
-                    # This boolean is managed by the memoryReadSuccess
-                    # callback.
-                    callback({  # same as self._download_callback here
-                        'error': "{}: {}".format(type(ex).__name__, ex),
-                        'done': True,  # stop progress in gui/other main thread
-                    })
-                    raise  # re-raise since incomplete (prevent done OK state)
+        self.listen()
+
+        # precise_sleep(1, start=self._connecting_t)
+        while True:
+            precise_sleep(.25)
+            if self._canLink.state == CanLink.State.Permitted:
                 break
+            logger.warning(
+                "CanLink is not ready yet."
+                " There must have been a collision"
+                "--processCollision increments node alias in this case,"
+                " so trying again.")
 
         return event_d  # return it in case running synchronously (no thread)
+
+    def listen(self):
+        self._listen_thread = threading.Thread(
+            target=self._listen,
+            daemon=True,  # True to terminate on program exit
+        )
+        self._listen_thread.start()
+
+    def _receive(self):
+        """Receive data from the network.
+        Override this if serial/other subclass not using TCP.
+        """
+        return self._sock.receive()
+
+    def _listen(self):
+        while time.perf_counter() - self._connecting_t < .2:
+            # Wait 200 ms for all nodes to announce (and for alias
+            #   reservation to complete), as per section 6.2.1 of CAN
+            #   Frame Transfer Standard (sendMessage requires )
+            received = self._receive()
+            # print("      RR: {}".format(received.strip()))
+            # pass to link processor
+            self._canPhysicalLayerGridConnect.receiveString(received)
+            # ^ will trigger self._printFrame if that was added
+            #   via registerFrameReceivedListener during connect.
 
     def _memoryRead(self, farNodeID, offset):
         """Create and send a read datagram.
         This is a read of 20 bytes from the start of CDI space.
         We will fire it on a separate thread to give time for other nodes to
-        reply to AME
-        """
-        time.sleep(1)
+        reply to AME.
 
+        Before calling this, ensure connect returns (or that you
+        manually do the 200 ms wait it has built in). That ensures nodes
+        announce, otherwise sendMessage (triggered by requestMemoryRead)
+        will have a KeyError when trying to use the farNodeID.
+        """
         # read 64 bytes from the CDI space starting at address zero
         memMemo = MemoryReadMemo(NodeID(farNodeID), 64, 0xFF, offset,
                                  self._memoryReadFail, self._memoryReadSuccess)
