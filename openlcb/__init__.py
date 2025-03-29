@@ -1,5 +1,7 @@
-from collections import OrderedDict
 import re
+import time
+
+from collections import OrderedDict
 
 
 hex_pairs_rc = re.compile(r"^([0-9A-Fa-f]{2})+$")
@@ -40,3 +42,22 @@ def list_type_names(values):
     raise TypeError("list_type_names is only implemented for"
                     " list, tuple, dict, and OrderedDict, but got a(n) {}"
                     .format(type(values).__name__))
+
+
+def precise_sleep(seconds, start=None):
+    """Wait for a precise number of seconds
+    (precise to hundredths approximately, depending on accuracy of
+    platform's sleep). Since time.sleep(seconds) is generally not
+    accurate, perf_counter is checked.
+
+    Args:
+        seconds (float): Number of seconds to wait.
+        start (float, optional): The start time--*must* be a
+            time.perf_counter() value. Defaults to time.perf_counter().
+    """
+    if start is None:
+        start = time.perf_counter()
+    # NOTE: timeit.default_timer is usually Python 3-only perf_counter
+    #   in Python 3
+    while (time.perf_counter() - start) < seconds:
+        time.sleep(.01)
