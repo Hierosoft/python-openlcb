@@ -10,25 +10,22 @@ This file is part of the python-openlcb project
 
 Contributors: Poikilos, Bob Jacobsen (code from example_cdi_access)
 """
-import json
-import platform
-import subprocess
+from enum import Enum
 import threading
 import time
 import sys
 import xml.sax  # noqa: E402
 import xml.etree.ElementTree as ET
 
-from collections import OrderedDict
 from logging import getLogger
 
-from openlcb import precise_sleep
-from openlcb.canbus.tcpsocket import TcpSocket
+from openlcb import formatted_ex, precise_sleep
 
 from openlcb.canbus.canphysicallayergridconnect import (
     CanPhysicalLayerGridConnect,
 )
 from openlcb.canbus.canlink import CanLink
+from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
 from openlcb.datagramservice import (
     DatagramService,
@@ -41,7 +38,7 @@ from openlcb.memoryservice import (
 logger = getLogger(__name__)
 
 
-class CDIHandler(xml.sax.handler.ContentHandler):
+class PortHandler(xml.sax.handler.ContentHandler):
     """Manage Configuration Description Information.
     - Send events to downloadCDI caller describing the state and content
       of the document construction.
@@ -54,17 +51,33 @@ class CDIHandler(xml.sax.handler.ContentHandler):
         _open_el (SubElement): Tracks currently-open tag (no `</...>`
             yet) during parsing, or if no tags are open then equals
             etree.
-        _tag_stack(list[SubElement]): Tracks scope during parse since
+        _tag_stack (list[SubElement]): Tracks scope during parse since
             self.etree doesn't have awareness of whether end tag is
             finished (and therefore doesn't know which element is the
             parent of a new startElement).
+        _element_listener (Callable): Called if an XML element is
+            received (including either a start or end tag).
+            Typically set as `callback` argument to downloadCDI.
     """
+    class Mode(Enum):
+        """Track what data is expected, if any.
+        Attributes:
+            Idle: No data (memory read request response) is expected.
+            CDI: The data expected from the memory read is CDI XML.
+        """
+        Initializing = 0
+        Disconnected = 1
+        Idle = 2
+        CDI = 3
+
     def __init__(self, *args, **kwargs):
-        self._download_callback = None
-        self._connect_callback = None
+        self._element_listener = None
+        self._connect_listener = None
+        self._mode = PortHandler.Mode.Initializing
         # ^ In case some parsing step happens early,
         #   prepare these for _callback_msg.
         super().__init__()  # takes no arguments
+        self._string_terminated = None  # None means no read is occurring.
         self._parser = xml.sax.make_parser()
         self._parser.setContentHandler(self)
 
@@ -76,7 +89,7 @@ class CDIHandler(xml.sax.handler.ContentHandler):
         # endregion ContentHandler
 
         # region connect
-        self._sock = None
+        self._port = None
         self._canPhysicalLayerGridConnect = None
         self._canLink = None
         self._datagramService = None
@@ -90,41 +103,47 @@ class CDIHandler(xml.sax.handler.ContentHandler):
         self.etree = ET.Element("root")
         self._open_el = self.etree
 
-    def _callback_msg(self, msg, callback=None):
+    def _callback_status(self, status, callback=None):
         if callback is None:
-            callback = self._download_callback
+            callback = self._element_listener
         if callback is None:
-            callback = self._connect_callback
+            callback = self._connect_listener
         if callback:
-            print("CDIForm callback_msg({})".format(repr(msg)))
-            self._connect_callback({
-                'message': msg,
+            print("CDIForm callback_msg({})".format(repr(status)))
+            self._connect_listener({
+                'status': status,
             })
         else:
-            logger.warning("No callback, but set status: {}".format(msg))
+            logger.warning("No callback, but set status: {}".format(status))
 
-    def connect(self, host, port, localNodeID, callback=None):
-        self._connect_callback = callback
-        self._callback_msg("connecting to {}...".format(host))
-        self._sock = TcpSocket()
-        # s.settimeout(30)
-        self._sock.connect(host, port)
-        self._callback_msg("CanPhysicalLayerGridConnect...")
+    def set_element_listener(self, listener):
+        self._element_listener = listener
+
+    def set_connect_listener(self, listener):
+        self._connect_listener = listener
+
+    def start_listening(self, connected_port, localNodeID):
+        self._port = connected_port
+        self._callback_status("CanPhysicalLayerGridConnect...")
         self._canPhysicalLayerGridConnect = \
-            CanPhysicalLayerGridConnect(self._sendToSocket)
+            CanPhysicalLayerGridConnect(self._sendToPort)
         self._canPhysicalLayerGridConnect.registerFrameReceivedListener(
             self._printFrame
         )
 
-        self._callback_msg("CanLink...")
+        self._callback_status("CanLink...")
         self._canLink = CanLink(NodeID(localNodeID))
-        self._callback_msg("CanLink...linkPhysicalLayer...")
+        self._callback_status("CanLink...linkPhysicalLayer...")
         self._canLink.linkPhysicalLayer(self._canPhysicalLayerGridConnect)
-        self._callback_msg("CanLink...linkPhysicalLayer"
-                           "...registerMessageReceivedListener...")
-        self._canLink.registerMessageReceivedListener(self._printMessage)
+        self._callback_status("CanLink...linkPhysicalLayer"
+                              "...registerMessageReceivedListener...")
+        self._canLink.registerMessageReceivedListener(self._handleMessage)
+        # NOTE: Incoming data (Memo) is handled by _memoryReadSuccess
+        #   and _memoryReadFail.
+        #   - These are set when constructing the MemoryReadMemo which
+        #     is provided to openlcb's requestMemoryRead method.
 
-        self._callback_msg("DatagramService...")
+        self._callback_status("DatagramService...")
         self._datagramService = DatagramService(self._canLink)
         self._canLink.registerMessageReceivedListener(
             self._datagramService.process
@@ -134,37 +153,15 @@ class CDIHandler(xml.sax.handler.ContentHandler):
             self._printDatagram
         )
 
-        self._callback_msg("MemoryService...")
+        self._callback_status("MemoryService...")
         self._memoryService = MemoryService(self._datagramService)
 
-        self._callback_msg("physicalLayerUp...")
+        self._callback_status("physicalLayerUp...")
         self._canPhysicalLayerGridConnect.physicalLayerUp()
 
-        # accumulate the CDI information
-        self._resultingCDI = bytearray()  # only used if not self.realtime
-        event_d = {
-            'message': "Ready to receive.",
-            'done': True,
-        }
-        if callback:
-            callback(event_d)
-
-        # self._connecting_t = time.perf_counter()
-
-        self.listen()
-
-        # precise_sleep(1, start=self._connecting_t)
-        while True:
-            precise_sleep(.25)
-            if self._canLink.state == CanLink.State.Permitted:
-                break
-            logger.warning(
-                "CanLink is not ready yet."
-                " There must have been a collision"
-                "--processCollision increments node alias in this case,"
-                " so trying again.")
-
-        return event_d  # return it in case running synchronously (no thread)
+        self.listen()  # Must listen for alias reservation responses
+        #   (sendAliasConnectionSequence will occur for another 200ms
+        #   once, then another 200ms on each alias collision if any)
 
     def listen(self):
         self._listen_thread = threading.Thread(
@@ -174,22 +171,71 @@ class CDIHandler(xml.sax.handler.ContentHandler):
         self._listen_thread.start()
 
     def _receive(self):
-        """Receive data from the network.
-        Override this if serial/other subclass not using TCP.
+        """Receive data from the port.
+        Override this if serial/other subclass not using TCP
+        (or better yet, make all ports including TcpSocket inherit from
+        a standard port interface)
         """
-        return self._sock.receive()
+        return self._port.receive()
 
     def _listen(self):
-        while time.perf_counter() - self._connecting_t < .2:
-            # Wait 200 ms for all nodes to announce (and for alias
-            #   reservation to complete), as per section 6.2.1 of CAN
-            #   Frame Transfer Standard (sendMessage requires )
-            received = self._receive()
-            # print("      RR: {}".format(received.strip()))
-            # pass to link processor
-            self._canPhysicalLayerGridConnect.receiveString(received)
-            # ^ will trigger self._printFrame if that was added
-            #   via registerFrameReceivedListener during connect.
+        self._connecting_t = time.perf_counter()
+        self._message_t = None
+        self._mode = PortHandler.Mode.Idle  # Idle until data type is known
+        try:
+            while True:
+                # Wait 200 ms for all nodes to announce (and for alias
+                #   reservation to complete), as per section 6.2.1 of CAN
+                #   Frame Transfer Standard (sendMessage requires )
+                received = self._receive()
+                # print("      RR: {}".format(received.strip()))
+                # pass to link processor
+                self._canPhysicalLayerGridConnect.receiveString(received)
+                # ^ will trigger self._printFrame if that was added
+                #   via registerFrameReceivedListener during connect.
+                precise_sleep(.01)  # let processor sleep briefly before read
+                if time.perf_counter() - self._connecting_t > .2:
+                    if self._canLink.state != CanLink.State.Permitted:
+                        if ((self._message_t is None)
+                                or (time.perf_counter() - self._message_t
+                                    > 1)):
+                            logger.warning(
+                                "CanLink is not ready yet."
+                                " There must have been a collision"
+                                "--processCollision increments node alias"
+                                " in this case and tries again.")
+                    # else _on_link_state_change will be called
+
+        except RuntimeError as ex:
+            # If _port is a TcpSocket:
+            #   May be raised by canbus.tcpsocket.TCPSocket.receive
+            #   manually.
+            #   - Usually "socket connection broken" due to no more
+            #     bytes to read, but ok if "\0" terminator was reached.
+            if self._resultingCDI is not None and not self._string_terminated:
+                # This boolean is managed by the memoryReadSuccess
+                # callback.
+                event_d = {  # same as self._event_listener here
+                    'error': formatted_ex(ex),
+                    'done': True,  # stop progress in gui/other main thread
+                }
+                if self._element_listener:
+                    self._element_listener(event_d)
+                self._mode = PortHandler.Mode.Disconnected
+                raise  # re-raise since incomplete (prevent done OK state)
+        self._listen_thread = None
+
+        self._mode = PortHandler.Mode.Disconnected
+        # If we got here, the RuntimeError was ok since the
+        #   null terminator '\0' was reached (otherwise re-raise occurs above)
+        event_d = {
+            'error': "Listen loop stopped.",
+            'done': True,
+        }
+        if not (self._connect_listener and self._connect_listener(event_d)):
+            # The message was not handled, so log it.
+            logger.error(event_d['error'])
+        return event_d  # return it in case running synchronously (no thread)
 
     def _memoryRead(self, farNodeID, offset):
         """Create and send a read datagram.
@@ -216,56 +262,63 @@ class CDIHandler(xml.sax.handler.ContentHandler):
             def callback(event_d):
                 print("downloadCDI default callback: {}".format(event_d),
                       file=sys.stderr)
-        self._download_callback = callback
-        if not self._sock:
-            raise RuntimeError("No TCPSocket. Call connect first.")
+        self._element_listener = callback
+        if not self._port:
+            raise RuntimeError(
+                "No port connection. Call start_listening first.")
         if not self._canPhysicalLayerGridConnect:
             raise RuntimeError(
-                "No canPhysicalLayerGridConnect. Call connect first.")
+                "No canPhysicalLayerGridConnect. Call start_listening first.")
         self._cdi_offset = 0
         self._reset_tree()
+        self._mode = PortHandler.Mode.CDI
         self._memoryRead(farNodeID, self._cdi_offset)
-        while True:
-            try:
-                received = self._sock.receive()
-                # print("      RR: {}".format(received.strip()))
-                # pass to link processor
-                self._canPhysicalLayerGridConnect.receiveString(received)
-                # ^ will trigger self._printFrame since that was added
-                #   via registerFrameReceivedListener during connect.
-            except RuntimeError as ex:
-                # May be raised by canbus.tcpsocket.TCPSocket.receive
-                # manually. Usually "socket connection broken" due to
-                # no more bytes to read, but ok if "\0" terminator
-                # was reached.
-                if not self._string_terminated:
-                    # This boolean is managed by the memoryReadSuccess
-                    # callback.
-                    callback({  # same as self._download_callback here
-                        'error': "{}: {}".format(type(ex).__name__, ex),
-                        'done': True,  # stop progress in gui/other main thread
-                    })
-                    raise  # re-raise since incomplete (prevent done OK state)
-                break
-        # If we got here, the RuntimeError was ok since the
-        #   null terminator '\0' was reached (otherwise re-raise occurs above)
-        event_d = {
-            'message': "Done reading CDI.",
-            # 'done': True,  # NOTE: not really done until endElement("cdi")
-        }
-        return event_d  # return it in case running synchronously (no thread)
+        # ^ On a successful memory read, _memoryReadSuccess will trigger
+        #   _memoryRead again and again until end/fail.
 
-    def _sendToSocket(self, string):
+    def _sendToPort(self, string):
         # print("      SR: {}".format(string.strip()))
-        self._sock.send(string)
+        self._port.send(string)
 
     def _printFrame(self, frame):
         # print("   RL: {}".format(frame))
         pass
 
-    def _printMessage(self, message):
+    def _handleMessage(self, message):
+        """Handle a Message from the LCC network.
+        The Message Type Indicator (MTI) is checked in case the
+        application should visualize a change in the connection state
+        etc.
+
+        Data (Memo) is not handled here (See _memoryReadSuccess and
+        _memoryReadFail for that).
+
+        Args:
+            message (Message): Any message instance received from the
+                LCC network.
+
+        Returns:
+            bool: If message was handled (always True in this
+                method)
+        """
         # print("RM: {} from {}".format(message, message.source))
-        pass
+        if message.mti == MTI.Link_Layer_Down:
+            if self._connect_listener:
+                self._connect_listener({
+                    'done': True,
+                    'error': "Disconnected",
+                    'message': message,
+                })
+                self._message_t = None  # prevent _listen from discarding error
+                return True
+        elif message.mti == MTI.Link_Layer_Up:
+            if self._connect_listener:
+                self._connect_listener({
+                    'done': True,  # 'done' without error indicates connected.
+                    'message': message,
+                })
+                return True
+        return False
 
     def _printDatagram(self, memo):
         """A call-back for when datagrams received
@@ -280,6 +333,58 @@ class CDIHandler(xml.sax.handler.ContentHandler):
         # print("Datagram receive call back: {}".format(memo.data))
         return False
 
+    def _CDIReadPartial(self, memo):
+        """Handle partial CDI XML (any packet except last)
+        The last packet is not yet reached, so don't parse (but
+        feed if self._realtime)
+
+        Args:
+            memo (MemoryReadMemo): successful read memo containing data.
+        """
+        self._resultingCDI += memo.data
+        partial_str = memo.data.decode("utf-8")
+        if self._realtime:
+            self._parser.feed(partial_str)  # may call startElement/endElement
+
+    def _CDIReadDone(self, memo):
+        """Handle end of CDI XML (last packet)
+        End of data, so parse (or feed if self._realtime)
+
+        Args:
+            memo (MemoryReadMemo): successful read memo containing data.
+        """
+        partial_str = memo.data.decode("utf-8")
+        # save content
+        self._resultingCDI += memo.data
+        # concert resultingCDI to a string up to 1st zero
+        # and process that
+        if self._realtime:
+            # If _realtime, last chunk is treated same as another
+            #   (since _realtime uses feed) except stop at '\0'.
+            null_i = memo.data.find(b'\0')
+            terminate_i = len(memo.data)
+            if null_i > -1:
+                terminate_i = min(null_i, terminate_i)
+            partial_str = memo.data[:terminate_i].decode("utf-8")
+        else:
+            # *not* realtime (but got to end, so parse all at once)
+            cdiString = ""
+            null_i = self._resultingCDI.find(b'\0')
+            terminate_i = len(self._resultingCDI)
+            if null_i > -1:
+                terminate_i = min(null_i, terminate_i)
+            cdiString = self._resultingCDI[:terminate_i].decode("utf-8")
+            # print (cdiString)
+            self.parse(cdiString)
+            # ^ startElement, endElement, etc. all consecutive using parse
+            # self._callback_status("Done loading CDI.")
+            if self._element_listener:
+                self._element_listener({
+                    'done': True,  # 'done' and not 'error' means got all
+                })
+        if self._realtime:
+            self._parser.feed(partial_str)  # may call startElement/endElement
+
     def _memoryReadSuccess(self, memo):
         """Handle a successful read
         Invoked when the memory read successfully returns,
@@ -292,50 +397,34 @@ class CDIHandler(xml.sax.handler.ContentHandler):
         # print("successful memory read: {}".format(memo.data))
         if len(memo.data) == 64 and 0 not in memo.data:  # *not* last chunk
             self._string_terminated = False
-            chunk_str = memo.data.decode("utf-8")
-            # save content
-            self._resultingCDI += memo.data
+            if self._mode == PortHandler.Mode.CDI:
+                # save content
+                self._CDIReadPartial(memo, False)
+            else:
+                logger.error(
+                    "Unknown data packet received"
+                    " (memory read not triggered by PortHandler)")
             # update the address
             memo.address = memo.address + 64
             # and read again (read next)
             self._memoryService.requestMemoryRead(memo)
-            # The last packet is not yet reached, so don't parse (but
-            #   feed if self._realtime)
+            # The last packet is not yet reached
         else:  # last chunk
             self._string_terminated = True
             # and we're done!
-            # save content
-            self._resultingCDI += memo.data
-            # concert resultingCDI to a string up to 1st zero
-            # and process that
-            if self._realtime:
-                # If _realtime, last chunk is treated same as another
-                #   (since _realtime uses feed) except stop at '\0'.
-                null_i = memo.data.find(b'\0')
-                terminate_i = len(memo.data)
-                if null_i > -1:
-                    terminate_i = min(null_i, terminate_i)
-                chunk_str = memo.data[:terminate_i].decode("utf-8")
+            if self._mode == PortHandler.Mode.CDI:
+                self._CDIReadDone(memo)
             else:
-                # *not* realtime (but got to end, so parse all at once)
-                cdiString = ""
-                null_i = self._resultingCDI.find(b'\0')
-                terminate_i = len(self._resultingCDI)
-                if null_i > -1:
-                    terminate_i = min(null_i, terminate_i)
-                cdiString = self._resultingCDI[:terminate_i].decode("utf-8")
-                # print (cdiString)
-                self.parse(cdiString)
-                # ^ startElement, endElement, etc. all consecutive using parse
-                self._callback_msg("Done loading CDI.")
+                logger.error(
+                    "Unknown last data packet received"
+                    " (memory read not triggered by PortHandler)")
+            self._mode = PortHandler.Mode.Idle  # CDI no longer expected
             # done reading
-        if self._realtime:
-            self._parser.feed(chunk_str)  # auto-calls startElement/endElement
 
     def _memoryReadFail(self, memo):
         error = "memory read failed: {}".format(memo.data)
-        if self._download_callback:
-            self._download_callback({
+        if self._element_listener:
+            self._element_listener({
                 'error': error,
                 'done': True,  # stop progress in gui/other main thread
             })
@@ -353,8 +442,8 @@ class CDIHandler(xml.sax.handler.ContentHandler):
         # if self._tag_stack:
         #     parent = self._tag_stack[-1]
         event_d = {'name': name, 'end': False, 'attrs': attrs}
-        if self._download_callback:
-            self._download_callback(event_d)
+        if self._element_listener:
+            self._element_listener(event_d)
 
         # self._callback_msg(
         #     "loaded: {}{}".format(tab, ET.tostring(el, encoding="unicode")))
@@ -363,7 +452,7 @@ class CDIHandler(xml.sax.handler.ContentHandler):
 
     def checkDone(self, event_d):
         """Notify the caller if parsing is over.
-        Calls _download_callback with `'done': True` in the argument if
+        Calls _element_listener with `'done': True` in the argument if
         'name' is "cdi" (case-insensitive). That notifies the
         downloadCDI caller that parsing is over, so that caller should
         end progress bar/other status tracking for downloadCDI in that
@@ -371,7 +460,7 @@ class CDIHandler(xml.sax.handler.ContentHandler):
 
         Returns:
             dict: Reserved for use without events (doesn't need to be
-                processed if self._download_callback is set since that
+                processed if self._element_listener is set since that
                 also gets the dict if 'done'). 'done' is only True if
                 'name' is "cdi" (case-insensitive).
         """
@@ -381,8 +470,8 @@ class CDIHandler(xml.sax.handler.ContentHandler):
             # Not </cdi>, so not done yet
             return event_d
         event_d['done'] = True  # since "cdi" if avoided conditional return
-        if self._download_callback:
-            self._download_callback(event_d)
+        if self._element_listener:
+            self._element_listener(event_d)
         return event_d
 
     def endElement(self, name):
@@ -422,7 +511,7 @@ class CDIHandler(xml.sax.handler.ContentHandler):
             # Notify downloadCDI's caller since it can potentially add
             #   UI widget(s) for at least one setting/segment/group
             #   using this 'element'.
-            self._download_callback(event_d)
+            self._element_listener(event_d)
 
     # def _flushCharBuffer(self):
     #     """Decode the buffer, clear it, and return all content.

@@ -33,9 +33,10 @@ from collections import OrderedDict
 from examples_settings import Settings
 # ^ adds parent of module to sys.path, so openlcb imports *after* this
 
+from openlcb.canbus.tcpsocket import TcpSocket
 from examples.tkexamples.cdiform import CDIForm
 
-from openlcb import emit_cast
+from openlcb import emit_cast, formatted_ex
 from openlcb.tcplink.mdnsconventions import id_from_tcp_service_name
 
 zeroconf_enabled = False
@@ -129,6 +130,7 @@ class MainForm(ttk.Frame):
         self.browser = None
         self.errors = []
         self.root = parent
+        self._connect_thread = None
         try:
             self.settings = Settings()
         except json.decoder.JSONDecodeError as ex:
@@ -445,7 +447,7 @@ class MainForm(ttk.Frame):
         self.cdi_refresh_button.grid(row=self.cdi_row, column=1)
 
         self.cdi_row += 1
-        self.cdi_form = CDIForm(self.cdi_tab)
+        self.cdi_form = CDIForm(self.cdi_tab)  # CDIHandler() subclass
         self.cdi_form.grid(row=self.cdi_row)
 
         self.example_tab = ttk.Frame(self.notebook)
@@ -474,27 +476,85 @@ class MainForm(ttk.Frame):
         #     self.rowconfigure(row, weight=1)
         # self.rowconfigure(self.row_count-1, weight=1)  # make last row expand
 
-    def connect_callback(self, event_d):
-        """Handle a dict event from a different thread
-        (this type of event is specific to examples)
-        """
-        # Trigger the main thread (only the main thread can access the GUI)
-        self.root.after(0, self._callback, event_d)
+    def _connect_state_changed(self, event_d):
+        # SEE _handleMessage INSTEAD
+        """Handle connection events.
 
-    def _callback(self, event_d):
-        message = event_d.get('message')
-        if message:
-            self.set_status(message)
+        This is an example of how to handle different combinations of
+        errors and messages. It could be simplified slightly by having a
+        multi-line log panel, which would allow adding both 'error' and
+        'message' on the same run on different lines (but still only
+        show ready_message if 'done' or not 'error').
+
+        Args:
+            event_d (dict): Information sent by CDIHandler's
+                connect method during the connection steps
+                including alias reservation. Potential keys:
+                - 'error' (str): Indicates a failure
+                - 'status' (str): Status message
+                - 'done' (bool): Indicates the process is done, but
+                  *only ready to send messages if 'error' is None*.
+                - 'message' 
+        """
+        status = event_d.get('status')
+        if status:
+            self.set_status(status)
+        error = event_d.get('error')
+        if error:
+            if status:
+                raise ValueError(
+                    "openlcb should set message or error, not both")
+            self.set_status(error)
+            status = error
+            logger.error("[_connect_state_changed] {}".format(error))
         done = event_d.get('done')
         if done:
-            self.cdi_refresh_button.configure(state=tk.NORMAL)
-            custom_message = 'Ready to load CDI (click "Refresh").'
-            if message:
-                custom_message += " " + message
-            print(custom_message)
-            self.set_status(custom_message)
+            ready_message = 'Ready to load CDI (click "Refresh").'
+            # if event_d.get('command') == "connect":
+            if status:
+                ready_message += " " + status
+            if not error:
+                self.cdi_refresh_button.configure(state=tk.NORMAL)
+                self.set_status(ready_message)
+                print(ready_message)
+            else:
+                # Only would be enabled if done without error before,
+                #   but maybe connection went down, so disable the
+                #   refresh button since we cannot read CDI (can't send
+                #   any read/write messages to the LCC network) in this
+                #   situation:
+                self.cdi_refresh_button.configure(state=tk.DISABLED)
+                # Already called self.set_status(error) above.
 
-    def cdi_connect_clicked(self):
+    def connect_state_changed(self, event_d):
+        """Handle a dict event from a different thread
+        by sending the event to the main (GUI) thread.
+
+        This handles changes in the network connection, whether
+        triggered by an LCC Message, TcpSocket or the OS's network
+        implementation (called by _listen directly unless triggered by
+        LCC Message).
+
+        In this program, this is added to PortHandler via
+        set_connect_listener.
+
+        Therefore in this program, this is triggered during _listen in
+        PortHandler: Connecting is actually done until
+        sendAliasAllocationSequence detects success and marks
+        canLink.state to CanLink.State.Permitted (which triggers
+        _handleMessage which calls this).
+        - May also be directly called by _listen directly in case
+          stopped listening (RuntimeError reading port, or other reason
+          lower in the stack than LCC).
+        - PortHandler's _connect_listener attribute is a method
+          reference to this if set via set_connect_listener.
+        """
+        # Trigger the main thread (only the main thread can access the
+        # GUI):
+        self.root.after(0, self._connect_state_changed, event_d)
+        return True  # indicate that the message was handled.
+
+    def _connect(self):
         host_var = self.fields.get('host')
         host = host_var.get()
         port_var = self.fields.get('port')
@@ -507,16 +567,35 @@ class MainForm(ttk.Frame):
         localNodeID = localNodeID_var.get()
         # self.cdi_form.connect(host, port, localNodeID)
         self.save_settings()
-        threading.Thread(
-            target=self.cdi_form.connect,
-            args=(host, port, localNodeID),
-            kwargs={'callback': self.connect_callback},
-            daemon=True,
-        ).start()
         self.cdi_connect_button.configure(state=tk.DISABLED)
         self.cdi_refresh_button.configure(state=tk.DISABLED)
-        # daemon=True ensures the thread does not block program exit if
-        #   the user closes the application.
+        msg = "connecting to {}...".format(host)
+        self.cdi_form.set_status(msg)
+        self.connect_state_changed({'status': msg})  # self._callback_msg(msg)
+        result = None
+        try:
+            self._tcp_socket = TcpSocket()
+            # self._sock.settimeout(30)
+            self._tcp_socket.connect(host, port)
+            self.cdi_form.set_connect_listener(self.connect_state_changed)
+            result = self.cdi_form.start_listening(
+                self._tcp_socket,
+                localNodeID,
+            )
+            self._connect_thread = None
+        except Exception as ex:
+            self.set_status("Connect failed. {}".format(formatted_ex(ex)))
+            raise  # show traceback still, in case in an IDE or Terminal.
+        return result
+
+    def cdi_connect_clicked(self):
+        self._connect_thread = threading.Thread(
+            target=self._connect,
+            daemon=True,  # True prevents continuing when trying to exit
+        )
+        self._connect_thread.start()
+        # This thread may end quickly after connection since
+        #   start_receiving starts a thread.
 
     def cdi_refresh_clicked(self):
         self.cdi_connect_button.configure(state=tk.DISABLED)
@@ -529,7 +608,7 @@ class MainForm(ttk.Frame):
         threading.Thread(
             target=self.cdi_form.downloadCDI,
             args=(farNodeID,),
-            kwargs={'callback': self.cdi_form.cdi_refresh_callback},
+            kwargs={'callback': self.cdi_form.on_cdi_element},
             daemon=True,
         ).start()
 

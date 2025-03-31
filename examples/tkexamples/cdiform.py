@@ -30,7 +30,7 @@ else:
         " since test running from repo but could not find openlcb in {}."
         .format(repr(REPO_DIR)))
 try:
-    from openlcb.cdihandler import CDIHandler
+    from openlcb.cdihandler import PortHandler
 except ImportError as ex:
     print("{}: {}".format(type(ex).__name__, ex), file=sys.stderr)
     print("* You must run this from a venv that has openlcb installed"
@@ -39,7 +39,7 @@ except ImportError as ex:
     raise  # sys.exit(1)
 
 
-class CDIForm(ttk.Frame, CDIHandler):
+class CDIForm(ttk.Frame, PortHandler):
     """A GUI frame to represent the CDI visually as a tree.
 
     Args:
@@ -47,7 +47,7 @@ class CDIForm(ttk.Frame, CDIHandler):
             attribute set.
     """
     def __init__(self, *args, **kwargs):
-        CDIHandler.__init__(self, *args, **kwargs)
+        PortHandler.__init__(self, *args, **kwargs)
         ttk.Frame.__init__(self, *args, **kwargs)
         self._top_widgets = []
         if len(args) < 1:
@@ -64,7 +64,8 @@ class CDIForm(ttk.Frame, CDIHandler):
         if self._top_widgets:
             raise RuntimeError("gui can only be called once unless reset")
         self._status_var = tk.StringVar(self)
-        self._status_label = ttk.Label(container, textvariable=self._status_var)
+        self._status_label = ttk.Label(container,
+                                       textvariable=self._status_var)
         self.grid(sticky=tk.NSEW, row=len(self._top_widgets))
         self._top_widgets.append(self._status_label)
         self._overview = ttk.Frame(container)
@@ -72,7 +73,7 @@ class CDIForm(ttk.Frame, CDIHandler):
         self._top_widgets.append(self._overview)
         self._treeview = ttk.Treeview(container)
         self.grid(sticky=tk.NSEW, row=len(self._top_widgets))
-        self.rowconfigure(len(self._top_widgets), weight=1)  # weight=1 allows expansion
+        self.rowconfigure(len(self._top_widgets), weight=1)  # weight=1: expand
         self._top_widgets.append(self._treeview)
         self._populating_stack = []  # no parent when of top of Treeview
         self._current_iid = 0   # id of Treeview element
@@ -84,6 +85,10 @@ class CDIForm(ttk.Frame, CDIHandler):
         self._gui()
         self.set_status("Display reset.")
 
+    # def connect(self, new_socket, localNodeID, callback=None):
+    #     return CDIHandler.connect(self, new_socket, localNodeID,
+    #                               callback=callback)
+
     def downloadCDI(self, farNodeID, callback=None):
         self.set_status("Downloading CDI...")
         super().downloadCDI(farNodeID, callback=callback)
@@ -91,10 +96,10 @@ class CDIForm(ttk.Frame, CDIHandler):
     def set_status(self, message):
         self._status_var.set(message)
 
-    def cdi_refresh_callback(self, event_d):
+    def on_cdi_element(self, event_d):
         """Handler for incoming CDI tag
         (Use this for callback in downloadCDI, which sets parser's
-        _download_callback)
+        _element_listener)
 
         Args:
             event_d (dict): Document parsing state info:
@@ -113,24 +118,24 @@ class CDIForm(ttk.Frame, CDIHandler):
         """
         done = event_d.get('done')
         error = event_d.get('error')
-        message = event_d.get('message')
-        show_message = None
+        status = event_d.get('status')
+        show_status = None
         if error:
-            show_message = error
-        elif message:
-            show_message = message
+            show_status = error
+        elif status:
+            show_status = status
         elif done:
-            show_message = "Done loading CDI."
-        if show_message:
-            self.root.after(0, self.set_status, show_message)
+            show_status = "Done loading CDI."
+        if show_status:
+            self.root.after(0, self.set_status, show_status)
         if done:
             return
         if event_d.get('end'):
-            self.root.after(0, self._pop_cdi_element, event_d)
+            self.root.after(0, self._on_cdi_element_start, event_d)
         else:
-            self.root.after(0, self._add_cdi_element, event_d)
+            self.root.after(0, self._on_cdi_element_end, event_d)
 
-    def _pop_cdi_element(self, event_d):
+    def _on_cdi_element_start(self, event_d):
         if not self._populating_stack:
             raise IndexError(
                 "Got stray end tag in top level of XML: {}"
@@ -143,7 +148,7 @@ class CDIForm(ttk.Frame, CDIHandler):
             return ""  # "" is the top of a ttk.Treeview
         return self._populating_stack[-1]
 
-    def _add_cdi_element(self, event_d):
+    def _on_cdi_element_end(self, event_d):
         element = event_d.get('element')
         segment = event_d.get('segment')
         groups = event_d.get('groups')

@@ -61,3 +61,7 @@ def precise_sleep(seconds, start=None):
     #   in Python 3
     while (time.perf_counter() - start) < seconds:
         time.sleep(.01)
+
+
+def formatted_ex(ex):
+    return "{}: {}".format(type(ex).__name__, ex)

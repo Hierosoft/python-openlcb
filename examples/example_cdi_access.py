@@ -239,7 +239,20 @@ def memoryRead():
     to AME
     """
     import time
-    time.sleep(1)
+    time.sleep(.21)
+    # ^ 200ms is the time span in which all nodes must reply to ensure
+    #   our alias is ok according to the LCC CAN Frame Transfer
+    #   Standard, but wait slightly more for OS latency.
+    #   - Then wait longer below if there was a failure/retry, before
+    #     trying to use the LCC network:
+    while canLink.state != CanLink.State.Permitted:
+        # Would only take more than ~200ms (possibly a few nanoseconds
+        #   more for latency on the part of this program itself)
+        #   if multiple alias collisions
+        #   (alias is incremented to find a unique one)
+        print("Waiting for connection sequence to complete...")
+        # This delay could be .2, but longer to reduce console messages:
+        time.sleep(.5)
 
     # read 64 bytes from the CDI space starting at address zero
     memMemo = MemoryReadMemo(NodeID(settings['farNodeID']), 64, 0xFF, 0,
