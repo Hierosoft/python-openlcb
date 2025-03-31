@@ -198,7 +198,6 @@ class CanLink(LinkLayer):
         #    notify upper levels
         self.linkStateChange(self.state)
 
-
     def linkStateChange(self, state):
         """invoked when the link layer comes up and down
 

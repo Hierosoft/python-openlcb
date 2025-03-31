@@ -17,6 +17,13 @@ making multiple copies of a single object.
 
 
 class LinkLayer:
+    """Abstract Link Layer interface
+
+    Attributes:
+        listeners (list[Callback]): local list of listener callbacks.
+            See subclass for default listener and more specific
+            callbacks called from there.
+    """
 
     def __init__(self, localNodeID):
         self.localNodeID = localNodeID
@@ -28,7 +35,7 @@ class LinkLayer:
     def registerMessageReceivedListener(self, listener):
         self.listeners.append(listener)
 
-    listeners = []  # local list of listener callbacks
+    listeners = []
 
     def fireListeners(self, msg):
         for listener in self.listeners:
