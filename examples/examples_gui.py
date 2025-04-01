@@ -477,7 +477,6 @@ class MainForm(ttk.Frame):
         # self.rowconfigure(self.row_count-1, weight=1)  # make last row expand
 
     def _connect_state_changed(self, event_d):
-        # SEE _handleMessage INSTEAD
         """Handle connection events.
 
         This is an example of how to handle different combinations of
@@ -485,6 +484,10 @@ class MainForm(ttk.Frame):
         multi-line log panel, which would allow adding both 'error' and
         'message' on the same run on different lines (but still only
         show ready_message if 'done' or not 'error').
+
+        This method must run on the main thread to affect the GUI, so it
+        is triggered indirectly (by connect_state_changed which runs on
+        the connect or _listen thread).
 
         Args:
             event_d (dict): Information sent by CDIHandler's
@@ -494,8 +497,8 @@ class MainForm(ttk.Frame):
                 - 'status' (str): Status message
                 - 'done' (bool): Indicates the process is done, but
                   *only ready to send messages if 'error' is None*.
-                - 'message' 
         """
+        # logger.debug("Connect state changed: {}".format(event_d))
         status = event_d.get('status')
         if status:
             self.set_status(status)
@@ -864,7 +867,10 @@ def main():
     ))  # WxH+X+Y format
     root.minsize = (window_w, window_h)
     main_form = MainForm(root)
-    main_form.master.title("Python OpenLCB Examples")
+    main_form.master.title(
+        "Python OpenLCB Examples (Python {}.{}.{})"
+        .format(sys.version_info.major, sys.version_info.minor,
+                sys.version_info.micro))
     try:
         main_form.mainloop()
     finally:

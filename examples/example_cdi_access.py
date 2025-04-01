@@ -221,6 +221,8 @@ def processXML(content) :
     #   only called when there is a null terminator, which indicates the
     #   last packet was reached for the requested read.
     #   - See memoryReadSuccess comments for details.
+    with open("cached-cdi.xml", 'w') as stream:
+        stream.write(content)
     xml.sax.parseString(content, handler)
     print("\nParser done")
 

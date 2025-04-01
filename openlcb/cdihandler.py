@@ -127,9 +127,13 @@ class PortHandler(xml.sax.handler.ContentHandler):
         self._callback_status("CanPhysicalLayerGridConnect...")
         self._canPhysicalLayerGridConnect = \
             CanPhysicalLayerGridConnect(self._sendToPort)
-        self._canPhysicalLayerGridConnect.registerFrameReceivedListener(
-            self._printFrame
-        )
+
+        # self._canPhysicalLayerGridConnect.registerFrameReceivedListener(
+        #     self._printFrame
+        # )
+        # ^ Commented since canlink already adds CanLink's default
+        #   receiveListener to CanLinkPhysicalLayer & that's all we need
+        #   for this application.
 
         self._callback_status("CanLink...")
         self._canLink = CanLink(NodeID(localNodeID))
@@ -156,18 +160,27 @@ class PortHandler(xml.sax.handler.ContentHandler):
         self._callback_status("MemoryService...")
         self._memoryService = MemoryService(self._datagramService)
 
-        self._callback_status("physicalLayerUp...")
-        self._canPhysicalLayerGridConnect.physicalLayerUp()
+        self._callback_status("listen...")
 
         self.listen()  # Must listen for alias reservation responses
         #   (sendAliasConnectionSequence will occur for another 200ms
         #   once, then another 200ms on each alias collision if any)
+
+        self._callback_status("physicalLayerUp...")
+        self._canPhysicalLayerGridConnect.physicalLayerUp()
+        # ^ triggers fireListeners which calls CanLink's default
+        #   receiveListener by default since added on CanPhysicalLayer
+        #   arg of linkPhysicalLayer.
+        #   - Must happen *after* listen thread starts, since
+        #     generates ControlFrame.LinkUp and calls fireListeners
+        #     which calls sendAliasConnectionSequence on this thread!
 
     def listen(self):
         self._listen_thread = threading.Thread(
             target=self._listen,
             daemon=True,  # True to terminate on program exit
         )
+        print("[listen] Starting port receive loop...")
         self._listen_thread.start()
 
     def _receive(self):
@@ -183,11 +196,21 @@ class PortHandler(xml.sax.handler.ContentHandler):
         self._message_t = None
         self._mode = PortHandler.Mode.Idle  # Idle until data type is known
         try:
+            # NOTE: self._canLink.state is *definitely not*
+            #   CanLink.State.Permitted yet, but that's ok because
+            #   CanLink's default receiveHandler has to provide
+            #   the alias from each node (collision or not)
+            #   to has to get the expected replies to the alias
+            #   reservation sequence below.
+            precise_sleep(.05)   # Wait for physicalLayerUp to complete
             while True:
                 # Wait 200 ms for all nodes to announce (and for alias
                 #   reservation to complete), as per section 6.2.1 of CAN
                 #   Frame Transfer Standard (sendMessage requires )
-                received = self._receive()
+                print("[_listen] _receive...")
+                received = self._receive()  # set timeout to prevent hang?
+                print("[_listen] received {} byte(s)".format(len(received)),
+                      file=sys.stderr)
                 # print("      RR: {}".format(received.strip()))
                 # pass to link processor
                 self._canPhysicalLayerGridConnect.receiveString(received)
@@ -280,9 +303,9 @@ class PortHandler(xml.sax.handler.ContentHandler):
         # print("      SR: {}".format(string.strip()))
         self._port.send(string)
 
-    def _printFrame(self, frame):
-        # print("   RL: {}".format(frame))
-        pass
+    # def _printFrame(self, frame):
+    #     # print("   RL: {}".format(frame))
+    #     pass
 
     def _handleMessage(self, message):
         """Handle a Message from the LCC network.
@@ -301,7 +324,9 @@ class PortHandler(xml.sax.handler.ContentHandler):
             bool: If message was handled (always True in this
                 method)
         """
-        # print("RM: {} from {}".format(message, message.source))
+        print("[_handleMessage] RM: {} from {}"
+              .format(message, message.source))
+        print("[_handleMessage]   message.mti={}".format(message.mti))
         if message.mti == MTI.Link_Layer_Down:
             if self._connect_listener:
                 self._connect_listener({

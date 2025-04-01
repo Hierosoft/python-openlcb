@@ -81,6 +81,12 @@ class CanLink(LinkLayer):
                 not then ignored).
         """
         control_frame = self.decodeControlFrameFormat(frame)
+        if not ControlFrame.isInternal(control_frame):
+            self._frameCount += 1
+        else:
+            print("[CanLink receiveListener] control_frame={}"
+                  .format(control_frame))
+
         if control_frame == ControlFrame.LinkUp:
             self.handleReceivedLinkUp(frame)
         elif control_frame == ControlFrame.LinkRestarted:  # noqa: E501
@@ -205,6 +211,7 @@ class CanLink(LinkLayer):
             state (CanLink.State): See CanLink.
         """
         if state == CanLink.State.Permitted:
+            print("[linkStateChange] Link_Layer_Up")
             msg = Message(MTI.Link_Layer_Up, NodeID(0), None, bytearray())
         else:
             msg = Message(MTI.Link_Layer_Down, NodeID(0), None, bytearray())
@@ -290,9 +297,9 @@ class CanLink(LinkLayer):
         Additional arguments may be encoded in lower bits (below
         ControlFrame.Data) in frame.header.
         """
-        self._frameCount += 1
         if self.checkAndHandleAliasCollision(frame):
             return
+        # ^ may affect _reserveAliasCollisions (not _frameCount)
         #    get proper MTI
         mti = self.canHeaderToFullFormat(frame)
         sourceID = NodeID(0)
@@ -691,13 +698,15 @@ class CanLink(LinkLayer):
                 " & restarts sequence)."
                 .format(previousLocalAliasSeed))
             return False
-        if responseCount < 1:
+        while responseCount < 1:
             logger.warning(
                 "Continuing to send Reservation (RID) anyway"
                 "--no response, so assuming alias seed {} is unique"
                 " (If there are any other nodes on the network then"
                 " a thread, the call order, or network connection failed!)."
                 .format(self.localAliasSeed))
+            precise_sleep(.2)  # wait for another collision wait term
+            responseCount = self._frameCount - previousFrameCount
             # NOTE: If we were to stop here, then we would have to
             #   trigger defineAndReserveAlias again, since
             #   processCollision usually does that, but collision didn't
