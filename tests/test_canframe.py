@@ -44,6 +44,7 @@ class TestCanFrameClass(unittest.TestCase):
         frame0703 = CanFrame(0x0701, 0x123)
         self.assertEqual(frame0703.header, 0x10701123)
         self.assertEqual(frame0703.data, bytearray())
+        # For ControlFrame itself, see test_canlink.py
 
 
 if __name__ == '__main__':

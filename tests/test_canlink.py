@@ -1,5 +1,6 @@
 import unittest
 
+
 from openlcb.canbus.canlink import CanLink
 
 from openlcb.canbus.canframe import CanFrame
@@ -215,6 +216,41 @@ class TestCanLinkClass(unittest.TestCase):
         frame = CanFrame(0x1000, 0x000)  # invalid control frame content
         self.assertEqual(canLink.decodeControlFrameFormat(frame),
                          ControlFrame.UnknownFormat)
+
+    def testControlFrameIsInternal(self):
+        self.assertFalse(ControlFrame.isInternal(ControlFrame.AMD))
+        self.assertFalse(ControlFrame.isInternal(ControlFrame.CID))
+        self.assertFalse(ControlFrame.isInternal(ControlFrame.Data))
+
+        # These are non-openlcb values used for internal signaling
+        #   their values have a bit set above what can come from a CAN Frame.
+        self.assertTrue(ControlFrame.isInternal(ControlFrame.LinkUp))
+        self.assertTrue(ControlFrame.isInternal(ControlFrame.LinkRestarted))
+        self.assertTrue(ControlFrame.isInternal(ControlFrame.LinkCollision))
+        self.assertTrue(ControlFrame.isInternal(ControlFrame.LinkError))
+        self.assertTrue(ControlFrame.isInternal(ControlFrame.LinkDown))
+        self.assertTrue(ControlFrame.isInternal(ControlFrame.UnknownFormat))
+
+        # Test bad ControlFrame.*.value (only possible if *not*
+        #   ControlFrame type, so assertRaises is not necessary above).
+        self.assertRaises(
+            ValueError,
+            lambda x=0x21001: ControlFrame.isInternal(x),
+        )
+
+        # If it is not ControlFrame nor int, it is "not in" values:
+        self.assertRaises(
+            ValueError,
+            lambda x="21000": ControlFrame.isInternal(x),
+        )
+        self.assertRaises(
+            ValueError,
+            lambda x=21000.0: ControlFrame.isInternal(x),
+        )
+
+        # Allow int if not ControlFrame but is a ControlFrame.*.value
+        self.assertTrue(ControlFrame.isInternal(0x20000))
+        self.assertTrue(ControlFrame.isInternal(0x21000))
 
     def testSimpleGlobalData(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
@@ -689,7 +725,3 @@ class TestCanLinkClass(unittest.TestCase):
             [bytearray([0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8]),
              bytearray([0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF, 0x10]),
              bytearray([0x11])])  # noqa: E501
-
-
-if __name__ == '__main__':
-    unittest.main()
