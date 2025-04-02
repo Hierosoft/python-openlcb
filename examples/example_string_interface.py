@@ -18,7 +18,8 @@ if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-from openlcb.canbus.tcpsocket import TcpSocket
+from openlcb.canbus.gridconnectobserver import GridConnectObserver
+from openlcb.tcplink.tcpsocket import TcpSocket
 
 # specify connection information
 # region replaced by settings
@@ -34,10 +35,16 @@ sock.connect(settings['host'], settings['port'])
 
 # send a AME frame in GridConnect string format with arbitrary source alias to
 # elicit response
-AME = ":X10702001N;"
-sock.send(AME)
-print("SR: {}".format(AME.strip()))
+AME_packet_str = ":X10702001N;"
+sock.sendString(AME_packet_str)
+print("SR: {}".format(AME_packet_str.strip()))
+
+observer = GridConnectObserver()
 
 # display response - should be RID from node(s)
 while True:  # have to kill this manually
-    print("RR: {}".format(sock.receive().strip()))
+    received = sock.receive()
+    observer.push(received)
+    packet_str = observer.pop_gc_packet_str()
+    if packet_str:
+        print("   RR: "+packet_str.strip())

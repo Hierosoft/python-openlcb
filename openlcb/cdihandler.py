@@ -183,7 +183,7 @@ class PortHandler(xml.sax.handler.ContentHandler):
         print("[listen] Starting port receive loop...")
         self._listen_thread.start()
 
-    def _receive(self):
+    def _receive(self) -> bytearray:
         """Receive data from the port.
         Override this if serial/other subclass not using TCP
         (or better yet, make all ports including TcpSocket inherit from
@@ -213,7 +213,7 @@ class PortHandler(xml.sax.handler.ContentHandler):
                       file=sys.stderr)
                 # print("      RR: {}".format(received.strip()))
                 # pass to link processor
-                self._canPhysicalLayerGridConnect.receiveString(received)
+                self._canPhysicalLayerGridConnect.receiveChars(received)
                 # ^ will trigger self._printFrame if that was added
                 #   via registerFrameReceivedListener during connect.
                 precise_sleep(.01)  # let processor sleep briefly before read
@@ -231,7 +231,7 @@ class PortHandler(xml.sax.handler.ContentHandler):
 
         except RuntimeError as ex:
             # If _port is a TcpSocket:
-            #   May be raised by canbus.tcpsocket.TCPSocket.receive
+            #   May be raised by tcplink.tcpsocket.TCPSocket.receive
             #   manually.
             #   - Usually "socket connection broken" due to no more
             #     bytes to read, but ok if "\0" terminator was reached.
@@ -301,7 +301,7 @@ class PortHandler(xml.sax.handler.ContentHandler):
 
     def _sendToPort(self, string):
         # print("      SR: {}".format(string.strip()))
-        self._port.send(string)
+        self._port.sendString(string)
 
     # def _printFrame(self, frame):
     #     # print("   RL: {}".format(frame))

@@ -5,9 +5,26 @@ expects prior setting of host and port variables
 # https://docs.python.org/3/howto/sockets.html
 import socket
 
+from typing import Union
 
-class TcpSocket:
+from openlcb.portinterface import PortInterface
+
+
+class TcpSocket(PortInterface):
+    """TCP socket implementation
+
+    NOTE: This will probably not work in a browser (compiled web
+    assembly) since most/all socket features are not in
+    WebAssembly System Interface (WASI):
+    <https://docs.python.org/3/library/socket.html>
+
+    Args:
+        sock (socket.socket, optional): A socket such as from Python's
+            builtin socket module. Defaults to a new socket.socket
+            instance.
+    """
     def __init__(self, sock=None):
+        super(TcpSocket, self).__init__()
         if sock is None:
             self.sock = socket.socket(
                 socket.AF_INET,
@@ -16,7 +33,7 @@ class TcpSocket:
         else:
             self.sock = sock
 
-    def settimeout(self, seconds):
+    def _settimeout(self, seconds):
         """Set the timeout for connect and transfer.
 
         Args:
@@ -25,32 +42,41 @@ class TcpSocket:
         """
         self.sock.settimeout(seconds)
 
-    def connect(self, host, port):
+    def _connect(self, host, port):
         self.sock.connect((host, port))
 
-    def send(self, data):
-        '''Send a single message, provided as an [int]
-        '''
-        msg = bytes(data)
+    def _send(self, data: Union[bytes, bytearray]):
+        """Send a single message (bytes)
+        Args:
+            data (Union[bytes, bytearray]): (list[int] is equivalent
+                but not explicitly valid in int range)
+        """
+        # assert isinstance(data, (bytes, bytearray)) # See type hint instead
         total_sent = 0
-        while total_sent < len(msg[total_sent:]):
-            sent = self.sock.send(msg[total_sent:])
+        while total_sent < len(data[total_sent:]):
+            sent = self.sock.send(data[total_sent:])
             if sent == 0:
+                self.setOpen(False)
                 raise RuntimeError("socket connection broken")
             total_sent = total_sent + sent
 
-    def receive(self):
+    def _receive(self) -> bytes:
         '''Receive one or more bytes and return as an [int]
         Blocks until at least one byte is received, but may return more.
 
         Returns:
             list(int): one or more bytes, converted to a list of ints.
         '''
-        chunk = self.sock.recv(128)
-        if chunk == b'':
+        data = self.sock.recv(128)
+        # ^ For block/fail scenarios (based on options previously set) see
+        #   <https://manpages.debian.org/bookworm/manpages-dev/recv.2.en.html>
+        #   as cited at
+        #   <https://docs.python.org/3/library/socket.html#socket.socket.recv>
+        if data == b'':
+            self.setOpen(False)
             raise RuntimeError("socket connection broken")
-        return list(chunk)  # convert from bytes
+        return data
 
-    def close(self):
+    def _close(self):
         self.sock.close()
-        return
+        return None

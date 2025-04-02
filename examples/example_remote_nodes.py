@@ -11,7 +11,8 @@ host|host:port            (optional) Set the address (or using a colon,
                           address and port.
 '''
 # region same code as other examples
-from examples_settings import Settings  # do 1st to fix path if no pip install
+from examples_settings import Settings
+from openlcb.canbus.gridconnectobserver import GridConnectObserver  # do 1st to fix path if no pip install
 settings = Settings()
 
 if __name__ == "__main__":
@@ -24,7 +25,7 @@ from openlcb.canbus.canphysicallayergridconnect import (
 # from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.canlink import CanLink
 # from openlcb.canbus.controlframe import ControlFrame
-from openlcb.canbus.tcpsocket import TcpSocket
+from openlcb.tcplink.tcpsocket import TcpSocket
 
 from openlcb.node import Node
 from openlcb.nodeid import NodeID
@@ -59,7 +60,7 @@ if settings['trace'] :
 
 def sendToSocket(string) :
     if settings['trace'] : print("   SR: "+string.strip())
-    sock.send(string)
+    sock.sendString(string)
 
 
 def receiveFrame(frame) :
@@ -103,6 +104,8 @@ canLink.registerMessageReceivedListener(
 
 readQueue = Queue()
 
+observer = GridConnectObserver()
+
 
 def receiveLoop() :
     """put the read on a separate thread"""
@@ -110,10 +113,14 @@ def receiveLoop() :
     if settings['trace'] : print("      SL : link up")
     canPhysicalLayerGridConnect.physicalLayerUp()
     while True:
-        input = sock.receive()
-        if settings['trace'] : print("   RR: "+input.strip())
+        received = sock.receive()
+        if settings['trace']:
+            observer.push(received)
+            packet_str = observer.pop_gc_packet_str()
+            if packet_str:
+                print("   RR: "+packet_str.strip())
         # pass to link processor
-        canPhysicalLayerGridConnect.receiveString(input)
+        canPhysicalLayerGridConnect.receiveChars(received)
 
 
 import threading  # noqa E402

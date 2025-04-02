@@ -19,7 +19,8 @@ if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-from openlcb.canbus.tcpsocket import TcpSocket
+from openlcb.canbus.gridconnectobserver import GridConnectObserver
+from openlcb.tcplink.tcpsocket import TcpSocket
 
 from openlcb.canbus.canphysicallayergridconnect import (
     CanPhysicalLayerGridConnect,
@@ -46,7 +47,7 @@ print("RR, SR are raw socket interface receive and send; RL,"
 
 def sendToSocket(string):
     print("      SR: {}".format(string.strip()))
-    sock.send(string)
+    sock.sendString(string)
 
 
 def printFrame(frame):
@@ -77,9 +78,15 @@ message = Message(MTI.Verify_NodeID_Number_Global,
 print("SM: {}".format(message))
 canLink.sendMessage(message)
 
+observer = GridConnectObserver()
+
 # process resulting activity
 while True:
     received = sock.receive()
-    print("      RR: {}".format(received.strip()))
+    if settings['trace']:
+        observer.push(received)
+        packet_str = observer.pop_gc_packet_str()
+        if packet_str:
+            print("   RR: "+packet_str.strip())
     # pass to link processor
-    canPhysicalLayerGridConnect.receiveString(received)
+    canPhysicalLayerGridConnect.receiveChars(received)

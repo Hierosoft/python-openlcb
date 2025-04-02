@@ -33,7 +33,7 @@ from collections import OrderedDict
 from examples_settings import Settings
 # ^ adds parent of module to sys.path, so openlcb imports *after* this
 
-from openlcb.canbus.tcpsocket import TcpSocket
+from openlcb.tcplink.tcpsocket import TcpSocket
 from examples.tkexamples.cdiform import CDIForm
 
 from openlcb import emit_cast, formatted_ex

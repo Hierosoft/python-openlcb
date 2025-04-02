@@ -13,6 +13,9 @@ Works with frames like
 from openlcb.canbus.canphysicallayer import CanPhysicalLayer
 from openlcb.canbus.canframe import CanFrame
 
+GC_START_BYTE = 0x3a  # :
+GC_END_BYTE = 0x3b  # ;
+
 
 class CanPhysicalLayerGridConnect(CanPhysicalLayer):
     """CAN physical layer subclass for GridConnect
@@ -53,12 +56,12 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
     def receiveChars(self, data):
         self.inboundBuffer += data
         processedCount = 0
-        if 0x3B in self.inboundBuffer:
+        if GC_END_BYTE in self.inboundBuffer:
             #  ^ ';' ends message so we have at least one (CR/LF not required)
             # found end, now find start of that same message, earlier in buffer
             for index in range(0, len(self.inboundBuffer)):
                 outData = bytearray()
-                if 0x3B not in self.inboundBuffer[index:]:
+                if GC_END_BYTE not in self.inboundBuffer[index:]:
                     break
                 if self.inboundBuffer[index] == 0x3A:  # ':' starts message
                     # now start to accumulate data from entire message
@@ -71,7 +74,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
                     # offset 11 might be data, might be ;
                     processedCount = index+11
                     for dataItem in range(0, 8):
-                        if self.inboundBuffer[index+11+2*dataItem] == 0x3B:
+                        if self.inboundBuffer[index+11+2*dataItem] == GC_END_BYTE:
                             break
                         # two characters are data
                         byte1 = self.inboundBuffer[index+11+2*dataItem]

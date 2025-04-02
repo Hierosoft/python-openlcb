@@ -10,7 +10,8 @@ host|host:port            (optional) Set the address (or using a colon,
                           address and port.
 '''
 # region same code as other examples
-from examples_settings import Settings  # do 1st to fix path if no pip install
+from examples_settings import Settings
+from openlcb.canbus.gridconnectobserver import GridConnectObserver  # do 1st to fix path if no pip install
 settings = Settings()
 
 if __name__ == "__main__":
@@ -19,7 +20,7 @@ if __name__ == "__main__":
 
 import threading
 
-from openlcb.canbus.tcpsocket import TcpSocket
+from openlcb.tcplink.tcpsocket import TcpSocket
 from openlcb.canbus.canphysicallayergridconnect import (
     CanPhysicalLayerGridConnect,
 )
@@ -48,7 +49,7 @@ print("RR, SR are raw socket interface receive and send;"
 
 def sendToSocket(string):
     print("      SR: "+string.strip())
-    sock.send(string)
+    sock.sendString(string)
 
 
 def printFrame(frame):
@@ -119,9 +120,15 @@ def datagramWrite():
 thread = threading.Thread(target=datagramWrite)
 thread.start()
 
+observer = GridConnectObserver()
+
 # process resulting activity
 while True:
     received = sock.receive()
-    print("      RR: {}".format(received.strip()))
+    if settings['trace']:
+        observer.push(received)
+        packet_str = observer.pop_gc_packet_str()
+        if packet_str:
+            print("   RR: "+packet_str.strip())
     # pass to link processor
-    canPhysicalLayerGridConnect.receiveString(received)
+    canPhysicalLayerGridConnect.receiveChars(received)

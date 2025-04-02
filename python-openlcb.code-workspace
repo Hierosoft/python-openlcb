@@ -61,6 +61,7 @@
 			"pady",
 			"physicallayer",
 			"Poikilos",
+			"portinterface",
 			"pyproject",
 			"pyserial",
 			"servicetype",
@@ -72,6 +73,7 @@
 			"tkexamples",
 			"unformatting",
 			"usbmodem",
+			"WASI",
 			"winnative",
 			"zeroconf"
 		]

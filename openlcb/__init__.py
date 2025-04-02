@@ -2,6 +2,7 @@ import re
 import time
 
 from collections import OrderedDict
+from typing import Union
 
 
 hex_pairs_rc = re.compile(r"^([0-9A-Fa-f]{2})+$")

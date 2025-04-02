@@ -1,6 +1,7 @@
 import unittest
 
 from openlcb.canbus.canphysicallayergridconnect import (
+    GC_END_BYTE,
     CanPhysicalLayerGridConnect,
 )
 from openlcb.canbus.canframe import CanFrame
@@ -41,7 +42,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
         gc.registerFrameReceivedListener(self.receiveListener)
         bytes = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33, 0x36, 0x35,
-            0x4e, 0x3b, 0x0a])  # :X19490365N;
+            0x4e, GC_END_BYTE, 0x0a])  # :X19490365N;\n
 
         gc.receiveChars(bytes)
 
@@ -54,7 +55,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
             0x3a, 0x58, 0x31, 0x39, 0x31, 0x42, 0x30, 0x33, 0x36, 0x35,
             0x4e, 0x30,
             0x32, 0x30, 0x31, 0x31, 0x32, 0x46, 0x45, 0x30, 0x35, 0x36,
-            0x43, 0x3b])
+            0x43, GC_END_BYTE])
         # :X19170365N020112FE056C;
 
         gc.receiveChars(bytes)
@@ -70,7 +71,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
         gc.registerFrameReceivedListener(self.receiveListener)
         bytes = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33, 0x36, 0x35,
-            0x4e, 0x3b, 0x0a])  # :X19490365N;
+            0x4e, GC_END_BYTE, 0x0a])  # :X19490365N;\n
 
         gc.receiveChars(bytes+bytes)
 
@@ -84,7 +85,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
         gc.registerFrameReceivedListener(self.receiveListener)
         bytes = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33, 0x36,
-            0x35, 0x4e, 0x3b, 0x0a,  # :X19490365N;
+            0x35, 0x4e, GC_END_BYTE, 0x0a,  # :X19490365N;\n
             0x3a, 0x58])
         gc.receiveChars(bytes)
 
@@ -93,7 +94,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
 
         bytes = bytearray([
             0x31, 0x39, 0x34, 0x39, 0x30, 0x33,
-            0x36, 0x35, 0x4e, 0x3b, 0x0a])
+            0x36, 0x35, 0x4e, GC_END_BYTE, 0x0a])
         gc.receiveChars(bytes)
 
         self.assertEqual(self.receivedFrames[1],
@@ -111,7 +112,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
 
         bytes2 = bytearray([
             0x32, 0x30, 0x31, 0x31, 0x32, 0x46, 0x45, 0x30, 0x35, 0x36,
-            0x43, 0x3b])
+            0x43, GC_END_BYTE])
         gc.receiveChars(bytes2)
 
         self.assertEqual(
@@ -125,8 +126,8 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
         gc.registerFrameReceivedListener(self.receiveListener)
         bytes = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33,
-            0x36, 0x35, 0x4e, 0x3b, 0x0a])
-        # :X19490365N;
+            0x36, 0x35, 0x4e, GC_END_BYTE, 0x0a])
+        # :X19490365N;\n
 
         gc.receiveChars(bytes)
 

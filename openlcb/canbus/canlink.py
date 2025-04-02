@@ -44,6 +44,7 @@ class CanLink(LinkLayer):
         self.link = None
         self._frameCount = 0
         self._reserveAliasCollisions = 0
+        self._errorCount = 0
         self.aliasToNodeID = {}
         self.nodeIdToAlias = {}
         self.accumulator = {}
@@ -114,7 +115,7 @@ class CanLink(LinkLayer):
                                ControlFrame.EIR1,
                                ControlFrame.EIR2,
                                ControlFrame.EIR3):
-            pass   # ignored upon receipt
+            self._errorCount += 1
         elif control_frame == ControlFrame.Data:
             # NOTE: We may process other bits of frame.header
             #   that were stripped from control_frame
@@ -683,11 +684,12 @@ class CanLink(LinkLayer):
         responseCount = self._frameCount - previousFrameCount
         if responseCount < 1:
             logger.warning(
-                "sendAliasAllocationSequence is blocking the receive thread"
-                " or the network is taking too long to respond (200ms is LCC"
-                " standard time for all node reservation replies."
-                " If there any other nodes, this is an error and this method"
-                " should *not* continue sending Reserve ID (RID) frame)...")
+                "sendAliasAllocationSequence may be blocking the receive"
+                " thread or the network is taking too long to respond"
+                " (200ms is LCC standard time for all nodes to respond to"
+                " reservation request. If there any other nodes, this is"
+                " an error and this method should *not* continue sending"
+                " Reserve ID (RID) frame)...")
         if self._reserveAliasCollisions > previousCollisions:
             # processCollision will increment the non-unique alias try
             #   defineAndReserveAlias again (so stop before completing
@@ -698,16 +700,16 @@ class CanLink(LinkLayer):
                 " & restarts sequence)."
                 .format(previousLocalAliasSeed))
             return False
-        while responseCount < 1:
+        if responseCount < 1:
             logger.warning(
                 "Continuing to send Reservation (RID) anyway"
                 "--no response, so assuming alias seed {} is unique"
                 " (If there are any other nodes on the network then"
                 " a thread, the call order, or network connection failed!)."
                 .format(self.localAliasSeed))
-            precise_sleep(.2)  # wait for another collision wait term
-            responseCount = self._frameCount - previousFrameCount
-            # NOTE: If we were to stop here, then we would have to
+            # precise_sleep(.2)  # wait for another collision wait term
+            # responseCount = self._frameCount - previousFrameCount
+            # NOTE: If we were to loop here, then we would have to
             #   trigger defineAndReserveAlias again, since
             #   processCollision usually does that, but collision didn't
             #   occur. However, stopping here would not be valid anyway
