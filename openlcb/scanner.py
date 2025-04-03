@@ -1,6 +1,10 @@
 
+from logging import getLogger
 from typing import Union
+
 from openlcb import emit_cast
+
+logger = getLogger(__name__)
 
 
 class Scanner:
@@ -86,6 +90,12 @@ class Scanner:
                 "Delimiter not found before EOF."
                 " Check hasNext first or handle this exception"
                 " in client code.")
+        # logger.debug("Getting {} to {} exclusive of {} in {}"
+        #              .format(0, last_idx+1, len(self._buffer),
+        #                      emit_cast(self._buffer)))
+        # logger.debug("Leaving {} to {} exclusive of {}"
+        #              .format(last_idx+1, len(self._buffer),
+        #                      len(self._buffer)))
         packet_bytes = self._buffer[:last_idx+1]  # +1 to keep ";"
         self._buffer = self._buffer[last_idx+1:]  # +1 to discard ";"
         return packet_bytes
