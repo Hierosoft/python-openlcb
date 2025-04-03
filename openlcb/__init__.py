@@ -2,7 +2,10 @@ import re
 import time
 
 from collections import OrderedDict
-from typing import Union
+from typing import (
+    List,  # in case list doesn't support `[` in this Python version
+    Union,  # in case `|` doesn't support 'type' in this Python version
+)
 
 
 hex_pairs_rc = re.compile(r"^([0-9A-Fa-f]{2})+$")
@@ -10,7 +13,7 @@ hex_pairs_rc = re.compile(r"^([0-9A-Fa-f]{2})+$")
 # +: at least one match plus 0 or more additional matches
 
 
-def only_hex_pairs(value):
+def only_hex_pairs(value: str) -> bool:
     """Check if string contains only machine-readable hex pairs.
     See openlcb.conventions submodule for LCC ID dot notation
     functions (less restrictive).
@@ -18,7 +21,7 @@ def only_hex_pairs(value):
     return hex_pairs_rc.fullmatch(value)
 
 
-def emit_cast(value):
+def emit_cast(value) -> str:
     """Get type and value, such as for debug output."""
     repr_str = repr(value)
     if repr_str.startswith(type(value).__name__):
@@ -26,11 +29,16 @@ def emit_cast(value):
     return "{}({})".format(type(value).__name__, repr_str)
 
 
-def list_type_names(values):
+def list_type_names(values) -> List[str]:
     """Get the type of several values, such as for debug output.
     Args:
         values (Union[list,tuple,dict,OrderedDict]): A collection where
             each element's type is to be analyzed.
+
+    Raises:
+        TypeError: If how to traverse the iterator is unknown (the type
+            of `values` is not implemented).
+
     Returns:
         list[str]: A list where each element is a type name. If
             values argument is dict-like, each element is formatted as
@@ -39,13 +47,13 @@ def list_type_names(values):
     if isinstance(values, (list, tuple)):
         return [type(value).__name__ for value in values]
     if isinstance(values, (dict, OrderedDict)):
-        return ["{}: {}".format(k, type(v).__name__) for k, v in values.items()]
+        return ["{}: {}".format(k, type(v).__name__) for k, v in values.items()]  # noqa: E501
     raise TypeError("list_type_names is only implemented for"
                     " list, tuple, dict, and OrderedDict, but got a(n) {}"
                     .format(type(values).__name__))
 
 
-def precise_sleep(seconds, start=None):
+def precise_sleep(seconds: Union[float, int], start: float = None) -> None:
     """Wait for a precise number of seconds
     (precise to hundredths approximately, depending on accuracy of
     platform's sleep). Since time.sleep(seconds) is generally not
@@ -64,5 +72,5 @@ def precise_sleep(seconds, start=None):
         time.sleep(.01)
 
 
-def formatted_ex(ex):
+def formatted_ex(ex) -> str:
     return "{}: {}".format(type(ex).__name__, ex)

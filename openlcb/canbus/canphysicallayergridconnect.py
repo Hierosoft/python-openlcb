@@ -74,7 +74,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
                     # offset 11 might be data, might be ;
                     processedCount = index+11
                     for dataItem in range(0, 8):
-                        if self.inboundBuffer[index+11+2*dataItem] == GC_END_BYTE:
+                        if self.inboundBuffer[index+11+2*dataItem] == GC_END_BYTE:  # noqa: E501
                             break
                         # two characters are data
                         byte1 = self.inboundBuffer[index+11+2*dataItem]

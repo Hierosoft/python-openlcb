@@ -46,7 +46,10 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
 
         gc.receiveChars(bytes)
 
-        self.assertEqual(self.receivedFrames[0], CanFrame(0x19490365, bytearray()))
+        self.assertEqual(
+            self.receivedFrames[0],
+            CanFrame(0x19490365, bytearray())
+        )
 
     def testOneFrameReceivedExactlyWithData(self):
         gc = CanPhysicalLayerGridConnect(self.captureString)
