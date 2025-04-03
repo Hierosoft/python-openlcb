@@ -45,6 +45,6 @@ observer = GridConnectObserver()
 while True:  # have to kill this manually
     received = sock.receive()
     observer.push(received)
-    packet_str = observer.pop_gc_packet_str()
-    if packet_str:
+    if observer.hasNext():
+        packet_str = observer.next()
         print("   RR: "+packet_str.strip())

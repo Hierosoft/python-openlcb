@@ -273,9 +273,8 @@ while True:
     received = sock.receive()
     if settings['trace']:
         observer.push(received)
-        packet_str = observer.pop_gc_packet_str()
-        if packet_str:
-            pass
+        if observer.hasNext():
+            packet_str = observer.next()
             # print("   RR: "+packet_str.strip())
             # ^ commented since MyHandler shows parsed XML fields instead
     # pass to link processor
