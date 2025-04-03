@@ -213,7 +213,7 @@ class PortHandler(xml.sax.handler.ContentHandler):
                       file=sys.stderr)
                 # print("      RR: {}".format(received.strip()))
                 # pass to link processor
-                self._canPhysicalLayerGridConnect.receiveChars(received)
+                self._canPhysicalLayerGridConnect.pushChars(received)
                 # ^ will trigger self._printFrame if that was added
                 #   via registerFrameReceivedListener during connect.
                 precise_sleep(.01)  # let processor sleep briefly before read

@@ -68,4 +68,4 @@ while True:
             packet_str = observer.next()
             print("   RR: "+packet_str.strip())
     # pass to link processor
-    canPhysicalLayerGridConnect.receiveChars(received)
+    canPhysicalLayerGridConnect.pushChars(received)

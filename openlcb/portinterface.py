@@ -7,7 +7,7 @@ implementation).
 Therefore, all port implementations must inherit this if threads are used,
 and threads must be used in a typical implementation
 - Unless: alias reservation sequence is split into separate events
-  and receiveChars will run, in a non-blocking manner, before each send
+  and pushChars will run, in a non-blocking manner, before each send
   call in defineAndReserveAlias.
 """
 from logging import getLogger

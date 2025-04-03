@@ -278,4 +278,4 @@ while True:
             # print("   RR: "+packet_str.strip())
             # ^ commented since MyHandler shows parsed XML fields instead
     # pass to link processor
-    canPhysicalLayerGridConnect.receiveChars(received)
+    canPhysicalLayerGridConnect.pushChars(received)
