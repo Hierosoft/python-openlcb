@@ -36,6 +36,7 @@ class PortInterface:
         self._open = False
         self._onReadyToSend = None
         self._onReadyToReceive = None
+        self._device = None
 
     def busy(self) -> bool:
         return self._busy_message is not None
@@ -70,14 +71,14 @@ class PortInterface:
     def settimeout(self, seconds):
         return self._settimeout(seconds)
 
-    def _connect(self, host, port):
+    def _connect(self, host, port, device=None):
         """Abstract interface. Return: implementation-specific or None
         See connect for details.
         raise exception on failure to prevent self._open = True.
         """
         raise NotImplementedError("Subclass must implement this.")
 
-    def connect(self, host, port):
+    def connect(self, host, port, device=None):
         """Connect to a port.
 
         Args:
@@ -87,12 +88,20 @@ class PortInterface:
                 implementation, str for serial implementation, such as
                 "COM1" or other on Windows or "/dev/" followed by port
                 path on other operating systems)
+            device (Union[socket.socket, serial.Serial, None]): Existing
+                hardware abstraction: Type depends on implementation.
         """
         self._setBusy("connect")
-        result = self._connect(host, port)
+        result = self._connect(host, port, device=device)
         self.setOpen(True)
         self._unsetBusy("connect")
         return result  # may be implementation-specific
+
+    def connectLocal(self, port):
+        """Convenience method for connecting local port such as serial
+        (where host is not applicable since host is this machine).
+        """
+        self.connect(None, port)
 
     def _send(self, data: Union[bytes, bytearray]) -> None:
         """Abstract method. Return: implementation-specific or None"""

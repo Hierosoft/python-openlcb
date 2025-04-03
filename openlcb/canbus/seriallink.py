@@ -24,20 +24,27 @@ class SerialLink(PortInterface):
         logger.warning("settimeout is not implemented for SerialLink")
         pass
 
-    def _connect(self, _, device, baudrate=230400):
+    def _connect(self, _, port, device=None, baudrate=230400):
         """Connect to a serial port.
 
         Args:
             _ (NoneType): Host (Unused since host is always local
                 machine for serial; placeholder for
                 compatibility with the interface).
-            device (str): A string that identifies a serial port for the
+            port (str): A string that identifies a serial port for the
                 serial.Serial constructor.
             baudrate (int, optional): Desired serial speed. Defaults to
                 230400 bits per second.
+            device (serial.Serial): Existing hardware abstraction.
+                Defaults to serial.Serial(port, baudrate).
         """
-        self.port = serial.Serial(device, baudrate)
-        self.port.reset_input_buffer()  # drop anything that's just sitting there already  # noqa: E501
+        assert _ is None, "Serial ports are always on machine not {}".format(_)
+        # ^ Use None or connectLocal for non-network connections.
+        if device is None:
+            self._device = serial.Serial(port, baudrate)
+        else:
+            self._device = device
+        self._device.reset_input_buffer()  # drop anything that's just sitting there already  # noqa: E501
 
     def _send(self, msg: Union[bytes, bytearray]):
         """send bytes
@@ -51,7 +58,7 @@ class SerialLink(PortInterface):
         """
         total_sent = 0
         while total_sent < len(msg[total_sent:]):
-            sent = self.port.write(msg[total_sent:])
+            sent = self._device.write(msg[total_sent:])
             if sent == 0:
                 self.setOpen(False)
                 raise RuntimeError("socket connection broken")
@@ -66,7 +73,7 @@ class SerialLink(PortInterface):
         data = bytearray()
         bytes_recd = 0
         while bytes_recd < MSGLEN:
-            chunk = self.port.read(1)
+            chunk = self._device.read(1)
             if chunk == b'':
                 self.setOpen(False)
                 raise RuntimeError("serial connection broken")
@@ -77,5 +84,5 @@ class SerialLink(PortInterface):
         return data
 
     def _close(self):
-        self.port.close()
+        self._device.close()
         return

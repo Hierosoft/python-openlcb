@@ -28,7 +28,7 @@ from openlcb.canbus.seriallink import SerialLink
 
 
 sock = SerialLink()
-sock.connect(settings['device'])
+sock.connectLocal(settings['device'])
 
 #######################
 
