@@ -47,17 +47,21 @@ class PortInterface:
 
     def _unsetBusy(self, caller):
         if caller != self._busy_message:
-            raise RuntimeError(
+            raise InterruptedError(
                 "Untracked {} ended during {}"
+                " Check busy() first or setListeners"
+                " (implementation problem: See Dispatcher"
+                " for correct example)"
                 .format(caller, self._busy_message))
         self._busy_message = None
 
     def assertNotBusy(self, caller):
         if self._busy_message:
-            raise RuntimeError(
+            raise InterruptedError(
                 "{} was called during {}."
                 " Check busy() first or setListeners"
-                " and wait for {} ready."
+                " and wait for {} ready"
+                " (or use Dispatcher to send&receive)"
                 .format(caller, self._busy_message, caller))
 
     def setListeners(self, onReadyToSend, onReadyToReceive):
@@ -108,6 +112,16 @@ class PortInterface:
         raise NotImplementedError("Subclass must implement this.")
 
     def send(self, data: Union[bytes, bytearray]) -> None:
+        """
+
+        Raises:
+            InterruptedError: (raised by assertNotBusy) if
+                port is in use. Use sendAfter in
+                Dispatcher to avoid this.
+
+        Args:
+            data (Union[bytes, bytearray]): _description_
+        """
         self._setBusy("send")
         self._busy_message = "send"
         try:
@@ -123,11 +137,10 @@ class PortInterface:
 
     def receive(self) -> bytearray:
         self._setBusy("receive")
-        self._busy_message = "receive"
         try:
             result = self._receive()
         finally:
-            self._unsetBusy("send")
+            self._unsetBusy("receive")
             if self._onReadyToSend:
                 self._onReadyToSend()
         return result

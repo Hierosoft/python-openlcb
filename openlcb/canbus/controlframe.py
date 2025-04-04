@@ -69,8 +69,11 @@ class ControlFrame(Enum):
     CID  =  0x4000
     Data = 0x18000
 
-    # these are non-openlcb values used for internal signaling
+    # These are non-openlcb values used for internal signaling
     # their values have a bit set above what can come from a CAN Frame
+    # TODO: Consider moving these and non-MTI values in MTI enum
+    #   all to InternalEvent (or creating a related event if necessary
+    #   using a listener, so Dispatcher can manage runlevel).
     LinkUp         = 0x20000
     LinkRestarted  = 0x20001
     LinkCollision  = 0x20002

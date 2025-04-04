@@ -10,6 +10,7 @@ Works with frames like
 - :X19170365N020112FE056C;
 '''
 
+from typing import Union
 from openlcb.canbus.canphysicallayer import CanPhysicalLayer
 from openlcb.canbus.canframe import CanFrame
 
@@ -31,20 +32,26 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
 
     def __init__(self, callback):
         CanPhysicalLayer.__init__(self)
-        self.canSendCallback = callback
+        self.setCallBack(callback)
         self.inboundBuffer = bytearray()
 
     def setCallBack(self, callback):
+        assert callable(callback)
         self.canSendCallback = callback
 
-    def sendCanFrame(self, frame):
-        output = ":X{:08X}N".format(frame.header)
-        for byte in frame.data:
-            output += "{:02X}".format(byte)
-        output += ";\n"
-        self.canSendCallback(output)
+    def sendCanFrame(self, frame: CanFrame) -> None:
+        frame.encoder = self
+        self.canSendCallback(frame)
 
-    def pushString(self, string):
+    def encodeFrameAsString(self, frame) -> str:
+        '''Encode frame to string.'''
+        output = ":X{:08X}N".format(frame.header)  # at least 8 chars, hex
+        for byte in frame.data:
+            output += "{:02X}".format(byte)  # at least 2 chars, hex
+        output += ";\n"
+        return output
+
+    def pushString(self, string: str):
         '''Provide string from the outside link to be parsed
 
         Args:
@@ -52,7 +59,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
         '''
         self.pushChars(string.encode("utf-8"))
 
-    def pushChars(self, data):
+    def pushChars(self, data: Union[bytes, bytearray]):
         """Provide characters from the outside link to be parsed
 
         Args:

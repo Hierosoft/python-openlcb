@@ -10,7 +10,9 @@ This file is part of the python-openlcb project
 
 Contributors: Poikilos, Bob Jacobsen (code from example_cdi_access)
 """
+from collections import deque
 from enum import Enum
+import os
 import threading
 import time
 import sys
@@ -18,9 +20,11 @@ import xml.sax  # noqa: E402
 import xml.etree.ElementTree as ET
 
 from logging import getLogger
+# from xml.sax.xmlreader import AttributesImpl  # for autocomplete only
 
 from openlcb import formatted_ex, precise_sleep
 
+from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.canphysicallayergridconnect import (
     CanPhysicalLayerGridConnect,
 )
@@ -34,11 +38,33 @@ from openlcb.memoryservice import (
     MemoryReadMemo,
     MemoryService,
 )
+from openlcb.platformextras import SysDirs, clean_file_name
 
 logger = getLogger(__name__)
 
 
-class PortHandler(xml.sax.handler.ContentHandler):
+def element_to_dict(element):
+    element = ET.Element(element)  # for autocomplete only
+    return {
+        'tag': element.tag,
+        'attrib': element.attrib,  # already dict[str,str]
+    }
+
+
+def attrs_to_dict(attrs) -> dict:
+    """Convert parser tag attrs.
+
+    Args:
+        attrs (AttributesImpl): attrs from xml parser startElement event
+            (Not the same as element.attrib which is already dict).
+    """
+    # attrs = AttributesImpl(attrs)
+    # attrs_dict = attrs.__dict__  # may have private members, so:
+    return {key: attrs.getValue(key) for key in attrs.getNames()}
+
+
+# TODO: split Dispatcher (socket & event handler) from ContentHandler
+class Dispatcher(xml.sax.handler.ContentHandler):
     """Manage Configuration Description Information.
     - Send events to downloadCDI caller describing the state and content
       of the document construction.
@@ -58,6 +84,13 @@ class PortHandler(xml.sax.handler.ContentHandler):
         _element_listener (Callable): Called if an XML element is
             received (including either a start or end tag).
             Typically set as `callback` argument to downloadCDI.
+        _resultingCDI (str): CDI document being collected from the
+            network stream (successful read request memo handler). To
+            ensure valid state:
+            - Initialize to None at program start, end download, or
+              failed download.
+            - Assert is None at start of download, then set to
+              bytearray().
     """
     class Mode(Enum):
         """Track what data is expected, if any.
@@ -71,9 +104,12 @@ class PortHandler(xml.sax.handler.ContentHandler):
         CDI = 3
 
     def __init__(self, *args, **kwargs):
+        caches_dir = SysDirs.Cache
+        self._my_cache_dir = os.path.join(caches_dir, "python-openlcb")
         self._element_listener = None
         self._connect_listener = None
-        self._mode = PortHandler.Mode.Initializing
+        self._sends = deque()
+        self._mode = Dispatcher.Mode.Initializing
         # ^ In case some parsing step happens early,
         #   prepare these for _callback_msg.
         super().__init__()  # takes no arguments
@@ -123,10 +159,13 @@ class PortHandler(xml.sax.handler.ContentHandler):
         self._connect_listener = listener
 
     def start_listening(self, connected_port, localNodeID):
+        if self._port is not None:
+            logger.warning(
+                "[start_listening] A previous _port will be discarded.")
         self._port = connected_port
         self._callback_status("CanPhysicalLayerGridConnect...")
         self._canPhysicalLayerGridConnect = \
-            CanPhysicalLayerGridConnect(self._sendToPort)
+            CanPhysicalLayerGridConnect(self.sendAfter)
 
         # self._canPhysicalLayerGridConnect.registerFrameReceivedListener(
         #     self._printFrame
@@ -194,7 +233,8 @@ class PortHandler(xml.sax.handler.ContentHandler):
     def _listen(self):
         self._connecting_t = time.perf_counter()
         self._message_t = None
-        self._mode = PortHandler.Mode.Idle  # Idle until data type is known
+        self._mode = Dispatcher.Mode.Idle  # Idle until data type is known
+        caught_ex = None
         try:
             # NOTE: self._canLink.state is *definitely not*
             #   CanLink.State.Permitted yet, but that's ok because
@@ -207,8 +247,37 @@ class PortHandler(xml.sax.handler.ContentHandler):
                 # Wait 200 ms for all nodes to announce (and for alias
                 #   reservation to complete), as per section 6.2.1 of CAN
                 #   Frame Transfer Standard (sendMessage requires )
-                print("[_listen] _receive...")
-                received = self._receive()  # set timeout to prevent hang?
+                logger.debug("[_listen] _receive...")
+                try:
+                    while self._sends:
+                        # *Always* do send in the receive thread to
+                        #   avoid overlapping calls to socket
+                        #   (causes undefined behavior)!
+                        frame = self._sends.pop()
+                        if isinstance(frame, CanFrame):
+                            if frame.alias in self._canLink.duplicateAliases:
+                                logger.warning(
+                                    "Discarded remnant of previous"
+                                    " alias reservation attempt"
+                                    " (duplicate alias={})"
+                                    .format(frame.alias))
+                                continue
+                            logger.debug("[_listen] _sendString...")
+                            self._port.sendString(frame.encodeAsString())
+                        else:
+                            raise NotImplementedError(
+                                "Event type {} is not handled."
+                                .format(type(frame).__name__))
+                    received = self._receive()  # requires setblocking(False)
+                    #   so that it doesn't block (or occur during) recv
+                    #   (overlapping calls would cause undefined behavior)!
+                    # TODO: move *all* send calls to this loop.
+                except BlockingIOError:
+                    # delay = random.uniform(.005,.02)
+                    # ^ random delay may help if send is on another thread
+                    #   (but avoid that for stability and speed)
+                    precise_sleep(.01)
+                    continue
                 print("[_listen] received {} byte(s)".format(len(received)),
                       file=sys.stderr)
                 # print("      RR: {}".format(received.strip()))
@@ -230,6 +299,7 @@ class PortHandler(xml.sax.handler.ContentHandler):
                     # else _on_link_state_change will be called
 
         except RuntimeError as ex:
+            caught_ex = ex
             # If _port is a TcpSocket:
             #   May be raised by tcplink.tcpsocket.TCPSocket.receive
             #   manually.
@@ -244,15 +314,16 @@ class PortHandler(xml.sax.handler.ContentHandler):
                 }
                 if self._element_listener:
                     self._element_listener(event_d)
-                self._mode = PortHandler.Mode.Disconnected
+                self._mode = Dispatcher.Mode.Disconnected
                 raise  # re-raise since incomplete (prevent done OK state)
         self._listen_thread = None
 
-        self._mode = PortHandler.Mode.Disconnected
+        self._mode = Dispatcher.Mode.Disconnected
         # If we got here, the RuntimeError was ok since the
         #   null terminator '\0' was reached (otherwise re-raise occurs above)
         event_d = {
-            'error': "Listen loop stopped.",
+            'error': ("Listen loop stopped (caught_ex={})."
+                      .format(formatted_ex(caught_ex))),
             'done': True,
         }
         if not (self._connect_listener and self._connect_listener(event_d)):
@@ -294,14 +365,33 @@ class PortHandler(xml.sax.handler.ContentHandler):
                 "No canPhysicalLayerGridConnect. Call start_listening first.")
         self._cdi_offset = 0
         self._reset_tree()
-        self._mode = PortHandler.Mode.CDI
+        self._mode = Dispatcher.Mode.CDI
+        if self._resultingCDI is not None:
+            raise ValueError(
+                "A previous downloadCDI operation is in progress"
+                " or failed (Set _resultingCDI to None first if failed)")
+        self._resultingCDI = bytearray()
         self._memoryRead(farNodeID, self._cdi_offset)
         # ^ On a successful memory read, _memoryReadSuccess will trigger
         #   _memoryRead again and again until end/fail.
 
     def _sendToPort(self, string):
         # print("      SR: {}".format(string.strip()))
-        self._port.sendString(string)
+        self.sendAfter(string)
+
+    def sendAfter(self, string):
+        """Enqueue: *IMPORTANT* Main/other thread may have
+        called this, or called this via _sendToPort. Any other thread
+        sending other than the _listen thread is bad, since overlapping
+        calls to socket cause undefined behavior.
+        - CanPhysicalLayerGridConnect constructor sets
+          canSendCallback, and CanLink sets canSendCallback to this
+          (formerly set to _sendToPort which was formerly a direct call
+          to _port which was not thread-safe)
+        - Could a refactor help with this? See issue #62
+          - Add a generalized LocalEvent queue avoid deep callstack?
+        """
+        self._sends.appendleft(string)
 
     # def _printFrame(self, frame):
     #     # print("   RL: {}".format(frame))
@@ -383,6 +473,7 @@ class PortHandler(xml.sax.handler.ContentHandler):
         self._resultingCDI += memo.data
         # concert resultingCDI to a string up to 1st zero
         # and process that
+        cdiString = None
         if self._realtime:
             # If _realtime, last chunk is treated same as another
             #   (since _realtime uses feed) except stop at '\0'.
@@ -409,6 +500,32 @@ class PortHandler(xml.sax.handler.ContentHandler):
                 })
         if self._realtime:
             self._parser.feed(partial_str)  # may call startElement/endElement
+        # memo = MemoryReadMemo(memo)
+        path = self.cache_cdi_path(memo.nodeID)
+        with open(path, 'w') as stream:
+            if cdiString is None:
+                cdiString = self._resultingCDI.rstrip(b'\0').decode("utf-8")
+            stream.write(cdiString)
+            print('Saved "{}"'.format(path))
+        self._resultingCDI = None  # Ensure isn't reused for more than one doc
+
+    def cache_cdi_path(self, item_id):
+        cdi_cache_dir = os.path.join(self._my_cache_dir, "cdi")
+        if not os.path.isdir(cdi_cache_dir):
+            os.makedirs(cdi_cache_dir)
+        # TODO: add hardware name and firmware version and from SNIP to
+        #   name file to avoid cache file from a different
+        #   device/version.
+        item_id = str(item_id)  # Convert NodeID or other
+        clean_name = clean_file_name(item_id.replace(":", "."))
+        # ^ replace ":" to avoid converting that one to default "_"
+        # ^ will raise error if path instead of name
+        path = os.path.join(cdi_cache_dir, clean_name)
+        if path == clean_name:
+            # just to be safe, even though clean_file_name
+            #   should prevent. If this occurs, fix clean_file_name.
+            raise ValueError("Cannot specify absolute path.")
+        return path + ".xml"
 
     def _memoryReadSuccess(self, memo):
         """Handle a successful read
@@ -422,13 +539,13 @@ class PortHandler(xml.sax.handler.ContentHandler):
         # print("successful memory read: {}".format(memo.data))
         if len(memo.data) == 64 and 0 not in memo.data:  # *not* last chunk
             self._string_terminated = False
-            if self._mode == PortHandler.Mode.CDI:
+            if self._mode == Dispatcher.Mode.CDI:
                 # save content
-                self._CDIReadPartial(memo, False)
+                self._CDIReadPartial(memo)
             else:
                 logger.error(
                     "Unknown data packet received"
-                    " (memory read not triggered by PortHandler)")
+                    " (memory read not triggered by Dispatcher)")
             # update the address
             memo.address = memo.address + 64
             # and read again (read next)
@@ -437,13 +554,13 @@ class PortHandler(xml.sax.handler.ContentHandler):
         else:  # last chunk
             self._string_terminated = True
             # and we're done!
-            if self._mode == PortHandler.Mode.CDI:
+            if self._mode == Dispatcher.Mode.CDI:
                 self._CDIReadDone(memo)
             else:
                 logger.error(
                     "Unknown last data packet received"
-                    " (memory read not triggered by PortHandler)")
-            self._mode = PortHandler.Mode.Idle  # CDI no longer expected
+                    " (memory read not triggered by Dispatcher)")
+            self._mode = Dispatcher.Mode.Idle  # CDI no longer expected
             # done reading
 
     def _memoryReadFail(self, memo):
@@ -463,10 +580,12 @@ class PortHandler(xml.sax.handler.ContentHandler):
         if attrs is not None and attrs :
             print(tab, "  Attributes: ", attrs.getNames())
         # el = ET.Element(name, attrs)
-        el = ET.SubElement(self._open_el, "element1")
+        attrib = attrs_to_dict(attrs)
+        el = ET.SubElement(self._open_el, name, attrib)
         # if self._tag_stack:
         #     parent = self._tag_stack[-1]
-        event_d = {'name': name, 'end': False, 'attrs': attrs}
+        event_d = {'name': name, 'end': False, 'attrs': attrs,
+                   'element': el}
         if self._element_listener:
             self._element_listener(event_d)
 

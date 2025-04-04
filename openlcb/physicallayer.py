@@ -8,10 +8,16 @@ Parent of `CanPhysicalLayer`
 
 class PhysicalLayer:
     def physicalLayerUp(self):
-        pass  # abstract method
+        """abstract method"""
+        raise NotImplementedError("Each subclass must implement this.")
 
     def physicalLayerRestart(self):
-        pass  # abstract method
+        """abstract method"""
+        raise NotImplementedError("Each subclass must implement this.")
 
     def physicalLayerDown(self):
-        pass  # abstract method
+        """abstract method"""
+        raise NotImplementedError("Each subclass must implement this.")
+
+    def encodeFrameAsString(self, frame):
+        raise NotImplementedError("Each subclass must implement this.")

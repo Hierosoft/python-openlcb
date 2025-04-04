@@ -47,7 +47,8 @@ print("RR, SR are raw socket interface receive and send;"
       " RL, SL are link interface; RM, SM are message interface")
 
 
-def sendToSocket(string):
+def sendToSocket(frame):
+    string = frame.encodeAsString()
     print("      SR: "+string.strip())
     sock.sendString(string)
 

@@ -538,18 +538,18 @@ class MainForm(ttk.Frame):
         implementation (called by _listen directly unless triggered by
         LCC Message).
 
-        In this program, this is added to PortHandler via
+        In this program, this is added to Dispatcher via
         set_connect_listener.
 
         Therefore in this program, this is triggered during _listen in
-        PortHandler: Connecting is actually done until
+        Dispatcher: Connecting is actually done until
         sendAliasAllocationSequence detects success and marks
         canLink.state to CanLink.State.Permitted (which triggers
         _handleMessage which calls this).
         - May also be directly called by _listen directly in case
           stopped listening (RuntimeError reading port, or other reason
           lower in the stack than LCC).
-        - PortHandler's _connect_listener attribute is a method
+        - Dispatcher's _connect_listener attribute is a method
           reference to this if set via set_connect_listener.
         """
         # Trigger the main thread (only the main thread can access the
@@ -608,6 +608,7 @@ class MainForm(ttk.Frame):
             self.set_status('Set "Far node ID" first.')
             return
         print("Querying farNodeID={}".format(repr(farNodeID)))
+        self.set_status("Downloading CDI...")
         threading.Thread(
             target=self.cdi_form.downloadCDI,
             args=(farNodeID,),
@@ -624,8 +625,14 @@ class MainForm(ttk.Frame):
     def set_id_from_name(self):
         id = self.get_id_from_name(update_button=True)
         if not id:
+            self.set_status(
+                "The service name {} does not contain an LCC ID"
+                " (Does not follow hardware convention).")
             return
         self.fields['farNodeID'].var.set(id)
+        self.set_status(
+            "Far Node ID has been set to {} portion of service name."
+            .format(repr(id)))
 
     def get_id_from_name(self, update_button=False):
         lcc_id = id_from_tcp_service_name(

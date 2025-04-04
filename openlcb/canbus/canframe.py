@@ -1,6 +1,21 @@
 import openlcb
+
 from collections import OrderedDict
+from logging import getLogger
+
 from openlcb.nodeid import NodeID
+
+logger = getLogger(__name__)
+
+
+class NoEncoder:
+    def encodeFrameAsString(self, _):
+        raise AssertionError(
+            "You must set encoder on frame to a PhysicalLayer instance"
+            " or class that has an encodeFrameAsString method that accepts"
+            " a single CanFrame argument (Example in canFrameSend"
+            " method of CanPhysicalLayerGridConnect:"
+            " frame.encoder = self).")
 
 
 class CanFrame:
@@ -36,6 +51,10 @@ class CanFrame:
         control (int, optional): Frame type (1: OpenLCB = 0x0800_000,
             0: CAN Control Frame) | Content Field (3 bits, 3 nibbles,
             mask = 0x07FF_F000).
+        encoder (object): a required encoder object (set to a
+            PhysicalLayer subclass, since that layer determines
+            the encoding). Must have an encodeFrameAsString method that
+            accepts a CanFrame.
     """
 
     ARG_LISTS = [
@@ -61,10 +80,19 @@ class CanFrame:
             list(self.data),  # cast to list to format bytearray(b'') as []
         )
 
+    def encodeAsString(self):
+        return self.encoder.encodeFrameAsString(self)
+
+    @property
+    def alias(self) -> int:
+        return self._alias
+
     def __init__(self, *args):
+        self.encoder = NoEncoder()
         arg1 = None
         arg2 = None
         arg3 = None
+        self._alias = None
         if len(args) > 0:
             arg1 = args[0]
         if len(args) > 1:
@@ -76,9 +104,11 @@ class CanFrame:
         # There are three ctor forms.
         # - See "Args" in class for docstring.
         self.header = 0
+        self.direction = None  # See deque for usage
         self.data = bytearray()
         # three arguments as N_cid, nodeID, alias
         args_error = None
+        alias_warning_case = None
         if isinstance(arg2, NodeID):
             # Other args' types will be enforced by doing math on them
             #   (duck typing) in this case.
@@ -88,11 +118,11 @@ class CanFrame:
             # precondition(4 <= cid && cid <= 7)
             cid = arg1
             nodeID = arg2
-            alias = arg3
+            self._alias = arg3
 
             nodeCode = ((nodeID.nodeId >> ((cid-4)*12)) & 0xFFF)
             # ^ cid-4 results in 0 to 3. *12 results in 0 to 36 bit shift (nodeID size)  # noqa: E501
-            self.header = ((cid << 12) | nodeCode) << 12 | (alias & 0xFFF) | 0x10_00_00_00  # noqa: E501
+            self.header = ((cid << 12) | nodeCode) << 12 | (self._alias & 0xFFF) | 0x10_00_00_00  # noqa: E501
             # self.data = bytearray()
 
         # two arguments as header, data
@@ -104,6 +134,7 @@ class CanFrame:
             self.data = arg2
             if len(args) > 2:
                 args_error = "2nd argument is data, but got extra argument(s)"
+            alias_warning_case = "bytearray overload of constructor"
 
         # two arguments as header, data
         elif isinstance(arg2, list):
@@ -116,8 +147,9 @@ class CanFrame:
         elif isinstance(arg2, int):
             # Types of all 3 are enforced by usage (duck typing) in this case.
             control = arg1
-            alias = arg2
-            self.header = (control << 12) | (alias & 0xFFF) | 0x10_00_00_00
+            self._alias = arg2
+            self.header = \
+                (control << 12) | (self._alias & 0xFFF) | 0x10_00_00_00
             if not isinstance(arg3, bytearray):
                 args_error = ("Expected bytearray (formerly list[int])"
                               " 2nd if 1st argument is header int")
@@ -130,6 +162,16 @@ class CanFrame:
                 args_error.rstrip(".") + ". Valid constructors:"
                 + CanFrame.constructor_help() + ". Got: "
                 + openlcb.list_type_names(args))
+        if self._alias is not None:
+            if self._alias & 0xFFF != self._alias:
+                raise ValueError(
+                    "Alias overflow: {} > 0xFFF".format(self._alias))
+        else:
+            if not alias_warning_case:
+                alias_warning_case = "untracked constructor case"
+            logger.info(
+                "[CanFrame] Alias set/decode is not implemented in {}"
+                .format(alias_warning_case))
 
     def __eq__(self, other):
         if other is None:

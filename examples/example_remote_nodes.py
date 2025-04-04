@@ -58,7 +58,8 @@ if settings['trace'] :
           " RL, SL are link (frame) interface")
 
 
-def sendToSocket(string) :
+def sendToSocket(frame) :
+    string = frame.encodeAsString()
     if settings['trace'] : print("   SR: "+string.strip())
     sock.sendString(string)
 

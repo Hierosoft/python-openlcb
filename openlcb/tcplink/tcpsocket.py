@@ -46,6 +46,15 @@ class TcpSocket(PortInterface):
             self._device = device
 
         self._device.connect((host, port))
+        # ^ `port` here is only remote port. OS automatically assigns a
+        #   random local ephemeral port (obtainable in
+        #   sock.getsockname() tuple) for send and receive unless `bind`
+        #   is used.
+        self._device.setblocking(False)
+        # ^ False: Make sure listen thread can also send so 2 threads
+        #   don't access port (part of missing implementation discussed
+        #   in issue #62). This requires a loop with both send and recv
+        #   (sleep on BlockingIOError to use less CPU).
 
     def _send(self, data: Union[bytes, bytearray]):
         """Send a single message (bytes)

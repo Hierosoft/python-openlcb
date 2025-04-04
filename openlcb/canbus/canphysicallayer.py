@@ -14,9 +14,15 @@ class CanPhysicalLayer(PhysicalLayer):
     def __init__(self):
         self.listeners = []
 
-    def sendCanFrame(self, frame):
+    def sendCanFrame(self, frame: CanFrame):
         '''basic abstract interface'''
-        pass
+        raise NotImplementedError(
+            "Each subclass must implement this, and set"
+            "  frame.encoder = self")
+
+    def encode(self, frame) -> str:
+        '''abstract interface (encode frame to string)'''
+        raise NotImplementedError("Each subclass must implement this.")
 
     def registerFrameReceivedListener(self, listener):
         self.listeners.append(listener)

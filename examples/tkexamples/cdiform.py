@@ -9,13 +9,16 @@ This file is part of the python-openlcb project
 
 Contributors: Poikilos
 """
+from collections import deque
 import os
 import sys
 import tkinter as tk
 from tkinter import ttk
 
 from logging import getLogger
+from xml.etree import ElementTree as ET
 
+from openlcb.cdihandler import element_to_dict
 
 logger = getLogger(__name__)
 
@@ -30,7 +33,7 @@ else:
         " since test running from repo but could not find openlcb in {}."
         .format(repr(REPO_DIR)))
 try:
-    from openlcb.cdihandler import PortHandler
+    from openlcb.cdihandler import Dispatcher
 except ImportError as ex:
     print("{}: {}".format(type(ex).__name__, ex), file=sys.stderr)
     print("* You must run this from a venv that has openlcb installed"
@@ -39,7 +42,7 @@ except ImportError as ex:
     raise  # sys.exit(1)
 
 
-class CDIForm(ttk.Frame, PortHandler):
+class CDIForm(ttk.Frame, Dispatcher):
     """A GUI frame to represent the CDI visually as a tree.
 
     Args:
@@ -47,13 +50,14 @@ class CDIForm(ttk.Frame, PortHandler):
             attribute set.
     """
     def __init__(self, *args, **kwargs):
-        PortHandler.__init__(self, *args, **kwargs)
+        Dispatcher.__init__(self, *args, **kwargs)
         ttk.Frame.__init__(self, *args, **kwargs)
         self._top_widgets = []
         if len(args) < 1:
             raise ValueError("at least one argument (parent) is required")
         self.parent = args[0]
         self.root = args[0]
+        self.ignore_non_gui_tags = None
         if hasattr(self.parent, 'root'):
             self.root = self.parent.root
         self._container = self  # where to put visible widgets
@@ -66,16 +70,16 @@ class CDIForm(ttk.Frame, PortHandler):
         self._status_var = tk.StringVar(self)
         self._status_label = ttk.Label(container,
                                        textvariable=self._status_var)
-        self.grid(sticky=tk.NSEW, row=len(self._top_widgets))
+        self._status_label.grid(sticky=tk.NSEW, row=len(self._top_widgets))
         self._top_widgets.append(self._status_label)
         self._overview = ttk.Frame(container)
-        self.grid(sticky=tk.NSEW, row=len(self._top_widgets))
+        self._overview.grid(sticky=tk.NSEW, row=len(self._top_widgets))
         self._top_widgets.append(self._overview)
         self._treeview = ttk.Treeview(container)
-        self.grid(sticky=tk.NSEW, row=len(self._top_widgets))
+        self._treeview.grid(sticky=tk.NSEW, row=len(self._top_widgets))
         self.rowconfigure(len(self._top_widgets), weight=1)  # weight=1: expand
         self._top_widgets.append(self._treeview)
-        self._populating_stack = []  # no parent when of top of Treeview
+        self._populating_stack = None  # no parent when top of Treeview
         self._current_iid = 0   # id of Treeview element
 
     def clear(self):
@@ -91,6 +95,8 @@ class CDIForm(ttk.Frame, PortHandler):
 
     def downloadCDI(self, farNodeID, callback=None):
         self.set_status("Downloading CDI...")
+        self.ignore_non_gui_tags = deque()
+        self._populating_stack = deque()
         super().downloadCDI(farNodeID, callback=callback)
 
     def set_status(self, message):
@@ -119,6 +125,9 @@ class CDIForm(ttk.Frame, PortHandler):
         done = event_d.get('done')
         error = event_d.get('error')
         status = event_d.get('status')
+        element = event_d.get('element')
+        if element is None:
+            raise ValueError("No element for tag event")
         show_status = None
         if error:
             show_status = error
@@ -131,43 +140,79 @@ class CDIForm(ttk.Frame, PortHandler):
         if done:
             return
         if event_d.get('end'):
-            self.root.after(0, self._on_cdi_element_start, event_d)
-        else:
             self.root.after(0, self._on_cdi_element_end, event_d)
+        else:
+            self.root.after(0, self._on_cdi_element_start, event_d)
 
-    def _on_cdi_element_start(self, event_d):
+    def _on_cdi_element_end(self, event_d):
+        name = event_d['name']
+        nameLower = name.lower()
+        if (self.ignore_non_gui_tags
+                and (nameLower == self.ignore_non_gui_tags[-1])):
+            print("Done ignoring {}".format(name))
+            self.ignore_non_gui_tags.pop()
+            return
         if not self._populating_stack:
+            element = event_d.get('element')
+            if nameLower in ("acdi", "cdi"):
+                raise ValueError(
+                    "Can't close acdi, is self-closing (no branch pushed)")
+            tag = None
+            element_d = None
+            if element is not None:
+                tag = element.tag  # same as name in startElement
+                element_d = element_to_dict(element)
+            logger.error("Unexpected element_d={}".format(element_d))
             raise IndexError(
-                "Got stray end tag in top level of XML: {}"
-                .format(event_d))
+                "Got stray end tag in top level of XML (event_d={},"
+                " name={}, element_d={}, ignore_non_gui_tags={})"
+                .format(event_d, tag, element_d,
+                        self.ignore_non_gui_tags))
             # pop would also raise IndexError, but this message is more clear.
         return self._populating_stack.pop()
 
     def _populating_branch(self):
         if not self._populating_stack:
-            return ""  # "" is the top of a ttk.Treeview
-        return self._populating_stack[-1]
+            return ""  # "" (empty str) is magic value for top of ttk.Treeview
+        return self._populating_stack.pop()
 
-    def _on_cdi_element_end(self, event_d):
+    def _on_cdi_element_start(self, event_d):
         element = event_d.get('element')
         segment = event_d.get('segment')
         groups = event_d.get('groups')
+        prev_ignore_size = len(self.ignore_non_gui_tags)
         tag = element.tag
         if not tag:
             logger.warning("Ignored blank tag for event: {}".format(event_d))
             return
-        tag = tag.lower()
-        # TODO: handle start tags separately (Branches are too late tobe
+        tagLower = tag.lower()
+        # TODO: handle start tags separately (Branches are too late to be
         #   created here since all children are done).
         index = "end"  # "end" is at end of current branch (otherwise use int)
-        if tag in ("segment", "group"):
+        prev_stack_size = len(self._populating_stack)
+        if tagLower in ("segment", "group"):
             name = ""
             for child in element:
-                if child.tag == "name":
+                if child.tag.lower() == "name":
                     name = child.text
+                    # FIXME: move to end tag when done populating
                     break
+            # element = ET.Element(element)  # for autocomplete only
             # if not name:
-            name = element.attrs['space']
+            if tagLower == "segment":
+                space = element.attrib['space']
+                name = space
+                origin = None
+                if 'origin' in element.attrib:
+                    origin = element.attrib['origin']
+            elif tagLower == "group":
+                if 'offset' in element.attrib:
+                    name = element.attrib['offset']
+                # else must be a subgroup (offset optional in that case)
+            else:
+                raise NotImplementedError(tagLower)
+
+            # ^ 'xml.etree.ElementTree.Element' object has no attribute 'attrs'
             new_branch = self._treeview.insert(
                 self._populating_branch(),
                 index,
@@ -177,13 +222,13 @@ class CDIForm(ttk.Frame, PortHandler):
             self._populating_stack.append(new_branch)
             # values=(), image=None
             self._current_iid += 1  # TODO: associate with SubElement
-        elif tag == "acdi":
+        elif tagLower == "acdi":
             # "Indicates that certain configuration information in the
             # node has a standardized simplified format."
             # Configuration Description Information - Standard - section 5.1
             # (self-closing tag; triggers startElement and endElement)
-            pass
-        elif tag in ("int", "string", "float"):
+            self.ignore_non_gui_tags.append(tagLower)
+        elif tagLower in ("int", "string", "float"):
             name = ""
             for child in element:
                 if child.tag == "name":
@@ -199,7 +244,16 @@ class CDIForm(ttk.Frame, PortHandler):
             # values=(), image=None
             self._current_iid += 1  # TODO: associate with SubElement
             #  and/or set values keyword argument to create association(s)
-        elif tag == "cdi":
-            pass
+        elif tagLower == "cdi":
+            self.ignore_non_gui_tags.append(tagLower)
         else:
             logger.warning("Ignored {}".format(tag))
+            self.ignore_non_gui_tags.append(tagLower)
+
+        if len(self.ignore_non_gui_tags) <= prev_ignore_size:
+            if len(self._populating_stack) <= prev_stack_size:
+                raise NotImplementedError(
+                    "Must either ignore tag (to prevent pop"
+                    " during _on_cdi_element_end)"
+                    " or add to GUI stack so end tag can pop {}"
+                    .format(tagLower))

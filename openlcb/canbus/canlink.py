@@ -22,7 +22,7 @@ from enum import Enum
 
 from logging import getLogger
 
-from openlcb import precise_sleep
+from openlcb import emit_cast, formatted_ex, precise_sleep
 from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.controlframe import ControlFrame
 
@@ -48,6 +48,7 @@ class CanLink(LinkLayer):
         self.aliasToNodeID = {}
         self.nodeIdToAlias = {}
         self.accumulator = {}
+        self.duplicateAliases = []
         self.nextInternallyAssignedNodeID = 1
         LinkLayer.__init__(self, localNodeID)
 
@@ -492,9 +493,15 @@ class CanLink(LinkLayer):
             except KeyboardInterrupt:
                 raise
             except Exception as ex:
-                logger.warning(
-                    "Did not know destination = {} on datagram send ({}: {})"
-                    "".format(msg.destination, type(ex).__name__, ex)
+                logger.error(
+                    "Did not know destination = {} on datagram send ({})"
+                    " self.nodeIdToAlias={}. Ensure recv loop"
+                    " (such as Dispatcher's _listen thread) is running"
+                    " before and during alias reservation sequence delay."
+                    " Check previous log messages for an exception"
+                    " that may have ended the recv loop."
+                    .format(msg.destination, formatted_ex(ex),
+                            self.nodeIdToAlias)
                 )
 
             if len(msg.data) <= 8:
@@ -638,12 +645,22 @@ class CanLink(LinkLayer):
             self.processCollision(frame)
         return abort
 
+    def markDuplicateAlias(self, alias):
+        if not isinstance(alias, int):
+            raise NotImplementedError(
+                "Can't mark collision due to alias not stored as int."
+                " bytearray paring must be implemented in CanFrame constructor"
+                " if this markDuplicateAlias scenario is valid (alias={})."
+                .format(emit_cast(alias)))
+        self.duplicateAliases.append(alias)
+
     def processCollision(self, frame) :
         ''' Collision! '''
         self._reserveAliasCollisions += 1
         logger.warning(
             "alias collision in {}, we restart with AMR"
             " and attempt to get new alias".format(frame))
+        self.markDuplicateAlias(frame.alias)
         self.link.sendCanFrame(CanFrame(ControlFrame.AMR.value,
                                         self.localAlias,
                                         self.localNodeID.toArray()))

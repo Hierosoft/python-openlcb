@@ -5,6 +5,8 @@ from enum import Enum
 
 
 class MTI(Enum):
+    """Message Type Identifier
+    """
 
     Initialization_Complete            = 0x0100
     Initialization_Complete_Simple     = 0x0101
@@ -50,6 +52,9 @@ class MTI(Enum):
 
     # These are used for internal signalling and are not present in the MTI
     # specification.
+    # TODO: Consider moving these and non-CAN values in ControlFrame
+    #   all to InternalEvent (or creating a related event if necessary
+    #   using a listener, so Dispatcher can manage runlevel).
     Link_Layer_Up                      = 0x2000   # entered Permitted state; needs to be marked global  # noqa: E501
     Link_Layer_Quiesce                 = 0x2010   # Link needs to be drained, will come back with Link_Layer_Restarted next  # noqa: E501
     Link_Layer_Restarted               = 0x2020   # link cycled without change of node state; needs to be marked global  # noqa: E501
