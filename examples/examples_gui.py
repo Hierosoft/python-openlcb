@@ -447,7 +447,7 @@ class MainForm(ttk.Frame):
         self.cdi_refresh_button.grid(row=self.cdi_row, column=1)
 
         self.cdi_row += 1
-        self.cdi_form = CDIForm(self.cdi_tab)  # CDIHandler() subclass
+        self.cdi_form = CDIForm(self.cdi_tab)  # Dispatcher() subclass
         self.cdi_form.grid(row=self.cdi_row)
 
         self.example_tab = ttk.Frame(self.notebook)
@@ -490,7 +490,7 @@ class MainForm(ttk.Frame):
         the connect or _listen thread).
 
         Args:
-            event_d (dict): Information sent by CDIHandler's
+            event_d (dict): Information sent by Dispatcher's
                 connect method during the connection steps
                 including alias reservation. Potential keys:
                 - 'error' (str): Indicates a failure

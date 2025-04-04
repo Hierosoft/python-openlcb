@@ -18,7 +18,7 @@ from tkinter import ttk
 from logging import getLogger
 from xml.etree import ElementTree as ET
 
-from openlcb.cdihandler import element_to_dict
+from openlcb.dispatcher import element_to_dict
 
 logger = getLogger(__name__)
 
@@ -33,7 +33,7 @@ else:
         " since test running from repo but could not find openlcb in {}."
         .format(repr(REPO_DIR)))
 try:
-    from openlcb.cdihandler import Dispatcher
+    from openlcb.dispatcher import Dispatcher
 except ImportError as ex:
     print("{}: {}".format(type(ex).__name__, ex), file=sys.stderr)
     print("* You must run this from a venv that has openlcb installed"
@@ -90,7 +90,7 @@ class CDIForm(ttk.Frame, Dispatcher):
         self.set_status("Display reset.")
 
     # def connect(self, new_socket, localNodeID, callback=None):
-    #     return CDIHandler.connect(self, new_socket, localNodeID,
+    #     return Dispatcher.connect(self, new_socket, localNodeID,
     #                               callback=callback)
 
     def downloadCDI(self, farNodeID, callback=None):
