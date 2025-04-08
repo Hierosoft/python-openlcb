@@ -5,7 +5,9 @@ from openlcb.canbus.canlink import CanLink
 
 from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.canphysicallayer import CanPhysicalLayer
-from openlcb.canbus.canphysicallayersimulation import CanPhysicalLayerSimulation
+from openlcb.canbus.canphysicallayersimulation import (
+    CanPhysicalLayerSimulation
+)
 from openlcb.message import Message
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
@@ -109,7 +111,7 @@ class TestCanLinkClass(unittest.TestCase):
         self.assertEqual(canLink.state, CanLink.State.Inhibited)
         self.assertEqual(len(messageLayer.receivedMessages), 1)
 
-    def testAEIE2noData(self):
+    def testEIR2NoData(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
         canLink = CanLink(NodeID("05.01.01.01.03.01"))
         canLink.linkPhysicalLayer(canPhysicalLayer)
@@ -119,7 +121,7 @@ class TestCanLinkClass(unittest.TestCase):
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
 
     # MARK: - Test AME (Local Node)
-    def testAMEnoData(self):
+    def testAMENoData(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
         canLink = CanLink(NodeID("05.01.01.01.03.01"))
         canLink.linkPhysicalLayer(canPhysicalLayer)
@@ -158,7 +160,7 @@ class TestCanLinkClass(unittest.TestCase):
                          CanFrame(ControlFrame.AMD.value, ourAlias,
                                   canLink.localNodeID.toArray()))
 
-    def testAMEnotMatchEvent(self):
+    def testAMENotMatchEvent(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
         canLink = CanLink(NodeID("05.01.01.01.03.01"))
         canLink.linkPhysicalLayer(canPhysicalLayer)
@@ -202,7 +204,7 @@ class TestCanLinkClass(unittest.TestCase):
                                   bytearray([5, 1, 1, 1, 3, 1])))  # new alias
         self.assertEqual(canLink.state, CanLink.State.Permitted)
 
-    def testCheckMTImapping(self):
+    def testCheckMTIMapping(self):
 
         canLink = CanLink(NodeID("05.01.01.01.03.01"))
         self.assertEqual(
@@ -480,7 +482,7 @@ class TestCanLinkClass(unittest.TestCase):
         self.assertEqual(messageLayer.receivedMessages[1].data[2], 12)
         self.assertEqual(messageLayer.receivedMessages[1].data[3], 13)
 
-    def testThreeFrameDatagrm(self):
+    def testMultiFrameDatagram(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
         canLink = CanLink(NodeID("05.01.01.01.03.01"))
         canLink.linkPhysicalLayer(canPhysicalLayer)
@@ -584,6 +586,7 @@ class TestCanLinkClass(unittest.TestCase):
         )
 
     def testThreeFrameDatagram(self):
+        # FIXME: Why was testThreeFrameDatagram named same? What should it be?
         canPhysicalLayer = PhyMockLayer()
         canLink = CanLink(NodeID("05.01.01.01.03.01"))
         canLink.linkPhysicalLayer(canPhysicalLayer)
