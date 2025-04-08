@@ -81,7 +81,8 @@ class Scanner:
         assert isinstance(self._buffer, (bytes, bytearray))
         if self._delimiter == Scanner.EOF:
             result = self._buffer
-            self._buffer = type(self._buffer)()
+            self._buffer = type(self._buffer)()  # a.k.a. .copy()
+            #  (bytearray has .copy but bytes does not, so use constructor)
             return result
         self.assertDelimiterType()
         last_idx = self._buffer.find(self._delimiter)
