@@ -230,7 +230,7 @@ class TestTcpLinkClass(unittest.TestCase):
             0x00, 0x00, 0x00, 0x00, 0x01, 0x23,  # source node ID
             0x00, 0x00, 0x11, 0x00, 0x00, 0x00,  # time
             0x90,                      # second half MTI
-                                        # no data
+                                       # no data
 
             0x80, 0x80,                      # part 3
             0x00, 0x00, 18,

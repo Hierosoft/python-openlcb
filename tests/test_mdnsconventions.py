@@ -18,7 +18,7 @@ if __name__ == "__main__":
             .format(repr(REPO_DIR)))
 
 
-from openlcb.tcplink.mdnsconventions import id_from_tcp_service_name
+from openlcb.tcplink.mdnsconventions import id_from_tcp_service_name  # noqa: E402,E501
 
 
 class TestMDNSConventions(unittest.TestCase):

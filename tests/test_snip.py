@@ -19,7 +19,7 @@ if __name__ == "__main__":
             .format(repr(REPO_DIR)))
 
 
-from openlcb.snip import SNIP
+from openlcb.snip import SNIP  # noqa: E402
 
 
 class TestSnipClass(unittest.TestCase):
@@ -156,12 +156,12 @@ class TestSnipClass(unittest.TestCase):
         s.modelName = "DEF"
         s.hardwareVersion = "1EF"
         s.softwareVersion = "2EF"
-        s.userProvidedNodeName = b'\xd0\x94\xd0\xbc\xd0\xb8\xd1\x82\xd1\x80\xd0\xb8\xd0\xb9'.decode("utf-8")   # Cyrillic spelling of the name Dmitry
+        s.userProvidedNodeName = b'\xd0\x94\xd0\xbc\xd0\xb8\xd1\x82\xd1\x80\xd0\xb8\xd0\xb9'.decode("utf-8")   # Cyrillic spelling of the name Dmitry  # noqa: E501
         s.userProvidedDescription = "4EF"
 
         s.updateSnipDataFromStrings()
-        self.assertEqual(s.getStringN(4), "Дмитрий")  # Cyrillic spelling of the name Dmitry. This string should appear as 7 Cyrillic characters like Cyrillic-demo-Dmitry.png in doc (14 bytes in a hex editor), otherwise your editor does not support utf-8 and editing this file with it could break it.
-        # TODO: Russian version is Дми́трий according to <https://en.wikipedia.org/wiki/Dmitry>. See Cyrillic-demo-Dmitry-Russian.png in doc.
+        self.assertEqual(s.getStringN(4), "Дмитрий")  # Cyrillic spelling of the name Dmitry. This string should appear as 7 Cyrillic characters like Cyrillic-demo-Dmitry.png in doc (14 bytes in a hex editor), otherwise your editor does not support utf-8 and editing this file with it could break it.  # noqa: E501
+        # TODO: Russian version is Дми́трий according to <https://en.wikipedia.org/wiki/Dmitry>. See Cyrillic-demo-Dmitry-Russian.png in doc.  # noqa: E501
 
     def testName(self):
         s = SNIP()  # init to all zeros

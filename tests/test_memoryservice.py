@@ -19,16 +19,16 @@ if __name__ == "__main__":
             " since test running from repo but could not find openlcb in {}."
             .format(repr(REPO_DIR)))
 
-from openlcb.nodeid import NodeID
-from openlcb.linklayer import LinkLayer
-from openlcb.mti import MTI
-from openlcb.message import Message
-from openlcb.memoryservice import (
+from openlcb.nodeid import NodeID  # noqa: E402
+from openlcb.linklayer import LinkLayer  # noqa: E402
+from openlcb.mti import MTI  # noqa: E402
+from openlcb.message import Message  # noqa: E402
+from openlcb.memoryservice import (  # noqa: E402
     MemoryReadMemo,
     MemoryWriteMemo,
     MemoryService,
 )
-from openlcb.datagramservice import (
+from openlcb.datagramservice import (  # noqa: E402
     # DatagramWriteMemo,
     # DatagramReadMemo,
     DatagramService,

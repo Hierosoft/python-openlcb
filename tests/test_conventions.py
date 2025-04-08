@@ -44,8 +44,8 @@ class TestConventions(unittest.TestCase):
         self.assertFalse(is_hex_lcc_id("02.01.57.00.04.9C"))  # not converted
         self.assertFalse(is_hex_lcc_id("02015700049C."))
         self.assertFalse(is_hex_lcc_id("0"))
-        self.assertFalse(is_hex_lcc_id("_02015700049C"))  # contains start character
-        self.assertFalse(is_hex_lcc_id("org_product_02015700049C"))  # service name not split
+        self.assertFalse(is_hex_lcc_id("_02015700049C"))  # contains start character  # noqa: E501
+        self.assertFalse(is_hex_lcc_id("org_product_02015700049C"))  # service name not split  # noqa: E501
 
     def test_dotted_lcc_id_to_hex(self):
         self.assertEqual(dotted_lcc_id_to_hex("2.1.57.0.4.9C"),
@@ -56,14 +56,14 @@ class TestConventions(unittest.TestCase):
                          "02015700049C")  # converted to uppercase OK
 
         self.assertNotEqual(dotted_lcc_id_to_hex("02.01.57.00.04.9c"),
-                            "02015700049c")  # function should convert to uppercase
+                            "02015700049c")  # function should convert to uppercase  # noqa: E501
         self.assertIsNone(dotted_lcc_id_to_hex("02015700049C"))
         self.assertIsNone(dotted_lcc_id_to_hex("02015700049c"))
-        self.assertIsNone(dotted_lcc_id_to_hex("02"))  # only_hex_pairs yet too short
+        self.assertIsNone(dotted_lcc_id_to_hex("02"))  # only_hex_pairs yet too short  # noqa: E501
         self.assertIsNone(dotted_lcc_id_to_hex("02015700049C."))
         self.assertIsNone(dotted_lcc_id_to_hex("0"))
-        self.assertIsNone(dotted_lcc_id_to_hex("_02015700049C"))  # contains start character
-        self.assertIsNone(dotted_lcc_id_to_hex("org_product_02015700049C"))  # service name not split
+        self.assertIsNone(dotted_lcc_id_to_hex("_02015700049C"))  # contains start character  # noqa: E501
+        self.assertIsNone(dotted_lcc_id_to_hex("org_product_02015700049C"))  # service name not split  # noqa: E501
 
     def test_is_dotted_lcc_id(self):
         self.assertTrue(is_dotted_lcc_id("02.01.57.00.04.9C"))
