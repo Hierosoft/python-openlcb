@@ -171,47 +171,56 @@ class CanLink(LinkLayer):
         so that defineAndReserveAlias is non-blocking.
 
         Attributes:
-            AllocatingAlias (State): Waiting for send of the last
-                reservation packet (after collision detection fully
-                done) to be success (wait for socket to notify us,
-                sendAfter is not enough)
+            EnqueueAliasAllocationRequest (State): This state triggers
+                the first phase of the alias reservation process.
+                Normally set by calling defineAndReserveAlias. If
+                a collision occurs, processCollision increments the
+                alias before calling defineAndReserveAlias.
+
+            WaitingForSendCIDSequence (State): Waiting for send of the last
+                CID sequence packet (first phase of reserving an alias).
+                - The last frame sets state to WaitForAliases *after*
+                  sent by socket (wait for socket code in application or
+                  Dispatcher to notify us, sendAfter is too soon to be
+                  sure our 200ms delay starts after send).
+            EnqueueAliasReservation (State): After collision detection fully
+                determined to be success, this state triggers
+                _enqueueReserveID.
         """
         Initial = LinkLayer.State.Undefined.value  # special case of .Inhibited
         #   where init hasn't started.
         Inhibited = 2
         EnqueueAliasAllocationRequest = 3
-        # enqueueCIDSequence sets:
+        # _enqueueCIDSequence sets:
         BusyLocalCIDSequence = 4
         WaitingForSendCIDSequence = 5
-        WaitForAliases = 6  # queued via last frame it sends
-        EnqueueAliasReservation = 7  # called by pollState if got aliases
-        #  (or after fixed delay if require_remote_nodes is False)
-        # enqueueReserveID sets:
+        WaitForAliases = 6  # queued via frame
+        EnqueueAliasReservation = 7  # called by pollState (see comments there)
+        # _enqueueReserveID sets:
         BusyLocalReserveID = 8
         WaitingForSendReserveID = 9
-
-        NotifyAliasReservation = 14
-
+        NotifyAliasReservation = 14  # queued via frame
+        # _notifyReservation sets:
         BusyLocalNotifyReservation = 11
         WaitingForLocalNotifyReservation = 12
-        RecordAliasReservation = 13
-
-
+        RecordAliasReservation = 13  # queued via frame
+        # _recordReservation sets:
         BusyLocalMappingAlias = 18
-        Permitted = 20  # formerly 3
+        Permitted = 20  # formerly 3. queued via frame
+        # (formerly set at end of _notifyReservation code)
 
     def _onStateChanged(self, _, newState):
         # return super()._onStateChanged(oldState, newState)
         assert isinstance(newState, CanLink.State)
         if newState == CanLink.State.EnqueueAliasAllocationRequest:
-            self.enqueueCIDSequence()
+            self._enqueueCIDSequence()
             # - sets state to BusyLocalCIDSequence
             # - then at the end to WaitingForSendCIDSequence
             # - then a packet sent sets state to WaitForAliases
             # - then if wait is over,
             #   pollState sets state to EnqueueAliasReservation
         elif newState == CanLink.State.EnqueueAliasReservation:
-            self.enqueueReserveID()  # sets _state to
+            self._enqueueReserveID()  # sets _state to
             # - BusyLocalReserveID
             # - WaitingForSendReserveID
             # - NotifyAliasReservation (queued for after frame is sent)
@@ -303,12 +312,8 @@ class CanLink(LinkLayer):
         """
         # start the alias allocation in Inhibited state
         self._state = CanLink.State.Inhibited
-        if self.defineAndReserveAlias():
-            print("[CanLink] Notifying upper layers of LinkUp.")
-        else:
-            logger.warning(
-                "[CanLink] Not notifying upper layers of LinkUp"
-                " since reserve alias failed (will retry).")
+        self.defineAndReserveAlias()
+        print("[CanLink] done calling defineAndReserveAlias.")
 
     def handleReceivedLinkRestarted(self, frame):
         """Send a LinkRestarted message upstream.
@@ -323,7 +328,7 @@ class CanLink(LinkLayer):
     def defineAndReserveAlias(self):
         self.setState(CanLink.State.EnqueueAliasAllocationRequest)
     #
-    # Use self.enqueueCIDSequence() instead,
+    # Use self._enqueueCIDSequence() instead,
     # but actually trigger it in _onStateChanged
     # via setState(CanLink.State.EnqueueAliasAllocationRequest)
     # self.sendAliasAllocationSequence()
@@ -878,7 +883,7 @@ class CanLink(LinkLayer):
         self.defineAndReserveAlias()
 
     # def sendAliasAllocationSequence(self):
-    #     # actually, call self.enqueueCIDSequence()  # sets _state and sends data
+    #     # actually, call self._enqueueCIDSequence()  # sets _state and sends data
     #     raise DeprecationWarning("Use setState to BusyLocalCIDSequence instead.")
 
     def pollState(self):
@@ -898,7 +903,13 @@ class CanLink(LinkLayer):
             socket calls.
         """
         assert isinstance(self._state, CanLink.State)
-        if self._state == CanLink.State.WaitForAliases:
+        if self._state in (CanLink.State.Inhibited, CanLink.State.Initial):
+            # Do nothing. Dispatcher or application must first call
+            # physicalLayerUp
+            # - which triggers handleReceivedLinkUp
+            #   - which calls defineAndReserveAlias
+            pass
+        elif self._state == CanLink.State.WaitForAliases:
             if self._waitingForAliasStart is None:
                 self._waitingForAliasStart = default_timer()
             else:
@@ -914,12 +925,10 @@ class CanLink(LinkLayer):
                             " (permissive) behavior")
                     # finish the sends for the alias reservation:
                     self.setState(CanLink.State.EnqueueAliasReservation)
-        elif self._state == CanLink.State.RecordAliasReservation:
-            self.finalizeAlias()
 
         return self.getState()
 
-    def enqueueCIDSequence(self):
+    def _enqueueCIDSequence(self):
         """Enqueue the four alias reservation step1 frames
         (N_cid values 7, 6, 5, 4 respectively)
         It is the responsibility of the application code
@@ -947,7 +956,7 @@ class CanLink(LinkLayer):
         self._previousLocalAliasSeed = self._localAliasSeed
         self.setState(CanLink.State.WaitingForSendCIDSequence)
 
-    def enqueueReserveID(self):
+    def _enqueueReserveID(self):
         """Send Reserve ID (RID)
         If no collision after `CanLink.ALIAS_RESPONSE_DELAY`,
         but this will not be called in no-response case if
