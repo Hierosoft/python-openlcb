@@ -34,6 +34,14 @@ class TestMTIClass(unittest.TestCase):
         self.assertTrue(MTI.Link_Layer_Down.isGlobal())
         # ^ needs to be global so all node implementations see it
 
+    def testEnum(self):
+        usedValues = set()
+        # ensure values are unique:
+        for entry in MTI:
+            self.assertNotIn(entry.value, usedValues)
+            usedValues.add(entry.value)
+            # print('{} = {}'.format(entry.name, entry.value))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -12,6 +12,8 @@ host|host:port            (optional) Set the address (or using a colon,
 '''
 # region same code as other examples
 from examples_settings import Settings  # do 1st to fix path if no pip install
+from openlcb import precise_sleep
+from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.gridconnectobserver import GridConnectObserver
 from openlcb.tcplink.tcpsocket import TcpSocket
 settings = Settings()
@@ -51,10 +53,12 @@ sock.connect(settings['host'], settings['port'])
 #      " RL, SL are link interface; RM, SM are message interface")
 
 
-def sendToSocket(frame):
+def sendToSocket(frame: CanFrame):
     string = frame.encodeAsString()
     # print("      SR: {}".format(string.strip()))
     sock.sendString(string)
+    if frame.afterSendState:
+        canLink.setState(frame.afterSendState)
 
 
 def printFrame(frame):
@@ -234,6 +238,8 @@ def processXML(content) :
 # print("      SL : link up")
 canPhysicalLayerGridConnect.physicalLayerUp()
 
+while canLink.pollState() != CanLink.State.Permitted:
+    precise_sleep(.02)
 
 def memoryRead():
     """Create and send a read datagram.
@@ -248,7 +254,7 @@ def memoryRead():
     #   Standard, but wait slightly more for OS latency.
     #   - Then wait longer below if there was a failure/retry, before
     #     trying to use the LCC network:
-    while canLink.state != CanLink.State.Permitted:
+    while canLink._state != CanLink.State.Permitted:
         # Would only take more than ~200ms (possibly a few nanoseconds
         #   more for latency on the part of this program itself)
         #   if multiple alias collisions
@@ -280,3 +286,5 @@ while True:
             # ^ commented since MyHandler shows parsed XML fields instead
     # pass to link processor
     canPhysicalLayerGridConnect.pushChars(received)
+
+canLink.onDisconnect()

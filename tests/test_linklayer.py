@@ -26,6 +26,13 @@ class TestLinkLayerClass(unittest.TestCase):
 
         self.assertTrue(self.received)
 
+    def testEnum(self):
+        usedValues = set()
+        # ensure values are unique:
+        for entry in LinkLayer.State:
+            self.assertNotIn(entry.value, usedValues)
+            usedValues.add(entry.value)
+            # print('{} = {}'.format(entry.name, entry.value))
 
 if __name__ == '__main__':
     unittest.main()

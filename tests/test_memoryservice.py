@@ -41,6 +41,10 @@ class LinkMockLayer(LinkLayer):
     def sendMessage(self, message):
         LinkMockLayer.sentMessages.append(message)
 
+    def _onStateChanged(self, oldState, newState):
+        print(f"State changed from {oldState} to {newState}"
+              " (nothing to clean up since LinkMockLayer).")
+
 
 class TestMemoryServiceClass(unittest.TestCase):
 

@@ -9,7 +9,7 @@ logger = getLogger(__name__)
 
 
 class NoEncoder:
-    def encodeFrameAsString(self, _):
+    def encodeFrameAsString(self, _) -> str:
         raise AssertionError(
             "You must set encoder on frame to a PhysicalLayer instance"
             " or class that has an encodeFrameAsString method that accepts"
@@ -55,6 +55,10 @@ class CanFrame:
             PhysicalLayer subclass, since that layer determines
             the encoding). Must have an encodeFrameAsString method that
             accepts a CanFrame.
+        afterSendState (CanLink.State, optional): The frame incurs
+            a new state in the CanLink instance *after* socket send is
+            *complete*, at which time the PortInterface should call
+            setState(frame.afterSendState).
     """
 
     ARG_LISTS = [
@@ -80,14 +84,15 @@ class CanFrame:
             list(self.data),  # cast to list to format bytearray(b'') as []
         )
 
-    def encodeAsString(self):
+    def encodeAsString(self) -> str:
         return self.encoder.encodeFrameAsString(self)
 
     @property
     def alias(self) -> int:
         return self._alias
 
-    def __init__(self, *args):
+    def __init__(self, *args, afterSendState=None):
+        self.afterSendState = afterSendState
         self.encoder = NoEncoder()
         arg1 = None
         arg2 = None
@@ -120,13 +125,15 @@ class CanFrame:
             nodeID = arg2
             self._alias = arg3
 
-            nodeCode = ((nodeID.nodeId >> ((cid-4)*12)) & 0xFFF)
+            nodeCode = ((nodeID.value >> ((cid-4)*12)) & 0xFFF)
             # ^ cid-4 results in 0 to 3. *12 results in 0 to 36 bit shift (nodeID size)  # noqa: E501
             self.header = ((cid << 12) | nodeCode) << 12 | (self._alias & 0xFFF) | 0x10_00_00_00  # noqa: E501
             # self.data = bytearray()
 
         # two arguments as header, data
         elif isinstance(arg2, bytearray):
+            # TODO: decode (header?) if self._alias is necessary in this case,
+            #   otherwise is remains None!
             if not isinstance(arg1, int):
                 args_error = "Expected int since 2nd argument is bytearray."
             # Types of both args are enforced by this point.

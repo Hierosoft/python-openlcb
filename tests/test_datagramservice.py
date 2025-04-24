@@ -17,6 +17,10 @@ class LinkMockLayer(LinkLayer):
     def sendMessage(self, message):
         LinkMockLayer.sentMessages.append(message)
 
+    def _onStateChanged(self, oldState, newState):
+        print(f"[TcpLink] _onStateChanged from {oldState} to {newState}"
+              " (nothing to clean up since LinkMockLayer)")
+
 
 class DatagramServiceTest(unittest.TestCase):
     def setUp(self):
@@ -167,6 +171,13 @@ class DatagramServiceTest(unittest.TestCase):
         # check message came through
         self.assertEqual(len(LinkMockLayer.sentMessages), 1)
 
+    def testEnum(self):
+        usedValues = set()
+        # ensure values are unique:
+        for entry in DatagramService.ProtocolID:
+            self.assertNotIn(entry.value, usedValues)
+            usedValues.add(entry.value)
+            # print('{} = {}'.format(entry.name, entry.value))
 
 if __name__ == '__main__':
     unittest.main()

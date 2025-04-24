@@ -1,0 +1,20 @@
+import unittest
+
+from openlcb.dispatcher import Dispatcher
+
+
+class DispatcherTest(unittest.TestCase):
+    def setUp(self):
+        pass
+
+    def testEnum(self):
+        usedValues = set()
+        # ensure values are unique:
+        for entry in Dispatcher.Mode:
+            self.assertNotIn(entry.value, usedValues)
+            usedValues.add(entry.value)
+            # print('{} = {}'.format(entry.name, entry.value))
+
+
+if __name__ == '__main__':
+    unittest.main()

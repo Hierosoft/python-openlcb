@@ -26,6 +26,12 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
         self.capturedFrame = frame
         self.capturedFrame.encoder = self.gc
 
+        if frame.afterSendState:
+            pass
+            # NOTE: skipping canLink.setState since testing only
+            # physical layer not link layer.
+            #     canLink.setState(frame.afterSendState)
+
     # Link Layer side
     def receiveListener(self, frame):
         self.receivedFrames += [frame]

@@ -12,6 +12,7 @@ host|host:port            (optional) Set the address (or using a colon,
 '''
 # region same code as other examples
 from examples_settings import Settings
+from openlcb import precise_sleep
 from openlcb.canbus.gridconnectobserver import GridConnectObserver  # do 1st to fix path if no pip install
 settings = Settings()
 
@@ -62,6 +63,8 @@ def sendToSocket(frame) :
     string = frame.encodeAsString()
     if settings['trace'] : print("   SR: "+string.strip())
     sock.sendString(string)
+    if frame.afterSendState:
+        canLink.setState(frame.afterSendState)
 
 
 def receiveFrame(frame) :
@@ -113,6 +116,9 @@ def receiveLoop() :
     # bring the CAN level up
     if settings['trace'] : print("      SL : link up")
     canPhysicalLayerGridConnect.physicalLayerUp()
+    while canLink.pollState() != CanLink.State.Permitted:
+        precise_sleep(.02)
+
     while True:
         received = sock.receive()
         if settings['trace']:
@@ -193,3 +199,5 @@ for node in remoteNodeStore.asArray() :
           node.snip.userProvidedNodeName)
 
 # this ends here, which takes the local node offline
+
+canLink.onDisconnect()

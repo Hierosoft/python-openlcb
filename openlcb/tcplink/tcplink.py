@@ -49,6 +49,10 @@ class TcpLink(LinkLayer):
         """
         self.linkCall = lpl
 
+    def _onStateChanged(self, oldState, newState):
+        print(f"[TcpLink] _onStateChanged from {oldState} to {newState}"
+              " (nothing to do since TcpLink)")
+
     def receiveListener(self, inputData):  # [] input
         """Receives bytes from lower level
         and accumulates them into individual message parts.
@@ -56,6 +60,7 @@ class TcpLink(LinkLayer):
         Args:
             inputData ([int]) : next chunk of the input stream
         """
+        assert isinstance(inputData, bytearray)
         self.accumulatedData.extend(inputData)
         # Now check it if has one or more complete message.
         while len(self.accumulatedData) > 0 :

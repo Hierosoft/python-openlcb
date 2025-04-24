@@ -15,6 +15,10 @@ class LinkMockLayer(LinkLayer):
     def sendMessage(self, message):
         LinkMockLayer.sentMessages.append(message)
 
+    def _onStateChanged(self, oldState, newState):
+        print(f"[TcpLink] _onStateChanged from {oldState} to {newState}"
+              " (nothing to clean up since LinkMockLayer)")
+
 
 class TestLocalNodeProcessorClass(unittest.TestCase):
 

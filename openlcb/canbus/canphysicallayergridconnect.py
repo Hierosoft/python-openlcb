@@ -28,10 +28,13 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
             on failure so that sendAliasAllocationSequence is
             interrupted in order to prevent canlink.state from
             proceeding to CanLink.State.Permitted)
+        waitForSendCallback (callable): This *must* be a thread-blocking
+            callback so that the caller knows the timeline for when to
+            expect a response (Since that would be sometime after the
+            actual socket sends all queued frame(s)).
     """
-
-    def __init__(self, callback):
-        CanPhysicalLayer.__init__(self)
+    def __init__(self, callback, waitForSendCallback):
+        CanPhysicalLayer.__init__(self, waitForSendCallback)
         self.setCallBack(callback)
         self.inboundBuffer = bytearray()
 

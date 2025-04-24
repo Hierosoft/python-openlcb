@@ -44,6 +44,8 @@ def sendToSocket(frame):
     string = frame.encodeAsString()
     print("   SR: {}".format(string.strip()))
     sock.sendString(string)
+    if frame.afterSendState:
+        canLink.setState(frame.afterSendState)
 
 
 def printFrame(frame):

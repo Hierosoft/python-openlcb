@@ -19,6 +19,7 @@ if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
+from openlcb import precise_sleep
 from openlcb.canbus.gridconnectobserver import GridConnectObserver
 from openlcb.tcplink.tcpsocket import TcpSocket
 
@@ -49,6 +50,8 @@ def sendToSocket(frame):
     string = frame.encodeAsString()
     print("      SR: {}".format(string.strip()))
     sock.sendString(string)
+    if frame.afterSendState:
+        canLink.setState(frame.afterSendState)
 
 
 def printFrame(frame):
@@ -72,6 +75,8 @@ canLink.registerMessageReceivedListener(printMessage)
 # have the socket layer report up to bring the link layer up and get an alias
 print("      SL : link up")
 canPhysicalLayerGridConnect.physicalLayerUp()
+while canLink.pollState() != CanLink.State.Permitted:
+    precise_sleep(.02)
 
 # send an VerifyNodes message to provoke response
 message = Message(MTI.Verify_NodeID_Number_Global,
@@ -91,3 +96,5 @@ while True:
             print("   RR: "+packet_str.strip())
     # pass to link processor
     canPhysicalLayerGridConnect.pushChars(received)
+
+canLink.onDisconnect()

@@ -19,5 +19,9 @@ class PhysicalLayer:
         """abstract method"""
         raise NotImplementedError("Each subclass must implement this.")
 
-    def encodeFrameAsString(self, frame):
+    def waitForSend(self):
+        """abstract method (*must* block thread: See implementation(s))"""
+        raise NotImplementedError("Each subclass must implement this.")
+
+    def encodeFrameAsString(self, frame) -> str:
         raise NotImplementedError("Each subclass must implement this.")

@@ -15,7 +15,11 @@ class TesRemoteNodeProcessorClass(unittest.TestCase):
 
     def setUp(self) :
         self.node21 = Node(NodeID(21))
-        self.processor = RemoteNodeProcessor(CanLink(NodeID(100)))
+        self.canLink = CanLink(NodeID(100))
+        self.processor = RemoteNodeProcessor(self.canLink)
+
+    def tearDown(self):
+        self.canLink.onDisconnect()
 
     def testInitializationComplete(self) :
         # not related to node

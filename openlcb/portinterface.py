@@ -28,6 +28,8 @@ class PortInterface:
       once (on different threads), which would cause undefined behavior
       (in OS-level implementation of serial port or socket).
     """
+    # FIXME: enforce frame.afterSendState (and deprecate waitForSend in
+    #   sendAliasAllocationSequence)
     ports = []
 
     def __init__(self):

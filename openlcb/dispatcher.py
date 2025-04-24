@@ -207,6 +207,9 @@ class Dispatcher(xml.sax.handler.ContentHandler):
 
         self._callback_status("physicalLayerUp...")
         self._canPhysicalLayerGridConnect.physicalLayerUp()
+        while canLink.pollState() != CanLink.State.Permitted:
+            precise_sleep(.02)
+
         # ^ triggers fireListeners which calls CanLink's default
         #   receiveListener by default since added on CanPhysicalLayer
         #   arg of linkPhysicalLayer.
@@ -255,15 +258,17 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                         #   (causes undefined behavior)!
                         frame = self._sends.pop()
                         if isinstance(frame, CanFrame):
-                            if frame.alias in self._canLink.duplicateAliases:
+                            if self._canLink.isDuplicateAlias(frame.alias):
                                 logger.warning(
-                                    "Discarded remnant of previous"
+                                    "Discarded frame from a previous"
                                     " alias reservation attempt"
                                     " (duplicate alias={})"
                                     .format(frame.alias))
                                 continue
                             logger.debug("[_listen] _sendString...")
                             self._port.sendString(frame.encodeAsString())
+                            if frame.afterSendState:
+                                self._canLink.setState(frame.afterSendState)
                         else:
                             raise NotImplementedError(
                                 "Event type {} is not handled."
@@ -287,7 +292,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                 #   via registerFrameReceivedListener during connect.
                 precise_sleep(.01)  # let processor sleep briefly before read
                 if time.perf_counter() - self._connecting_t > .2:
-                    if self._canLink.state != CanLink.State.Permitted:
+                    if self._canLink._state != CanLink.State.Permitted:
                         if ((self._message_t is None)
                                 or (time.perf_counter() - self._message_t
                                     > 1)):
@@ -316,6 +321,8 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                     self._element_listener(event_d)
                 self._mode = Dispatcher.Mode.Disconnected
                 raise  # re-raise since incomplete (prevent done OK state)
+        finally:
+            self._canLink.onDisconnect()
         self._listen_thread = None
 
         self._mode = Dispatcher.Mode.Disconnected

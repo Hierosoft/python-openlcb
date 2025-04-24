@@ -544,7 +544,7 @@ class MainForm(ttk.Frame):
         Therefore in this program, this is triggered during _listen in
         Dispatcher: Connecting is actually done until
         sendAliasAllocationSequence detects success and marks
-        canLink.state to CanLink.State.Permitted (which triggers
+        canLink._state to CanLink.State.Permitted (which triggers
         _handleMessage which calls this).
         - May also be directly called by _listen directly in case
           stopped listening (RuntimeError reading port, or other reason

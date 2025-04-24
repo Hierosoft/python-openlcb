@@ -183,3 +183,4 @@ cython_debug/
 /build
 /doc/_autosummary
 /examples/settings.json
+/.venv-3.12/

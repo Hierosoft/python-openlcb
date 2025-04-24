@@ -67,7 +67,7 @@ class Node:
         return hash(self.id)
 
     def __gt__(lhs, rhs):
-        return lhs.id.nodeId > rhs.id.nodeId
+        return lhs.id.value > rhs.id.value
 
     def __lt__(lhs, rhs):
-        return lhs.id.nodeId < rhs.id.nodeId
+        return lhs.id.value < rhs.id.value

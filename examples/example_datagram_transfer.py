@@ -11,6 +11,7 @@ host|host:port            (optional) Set the address (or using a colon,
 '''
 # region same code as other examples
 from examples_settings import Settings
+from openlcb import precise_sleep
 from openlcb.canbus.gridconnectobserver import GridConnectObserver  # do 1st to fix path if no pip install
 settings = Settings()
 
@@ -51,6 +52,8 @@ def sendToSocket(frame):
     string = frame.encodeAsString()
     print("      SR: "+string.strip())
     sock.sendString(string)
+    if frame.afterSendState:
+        canLink.setState(frame.afterSendState)
 
 
 def printFrame(frame):
@@ -99,6 +102,8 @@ datagramService.registerDatagramReceivedListener(datagramReceiver)
 # have the socket layer report up to bring the link layer up and get an alias
 print("      SL : link up")
 canPhysicalLayerGridConnect.physicalLayerUp()
+while canLink.pollState() != CanLink.State.Permitted:
+    precise_sleep(.02)
 
 
 def datagramWrite():
@@ -133,3 +138,6 @@ while True:
             print("   RR: "+packet_str.strip())
     # pass to link processor
     canPhysicalLayerGridConnect.pushChars(received)
+    canLink.pollState()
+
+canLink.onDisconnect()
