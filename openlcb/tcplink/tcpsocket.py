@@ -55,6 +55,7 @@ class TcpSocket(PortInterface):
         #   don't access port (part of missing implementation discussed
         #   in issue #62). This requires a loop with both send and recv
         #   (sleep on BlockingIOError to use less CPU).
+        self.setState...
 
     def _send(self, data: Union[bytes, bytearray]):
         """Send a single message (bytes)

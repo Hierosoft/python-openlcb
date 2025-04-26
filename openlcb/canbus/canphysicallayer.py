@@ -25,7 +25,8 @@ class CanPhysicalLayer(PhysicalLayer):
         This implementation behaves the same except requires
         a specific type (CanFrame).
         """
-        # formerly sendCanFrame, but now behavior is defined by superclass.
+        # formerly sendCan Frame, but now behavior is defined by superclass
+        #   (regardless of frame type, it is just added to self._sends)
         assert isinstance(frame, CanFrame)
         PhysicalLayer.sendFrameAfter(self, frame)
 

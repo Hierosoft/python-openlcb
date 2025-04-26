@@ -60,8 +60,8 @@ def printFrame(frame):
     print("   RL: "+str(frame))
 
 
-canPhysicalLayerGridConnect = CanPhysicalLayerGridConnect(sendToSocket)
-canPhysicalLayerGridConnect.registerFrameReceivedListener(printFrame)
+physicalLayer = CanPhysicalLayerGridConnect(sendToSocket)
+physicalLayer.registerFrameReceivedListener(printFrame)
 
 
 def printMessage(message):
@@ -69,7 +69,7 @@ def printMessage(message):
 
 
 canLink = CanLink(NodeID(localNodeID))
-canLink.linkPhysicalLayer(canPhysicalLayerGridConnect)
+canLink.linkPhysicalLayer(physicalLayer)
 canLink.registerMessageReceivedListener(printMessage)
 
 datagramService = DatagramService(canLink)
@@ -101,7 +101,7 @@ datagramService.registerDatagramReceivedListener(datagramReceiver)
 
 # have the socket layer report up to bring the link layer up and get an alias
 print("      SL : link up")
-canPhysicalLayerGridConnect.physicalLayerUp()
+physicalLayer.physicalLayerUp()
 while canLink.pollState() != CanLink.State.Permitted:
     precise_sleep(.02)
 
@@ -137,7 +137,7 @@ while True:
             packet_str = observer.next()
             print("   RR: "+packet_str.strip())
     # pass to link processor
-    canPhysicalLayerGridConnect.processChars(received)
+    physicalLayer.handleData(received)
     canLink.pollState()
 
 canLink.onDisconnect()

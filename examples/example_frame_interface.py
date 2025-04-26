@@ -52,13 +52,13 @@ def printFrame(frame):
     print("RL: {}".format(frame))
 
 
-canPhysicalLayerGridConnect = CanPhysicalLayerGridConnect(sendToSocket)
-canPhysicalLayerGridConnect.registerFrameReceivedListener(printFrame)
+physicalLayer = CanPhysicalLayerGridConnect(sendToSocket)
+physicalLayer.registerFrameReceivedListener(printFrame)
 
 # send an AME frame with arbitrary alias to provoke response
 frame = CanFrame(ControlFrame.AME.value, 1, bytearray())
 print("SL: {}".format(frame))
-canPhysicalLayerGridConnect.sendFrameAfter(frame)
+physicalLayer.sendFrameAfter(frame)
 
 observer = GridConnectObserver()
 
@@ -71,4 +71,4 @@ while True:
             packet_str = observer.next()
             print("   RR: "+packet_str.strip())
     # pass to link processor
-    canPhysicalLayerGridConnect.processChars(received)
+    physicalLayer.handleData(received)

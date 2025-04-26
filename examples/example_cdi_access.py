@@ -85,11 +85,11 @@ def printDatagram(memo):
     return False
 
 
-canPhysicalLayerGridConnect = CanPhysicalLayerGridConnect(sendToSocket)
-canPhysicalLayerGridConnect.registerFrameReceivedListener(printFrame)
+physicalLayer = CanPhysicalLayerGridConnect(sendToSocket)
+physicalLayer.registerFrameReceivedListener(printFrame)
 
 canLink = CanLink(NodeID(settings['localNodeID']))
-canLink.linkPhysicalLayer(canPhysicalLayerGridConnect)
+canLink.linkPhysicalLayer(physicalLayer)
 canLink.registerMessageReceivedListener(printMessage)
 
 datagramService = DatagramService(canLink)
@@ -236,7 +236,7 @@ def processXML(content) :
 
 # have the socket layer report up to bring the link layer up and get an alias
 # print("      SL : link up")
-canPhysicalLayerGridConnect.physicalLayerUp()
+physicalLayer.physicalLayerUp()
 
 while canLink.pollState() != CanLink.State.Permitted:
     precise_sleep(.02)
@@ -285,6 +285,6 @@ while True:
             # print("   RR: "+packet_str.strip())
             # ^ commented since MyHandler shows parsed XML fields instead
     # pass to link processor
-    canPhysicalLayerGridConnect.processChars(received)
+    physicalLayer.handleData(received)
 
 canLink.onDisconnect()

@@ -60,15 +60,16 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
         output += ";\n"
         return output
 
-    def processString(self, string: str):
+    def handleDataString(self, string: str):
         '''Provide string from the outside link to be parsed
 
         Args:
             string (str): A new UTF-8 string from outside link
         '''
-        self.processChars(string.encode("utf-8"))
+        # formerly pushString formerly receiveString
+        self.handleData(string.encode("utf-8"))
 
-    def processChars(self, data: Union[bytes, bytearray]):
+    def handleData(self, data: Union[bytes, bytearray]):
         """Provide characters from the outside link to be parsed
 
         Args:

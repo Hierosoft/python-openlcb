@@ -61,7 +61,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33, 0x36, 0x35,
             0x4e, GC_END_BYTE, 0x0a])  # :X19490365N;\n
 
-        self.gc.processChars(bytes)
+        self.gc.handleData(bytes)
 
         self.assertEqual(
             self.receivedFrames[0],
@@ -78,7 +78,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
             0x43, GC_END_BYTE])
         # :X19170365N020112FE056C;
 
-        self.gc.processChars(bytes)
+        self.gc.handleData(bytes)
 
         self.assertEqual(
             self.receivedFrames[0],
@@ -93,7 +93,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33, 0x36, 0x35,
             0x4e, GC_END_BYTE, 0x0a])  # :X19490365N;\n
 
-        self.gc.processChars(bytes+bytes)
+        self.gc.handleData(bytes+bytes)
 
         self.assertEqual(self.receivedFrames[0],
                          CanFrame(0x19490365, bytearray()))
@@ -107,7 +107,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33, 0x36,
             0x35, 0x4e, GC_END_BYTE, 0x0a,  # :X19490365N;\n
             0x3a, 0x58])
-        self.gc.processChars(bytes)
+        self.gc.handleData(bytes)
 
         self.assertEqual(self.receivedFrames[0],
                          CanFrame(0x19490365, bytearray()))
@@ -115,7 +115,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
         bytes = bytearray([
             0x31, 0x39, 0x34, 0x39, 0x30, 0x33,
             0x36, 0x35, 0x4e, GC_END_BYTE, 0x0a])
-        self.gc.processChars(bytes)
+        self.gc.handleData(bytes)
 
         self.assertEqual(self.receivedFrames[1],
                          CanFrame(0x19490365, bytearray()))
@@ -128,12 +128,12 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
             0x4e, 0x30])
         # :X19170365N020112FE056C;
 
-        self.gc.processChars(bytes1)
+        self.gc.handleData(bytes1)
 
         bytes2 = bytearray([
             0x32, 0x30, 0x31, 0x31, 0x32, 0x46, 0x45, 0x30, 0x35, 0x36,
             0x43, GC_END_BYTE])
-        self.gc.processChars(bytes2)
+        self.gc.handleData(bytes2)
 
         self.assertEqual(
             self.receivedFrames[0],
@@ -149,14 +149,14 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
             0x36, 0x35, 0x4e, GC_END_BYTE, 0x0a])
         # :X19490365N;\n
 
-        self.gc.processChars(bytes)
+        self.gc.handleData(bytes)
 
         self.assertEqual(len(self.receivedFrames), 1)
         self.assertEqual(self.receivedFrames[0],
                          CanFrame(0x19490365, bytearray()))
         self.receivedFrames = []
 
-        self.gc.processChars(bytes)
+        self.gc.handleData(bytes)
         self.assertEqual(len(self.receivedFrames), 1)
         self.assertEqual(self.receivedFrames[0],
                          CanFrame(0x19490365, bytearray()))

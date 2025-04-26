@@ -71,8 +71,8 @@ def receiveFrame(frame) :
     if settings['trace']: print("RL: "+str(frame))
 
 
-canPhysicalLayerGridConnect = CanPhysicalLayerGridConnect(sendToSocket)
-canPhysicalLayerGridConnect.registerFrameReceivedListener(receiveFrame)
+physicalLayer = CanPhysicalLayerGridConnect(sendToSocket)
+physicalLayer.registerFrameReceivedListener(receiveFrame)
 
 
 def printMessage(msg):
@@ -81,7 +81,7 @@ def printMessage(msg):
 
 
 canLink = CanLink(NodeID(settings['localNodeID']))
-canLink.linkPhysicalLayer(canPhysicalLayerGridConnect)
+canLink.linkPhysicalLayer(physicalLayer)
 canLink.registerMessageReceivedListener(printMessage)
 
 # create a node and connect it update
@@ -115,7 +115,7 @@ def receiveLoop() :
     """put the read on a separate thread"""
     # bring the CAN level up
     if settings['trace'] : print("      SL : link up")
-    canPhysicalLayerGridConnect.physicalLayerUp()
+    physicalLayer.physicalLayerUp()
     while canLink.pollState() != CanLink.State.Permitted:
         precise_sleep(.02)
 
@@ -127,7 +127,7 @@ def receiveLoop() :
                 packet_str = observer.next()
                 print("   RR: "+packet_str.strip())
         # pass to link processor
-        canPhysicalLayerGridConnect.processChars(received)
+        physicalLayer.handleData(received)
 
 
 import threading  # noqa E402

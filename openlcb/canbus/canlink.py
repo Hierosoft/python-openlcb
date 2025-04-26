@@ -882,7 +882,7 @@ class CanLink(LinkLayer):
     def pollState(self):
         """You must keep polling state after every time
         a state change frame is sent, and after
-        every call to processString or processChars
+        every call to handleDataString or handleData
         for the stack to keep operating.
         - calling this automatically *must not* be
           implemented there, because this exists to

@@ -287,7 +287,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                       file=sys.stderr)
                 # print("      RR: {}".format(received.strip()))
                 # pass to link processor
-                self._canPhysicalLayerGridConnect.processChars(received)
+                self._canPhysicalLayerGridConnect.handleData(received)
                 # ^ will trigger self._printFrame if that was added
                 #   via registerFrameReceivedListener during connect.
                 precise_sleep(.01)  # let processor sleep briefly before read
@@ -369,7 +369,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                 "No port connection. Call start_listening first.")
         if not self._canPhysicalLayerGridConnect:
             raise RuntimeError(
-                "No canPhysicalLayerGridConnect. Call start_listening first.")
+                "No physicalLayer. Call start_listening first.")
         self._cdi_offset = 0
         self._reset_tree()
         self._mode = Dispatcher.Mode.CDI
