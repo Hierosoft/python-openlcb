@@ -10,7 +10,9 @@ Works with frames like
 - :X19170365N020112FE056C;
 '''
 
+from collections import deque
 from typing import Union
+from openlcb.canbus.canlink import CanLink
 from openlcb.canbus.canphysicallayer import CanPhysicalLayer
 from openlcb.canbus.canframe import CanFrame
 
@@ -21,6 +23,10 @@ GC_END_BYTE = 0x3b  # ;
 class CanPhysicalLayerGridConnect(CanPhysicalLayer):
     """CAN physical layer subclass for GridConnect
 
+    This acts as frame.encoder for canLink, and manages the packet
+    _sends queue (deque is used for speed; defined & managed in base
+    class: PhysicalLayer)
+
     Args:
         callback (Callable): A string send method for the platform and
             hardware being used. It must be associated with an active
@@ -28,23 +34,23 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
             on failure so that sendAliasAllocationSequence is
             interrupted in order to prevent canlink.state from
             proceeding to CanLink.State.Permitted)
-        waitForSendCallback (callable): This *must* be a thread-blocking
-            callback so that the caller knows the timeline for when to
-            expect a response (Since that would be sometime after the
-            actual socket sends all queued frame(s)).
     """
-    def __init__(self, callback, waitForSendCallback):
-        CanPhysicalLayer.__init__(self, waitForSendCallback)
-        self.setCallBack(callback)
+    def __init__(self, canLink: CanLink):
+        assert hasattr(canLink, 'pollState')
+        CanPhysicalLayer.__init__(self)
+        # canLink.linkPhysicalLayer(self)  # self.setCallBack(callback)
+        canLink.physicalLayer = self
+        self.registerFrameReceivedListener(canLink.receiveListener)
+
         self.inboundBuffer = bytearray()
 
-    def setCallBack(self, callback):
-        assert callable(callback)
-        self.canSendCallback = callback
+    # def setCallBack(self, callback):
+    #     assert callable(callback)
+    #     self.canSendCallback = callback
 
-    def sendCanFrame(self, frame: CanFrame) -> None:
+    def sendFrameAfter(self, frame: CanFrame) -> None:
         frame.encoder = self
-        self.canSendCallback(frame)
+        self._sends.appendleft(frame)  # self.canSendCallback(frame)
 
     def encodeFrameAsString(self, frame) -> str:
         '''Encode frame to string.'''
@@ -54,15 +60,15 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
         output += ";\n"
         return output
 
-    def pushString(self, string: str):
+    def processString(self, string: str):
         '''Provide string from the outside link to be parsed
 
         Args:
             string (str): A new UTF-8 string from outside link
         '''
-        self.pushChars(string.encode("utf-8"))
+        self.processChars(string.encode("utf-8"))
 
-    def pushChars(self, data: Union[bytes, bytearray]):
+    def processChars(self, data: Union[bytes, bytearray]):
         """Provide characters from the outside link to be parsed
 
         Args:

@@ -73,6 +73,7 @@
 			"pythonopenlcb",
 			"remotenodeprocessor",
 			"remotenodestore",
+			"runlevel",
 			"servicetype",
 			"settingtypes",
 			"setuptools",

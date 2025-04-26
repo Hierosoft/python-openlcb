@@ -11,5 +11,5 @@ class CanPhysicalLayerSimulation(CanPhysicalLayer):
         self.receivedFrames = []
         CanPhysicalLayer.__init__(self)
 
-    def sendCanFrame(self, frame):
+    def sendFrameAfter(self, frame):
         self.receivedFrames.append(frame)

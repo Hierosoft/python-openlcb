@@ -58,7 +58,7 @@ canPhysicalLayerGridConnect.registerFrameReceivedListener(printFrame)
 # send an AME frame with arbitrary alias to provoke response
 frame = CanFrame(ControlFrame.AME.value, 1, bytearray())
 print("SL: {}".format(frame))
-canPhysicalLayerGridConnect.sendCanFrame(frame)
+canPhysicalLayerGridConnect.sendFrameAfter(frame)
 
 observer = GridConnectObserver()
 
@@ -71,4 +71,4 @@ while True:
             packet_str = observer.next()
             print("   RR: "+packet_str.strip())
     # pass to link processor
-    canPhysicalLayerGridConnect.pushChars(received)
+    canPhysicalLayerGridConnect.processChars(received)

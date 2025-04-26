@@ -7,7 +7,7 @@ implementation).
 Therefore, all port implementations must inherit this if threads are used,
 and threads must be used in a typical implementation
 - Unless: alias reservation sequence is split into separate events
-  and pushChars will run, in a non-blocking manner, before each send
+  and processChars will run, in a non-blocking manner, before each send
   call in defineAndReserveAlias.
 """
 from logging import getLogger
@@ -28,8 +28,6 @@ class PortInterface:
       once (on different threads), which would cause undefined behavior
       (in OS-level implementation of serial port or socket).
     """
-    # FIXME: enforce frame.afterSendState (and deprecate waitForSend in
-    #   sendAliasAllocationSequence)
     ports = []
 
     def __init__(self):
@@ -118,7 +116,7 @@ class PortInterface:
 
         Raises:
             InterruptedError: (raised by assertNotBusy) if
-                port is in use. Use sendAfter in
+                port is in use. Use sendFrameAfter in
                 Dispatcher to avoid this.
 
         Args:

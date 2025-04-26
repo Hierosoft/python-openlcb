@@ -14,30 +14,20 @@ class CanPhysicalLayer(PhysicalLayer):
     """Can implementation of PhysicalLayer, still partly abstract
     (No encodeFrameAsString, since this binary layer may be wrapped by
     the higher layer such as the text-based CanPhysicalLayerGridConnect)
-
-    Args:
-        waitForSendCallback (callable): This *must* be a thread-blocking
-            callback so that the caller knows the timeline for when to
-            expect a response.
     """
 
-    def __init__(self, waitForSendCallback):
+    def __init__(self,):
+        PhysicalLayer.__init__(self)
         self.listeners = []
-        if not waitForSendCallback:
-            raise ValueError("Provide a blocking waitForSend function")
-        sys.stderr.write("Validating waitForSendCallback...")
-        sys.stderr.flush()
-        waitForSendCallback()  # asserts that the callback works.
-        #  If it raises an error or halts the program, the value is bad
-        #    (The application code is incorrect, so prevent startup).
-        print("OK", file=sys.stderr)
-        self.waitForSend = waitForSendCallback
 
-    def sendCanFrame(self, frame: CanFrame):
-        '''basic abstract interface'''
-        raise NotImplementedError(
-            "Each subclass must implement this, and set"
-            "  frame.encoder = self")
+    def sendFrameAfter(self, frame: CanFrame):
+        """See sendFrameAfter documentation in PhysicalLayer.
+        This implementation behaves the same except requires
+        a specific type (CanFrame).
+        """
+        # formerly sendCanFrame, but now behavior is defined by superclass.
+        assert isinstance(frame, CanFrame)
+        PhysicalLayer.sendFrameAfter(self, frame)
 
     def encode(self, frame) -> str:
         '''abstract interface (encode frame to string)'''

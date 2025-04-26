@@ -137,7 +137,7 @@ while True:
             packet_str = observer.next()
             print("   RR: "+packet_str.strip())
     # pass to link processor
-    canPhysicalLayerGridConnect.pushChars(received)
+    canPhysicalLayerGridConnect.processChars(received)
     canLink.pollState()
 
 canLink.onDisconnect()

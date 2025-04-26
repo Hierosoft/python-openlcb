@@ -108,7 +108,6 @@ class Dispatcher(xml.sax.handler.ContentHandler):
         self._my_cache_dir = os.path.join(caches_dir, "python-openlcb")
         self._element_listener = None
         self._connect_listener = None
-        self._sends = deque()
         self._mode = Dispatcher.Mode.Initializing
         # ^ In case some parsing step happens early,
         #   prepare these for _callback_msg.
@@ -165,7 +164,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
         self._port = connected_port
         self._callback_status("CanPhysicalLayerGridConnect...")
         self._canPhysicalLayerGridConnect = \
-            CanPhysicalLayerGridConnect(self.sendAfter)
+            CanPhysicalLayerGridConnect(self.sendFrameAfter)
 
         # self._canPhysicalLayerGridConnect.registerFrameReceivedListener(
         #     self._printFrame
@@ -252,11 +251,12 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                 #   Frame Transfer Standard (sendMessage requires )
                 logger.debug("[_listen] _receive...")
                 try:
-                    while self._sends:
+                    sends = self._canPhysicalLayerGridConnect.popFrames()
+                    while sends:
                         # *Always* do send in the receive thread to
                         #   avoid overlapping calls to socket
                         #   (causes undefined behavior)!
-                        frame = self._sends.pop()
+                        frame = sends.pop()
                         if isinstance(frame, CanFrame):
                             if self._canLink.isDuplicateAlias(frame.alias):
                                 logger.warning(
@@ -287,7 +287,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                       file=sys.stderr)
                 # print("      RR: {}".format(received.strip()))
                 # pass to link processor
-                self._canPhysicalLayerGridConnect.pushChars(received)
+                self._canPhysicalLayerGridConnect.processChars(received)
                 # ^ will trigger self._printFrame if that was added
                 #   via registerFrameReceivedListener during connect.
                 precise_sleep(.01)  # let processor sleep briefly before read
@@ -382,23 +382,10 @@ class Dispatcher(xml.sax.handler.ContentHandler):
         # ^ On a successful memory read, _memoryReadSuccess will trigger
         #   _memoryRead again and again until end/fail.
 
-    def _sendToPort(self, string):
-        # print("      SR: {}".format(string.strip()))
-        self.sendAfter(string)
-
-    def sendAfter(self, string):
-        """Enqueue: *IMPORTANT* Main/other thread may have
-        called this, or called this via _sendToPort. Any other thread
-        sending other than the _listen thread is bad, since overlapping
-        calls to socket cause undefined behavior.
-        - CanPhysicalLayerGridConnect constructor sets
-          canSendCallback, and CanLink sets canSendCallback to this
-          (formerly set to _sendToPort which was formerly a direct call
-          to _port which was not thread-safe)
-        - Could a refactor help with this? See issue #62
-          - Add a generalized LocalEvent queue avoid deep callstack?
-        """
-        self._sends.appendleft(string)
+    # def _sendToPort(self, string):
+    #     # print("      SR: {}".format(string.strip()))
+    #     DeprecationWarning("Use a PhysicalLayer subclass' sendFrameAfter")
+    #     self.sendFrameAfter(string)
 
     # def _printFrame(self, frame):
     #     # print("   RL: {}".format(frame))
