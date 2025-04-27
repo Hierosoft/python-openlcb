@@ -88,9 +88,9 @@ class TestCanLinkClass(unittest.TestCase):
 
     # MARK: - Test PHY Up
     def testLinkUpSequence(self):
-        canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"), require_remote_nodes=False)
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+         = CanPhysicalLayerSimulation()
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"),
+                          require_remote_nodes=False)
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
@@ -107,8 +107,7 @@ class TestCanLinkClass(unittest.TestCase):
     # MARK: - Test PHY Down, Up, Error Information
     def testLinkDownSequence(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
         canLink._state = CanLink.State.Permitted
@@ -121,8 +120,7 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testEIR2NoData(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
         canLink._state = CanLink.State.Permitted
 
         canPhysicalLayer.fireListeners(CanFrame(ControlFrame.EIR2.value, 0))
@@ -132,8 +130,7 @@ class TestCanLinkClass(unittest.TestCase):
     # MARK: - Test AME (Local Node)
     def testAMENoData(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
         canLink._state = CanLink.State.Permitted
 
@@ -148,8 +145,7 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testAMEnoDataInhibited(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
         canLink._state = CanLink.State.Inhibited
 
         canPhysicalLayer.fireListeners(CanFrame(ControlFrame.AME.value, 0))
@@ -158,9 +154,8 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testAMEMatchEvent(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
-        canLink.linkPhysicalLayer(canPhysicalLayer)
         canLink._state = CanLink.State.Permitted
 
         frame = CanFrame(ControlFrame.AME.value, 0)
@@ -174,8 +169,7 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testAMENotMatchEvent(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
         canLink._state = CanLink.State.Permitted
 
         frame = CanFrame(ControlFrame.AME.value, 0)
@@ -187,9 +181,8 @@ class TestCanLinkClass(unittest.TestCase):
     # MARK: - Test Alias Collisions (Local Node)
     def testCIDreceivedMatch(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
-        canLink.linkPhysicalLayer(canPhysicalLayer)
         canLink._state = CanLink.State.Permitted
 
         canPhysicalLayer.fireListeners(CanFrame(7, canLink.localNodeID,
@@ -201,9 +194,8 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testRIDreceivedMatch(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
-        canLink.linkPhysicalLayer(canPhysicalLayer)
         canLink._state = CanLink.State.Permitted
 
         canPhysicalLayer.fireListeners(CanFrame(ControlFrame.RID.value,
@@ -272,8 +264,7 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testSimpleGlobalData(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
         canLink._state = CanLink.State.Permitted
@@ -302,8 +293,7 @@ class TestCanLinkClass(unittest.TestCase):
         # This tests that a VerifiedNode will update that.
 
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
         canLink._state = CanLink.State.Permitted
@@ -331,8 +321,7 @@ class TestCanLinkClass(unittest.TestCase):
         '''
 
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
         canLink._state = CanLink.State.Permitted
@@ -356,8 +345,8 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testSimpleAddressedData(self):  # Test start=yes, end=yes frame
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"), require_remote_nodes=False)
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"),
+                          require_remote_nodes=False)
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
@@ -393,8 +382,8 @@ class TestCanLinkClass(unittest.TestCase):
     def testSimpleAddressedDataNoAliasYet(self):
         '''Test start=yes, end=yes frame with no alias match'''
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"), require_remote_nodes=False)
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"),
+                          require_remote_nodes=False)
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
@@ -432,8 +421,8 @@ class TestCanLinkClass(unittest.TestCase):
         Test message in 3 frames
         '''
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"), require_remote_nodes=False)
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"),
+                          require_remote_nodes=False)
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
@@ -476,8 +465,8 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testSimpleDatagram(self):  # Test start=yes, end=yes frame
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"), require_remote_nodes=False)
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"),
+                          require_remote_nodes=False)
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
@@ -515,8 +504,7 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testMultiFrameDatagram(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"), require_remote_nodes=False)
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"), require_remote_nodes=False)
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
@@ -568,8 +556,7 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testZeroLengthDatagram(self):
         canPhysicalLayer = PhyMockLayer()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
 
         message = Message(MTI.Datagram, NodeID("05.01.01.01.03.01"),
                           NodeID("05.01.01.01.03.01"))
@@ -583,8 +570,7 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testOneFrameDatagram(self):
         canPhysicalLayer = PhyMockLayer()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
 
         message = Message(MTI.Datagram, NodeID("05.01.01.01.03.01"),
                           NodeID("05.01.01.01.03.01"),
@@ -601,8 +587,7 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testTwoFrameDatagram(self):
         canPhysicalLayer = PhyMockLayer()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
 
         message = Message(MTI.Datagram, NodeID("05.01.01.01.03.01"),
                           NodeID("05.01.01.01.03.01"),
@@ -625,8 +610,7 @@ class TestCanLinkClass(unittest.TestCase):
     def testThreeFrameDatagram(self):
         # FIXME: Why was testThreeFrameDatagram named same? What should it be?
         canPhysicalLayer = PhyMockLayer()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
-        canLink.linkPhysicalLayer(canPhysicalLayer)
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
 
         message = Message(MTI.Datagram, NodeID("05.01.01.01.03.01"),
                           NodeID("05.01.01.01.03.01"),
@@ -652,9 +636,8 @@ class TestCanLinkClass(unittest.TestCase):
     # MARK: - Test Remote Node Alias Tracking
     def testAmdAmrSequence(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
+        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
-        canLink.linkPhysicalLayer(canPhysicalLayer)
 
         canPhysicalLayer.fireListeners(CanFrame(0x0701, ourAlias+1))
         # ^ AMD from some other alias

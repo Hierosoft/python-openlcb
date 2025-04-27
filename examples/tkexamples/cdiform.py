@@ -20,7 +20,10 @@ from xml.etree import ElementTree as ET
 
 from openlcb.dispatcher import element_to_dict
 
-logger = getLogger(__name__)
+if __name__ == "__main__":
+    logger = getLogger(__file__)
+else:
+    logger = getLogger(__name__)
 
 TKEXAMPLES_DIR = os.path.dirname(os.path.realpath(__file__))
 EXAMPLES_DIR = os.path.dirname(TKEXAMPLES_DIR)

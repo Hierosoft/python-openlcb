@@ -53,12 +53,12 @@ sock.connect(settings['host'], settings['port'])
 #      " RL, SL are link interface; RM, SM are message interface")
 
 
-def sendToSocket(frame: CanFrame):
-    string = frame.encodeAsString()
-    # print("      SR: {}".format(string.strip()))
-    sock.sendString(string)
-    if frame.afterSendState:
-        canLink.setState(frame.afterSendState)
+# def sendToSocket(frame: CanFrame):
+#     string = frame.encodeAsString()
+#     # print("      SR: {}".format(string.strip()))
+#     sock.sendString(string)
+#     if frame.afterSendState:
+#         canLink.setState(frame.afterSendState)
 
 
 def printFrame(frame):
@@ -85,11 +85,10 @@ def printDatagram(memo):
     return False
 
 
-physicalLayer = CanPhysicalLayerGridConnect(sendToSocket)
+physicalLayer = CanPhysicalLayerGridConnect()
 physicalLayer.registerFrameReceivedListener(printFrame)
 
-canLink = CanLink(NodeID(settings['localNodeID']))
-canLink.linkPhysicalLayer(physicalLayer)
+canLink = CanLink(physicalLayer, NodeID(settings['localNodeID']))
 canLink.registerMessageReceivedListener(printMessage)
 
 datagramService = DatagramService(canLink)
@@ -234,12 +233,36 @@ def processXML(content) :
 
 #######################
 
-# have the socket layer report up to bring the link layer up and get an alias
-# print("      SL : link up")
-physicalLayer.physicalLayerUp()
+def pumpEvents():
+    try:
+        received = sock.receive()
+        if settings['trace']:
+            observer.push(received)
+            if observer.hasNext():
+                packet_str = observer.next()
+                # print("   RR: "+packet_str.strip())
+                # ^ commented since MyHandler shows parsed XML fields instead
+        # pass to link processor
+        physicalLayer.handleData(received)
+    except BlockingIOError:
+        pass
+    canLink.pollState()
+    frame = physicalLayer.pollFrame()
+    if frame:
+        string = frame.encodeAsString()
+        print("      SR: "+string.strip())
+        sock.sendString(string)
 
+
+# have the socket layer report up to bring the link layer up and get an alias
+print("      SL : link up...")
+physicalLayer.physicalLayerUp()
+print("      SL : link up...waiting...")
 while canLink.pollState() != CanLink.State.Permitted:
+    pumpEvents()
     precise_sleep(.02)
+print("      SL : link up")
+
 
 def memoryRead():
     """Create and send a read datagram.
@@ -275,16 +298,9 @@ thread.start()
 
 observer = GridConnectObserver()
 
+
 # process resulting activity
 while True:
-    received = sock.receive()
-    if settings['trace']:
-        observer.push(received)
-        if observer.hasNext():
-            packet_str = observer.next()
-            # print("   RR: "+packet_str.strip())
-            # ^ commented since MyHandler shows parsed XML fields instead
-    # pass to link processor
-    physicalLayer.handleData(received)
+    pumpEvents()
 
 canLink.onDisconnect()

@@ -21,8 +21,12 @@ and predictable use in applications.
 -Poikilos
 '''
 
-
 from collections import deque
+from logging import getLogger
+
+from openlcb.canbus.canframe import CanFrame
+
+logger = getLogger(__name__)
 
 
 class PhysicalLayer:
@@ -30,10 +34,11 @@ class PhysicalLayer:
 
     Parent of `CanPhysicalLayer`
 
-    The PhysicalLayer class enforces restrictions on how many node instances
-    can be created on a single machine.
+    The PhysicalLayer class enforces restrictions on how many node
+    instances can be created on a single machine.
 
-    If you need more than one node (such as to create virtual nodes), call:
+    If you need more than one node (such as to create virtual nodes),
+    call:
     ```
     PhysicalLayer.moreThanOneNodeOnMyMachine(count)
     ```
@@ -43,10 +48,10 @@ class PhysicalLayer:
     ```
     PhysicalLayer.allowDynamicNodes(true)
     ```
-    ONLY if you are really sure you require the number of nodes *on this machine*
-    (*not* including remote network nodes) to be more or less at different times
-    (and stack memory allocations don't need to be manually optimized on
-    the target platform).
+    ONLY if you are really sure you require the number of nodes *on this
+    machine* (*not* including remote network nodes) to be more or less
+    at different times (and stack memory allocations don't need to be
+    manually optimized on the target platform).
     """
 
     def __init__(self):
@@ -58,10 +63,13 @@ class PhysicalLayer:
         thread is bad, since overlapping calls to socket cause undefined
         behavior, so this just adds to a deque (double ended queue, used
         as FIFO).
-        - CanPhysicalLayerGridConnect constructor sets
-          canSendCallback, and CanLink sets canSendCallback to this
-          (formerly set to a sendToPort function which was formerly a
-          direct call to a port which was not thread-safe)
+        - CanPhysicalLayerGridConnect formerly had canSendCallback
+          but now it uses its own frame deque, and the socket code pops
+          and sends the frames.
+          (formerly canSendCallback was set to a sendToPort function
+          which was formerly a direct call to a port which was not
+          thread-safe and could be called from anywhere in the
+          openlcb stack)
           - Add a generalized LocalEvent queue avoid deep callstack?
             - See issue #62 comment about a local event queue.
               For now, CanFrame is used (improved since issue #62
@@ -72,45 +80,26 @@ class PhysicalLayer:
         """
         self._sends.appendleft(frame)
 
-    def popFrames(self):
-        """empty and return content of _sends
-        Subclass may reimplement this or enforce types after calling
-        frames = PhysicalLayer.popFrames(self) (or use super)
-        Then return frames.
-        """
-        frames = deque()
-        startCount = self._sends
-        frame = True
-        # Do them one at a time to make *really* sure someone else isn't
-        #   editing _sends (it would be a shame if we set frames =
-        #   self._sends and set self._frames = deque() and another
-        #   thread pushed to self._frames in between the two lines of
-        #   code [possible even with GIL probably, since they are
-        #   separate lines]--then the data would be lost).
-        try:
-            while True:
-                if len(self._sends) > startCount:
-                    raise InterruptedError(
-                        "the openlcb stack must be controlled by only one"
-                        " thread (typically the socket thread for"
-                        " predictability and thread safety) but _sends"
-                        " increased during popFrames"
-                        "(don't call pollState until return from"
-                        " popFrames, or before calling it)")
-                frame = self._sends.pop()  # pop is from right
-                frames.appendleft(frame)
-        except IndexError as ex:
-            if str(ex) != "pop from an empty queue":
-                raise
-            # else everything is ok (no more frames to get)
-
-            # Stop is done with the exception to avoid a race condition
-            #   between `while len(_sends) > 0` and other operations and
-            #   checks during the loop.
-        return frames
-
     def pollFrame(self):
-        return self._sends.pop()
+        """Check if there is another frame queued and get it.
+        Returns:
+            Any: next frame in FIFO buffer (_sends). In a
+                CanPhysicalLayer or subclass of that, type is CanFrame.
+                In a raw implementation it is either bytes or bytearray.
+        """
+        try:
+            return self._sends.pop()
+        except IndexError:  # "pop from an empty deque"
+            pass
+        return None
+
+    def registerFrameReceivedListener(self, listener):
+        """abstract method"""
+        # raise NotImplementedError("Each subclass must implement this.")
+        logger.warning(
+            "{} abstract registerFrameReceivedListener called"
+            " (expected implementation)"
+            .format(type(self).__name__))
 
     def physicalLayerUp(self):
         """abstract method"""

@@ -11,20 +11,29 @@ host|host:port            (optional) Set the address (or using a colon,
                           the address and port). Defaults to a hard-coded test
                           address and port.
 '''
+from logging import getLogger
 # region same code as other examples
-from examples_settings import Settings  # do 1st to fix path if no pip install
+from examples_settings import Settings
+from openlcb.rawphysicallayer import RealtimeRawPhysicalLayer  # do 1st to fix path if no pip install
 settings = Settings()
 
 if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
+import openlcb.physicallayer
 from openlcb.tcplink.tcpsocket import TcpSocket
 from openlcb.tcplink.tcplink import TcpLink
 
 from openlcb.nodeid import NodeID
 from openlcb.message import Message
 from openlcb.mti import MTI
+from openlcb.physicallayer import PhysicalLayer
+
+if __name__ == "__main__":
+    logger = getLogger(__file__)
+else:
+    logger = getLogger(__name__)
 
 # specify connection information
 # region moved to settings
@@ -43,29 +52,30 @@ print("RR, SR are raw socket interface receive and send; "
       " RM, SM are message interface")
 
 
-def sendToSocket(data):
-    # if isinstance(data, list):
-    #     raise TypeError(
-    #         "Got {}({}) but expected str"
-    #         .format(type(data).__name__, data)
-    #     )
-    print("      SR: {}".format(data))
-    sock.send(data)
+# def sendToSocket(data: Union(bytes, bytearray)):
+#     assert isinstance(data, (bytes, bytearray))
+#     print("      SR: {}".format(data))
+#     sock.send(data)
+# ^ Moved to RealtimeRawPhysicalLayer sendFrameAfter override
 
 
 def printMessage(msg):
     print("RM: {} from {}".format(msg, msg.source))
 
 
-tcpLinkLayer = TcpLink(NodeID(100))
+physicalLayer = RealtimeRawPhysicalLayer(sock)
+# ^ this was not in the example before
+# (just gave sendToSocket to TcpLink)
+
+tcpLinkLayer = TcpLink(physicalLayer, NodeID(100))
 tcpLinkLayer.registerMessageReceivedListener(printMessage)
-tcpLinkLayer.linkPhysicalLayer(sendToSocket)
 
 #######################
 
 # have the socket layer report up to bring the link layer up and get an alias
-print("      SL : link up")
+print("      SL : link up...")
 tcpLinkLayer.linkUp()
+print("      SL : link up")
 
 # send an VerifyNodes message to provoke response
 message = Message(MTI.Verify_NodeID_Number_Global,
@@ -73,9 +83,20 @@ message = Message(MTI.Verify_NodeID_Number_Global,
 print("SM: {}".format(message))
 tcpLinkLayer.sendMessage(message)
 
+# N/A
+# while not tcpLinkLayer.getState() == TcpLink.State.Permitted:
+#     time.sleep(.02)
+
 # process resulting activity
 while True:
     received = sock.receive()
     print("      RR: {}".format(received))
     # pass to link processor
     tcpLinkLayer.receiveListener(received)
+    # Normally we would do (Probably N/A here):
+    # canLink.pollState()
+    # frame = physicalLayer.pollFrame()
+    # if frame:
+    #     sock.sendString(frame.encodeAsString())
+    #     if frame.afterSendState:
+    #         canLink.setState(frame.afterSendState)

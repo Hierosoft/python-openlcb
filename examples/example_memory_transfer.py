@@ -53,7 +53,7 @@ print("RR, SR are raw socket interface receive and send;"
       " RL, SL are link interface; RM, SM are message interface")
 
 
-def sendToSocket(frame):
+def sendToSocket(frame: CanFrame):
     string = frame.encodeAsString()
     print("      SR: {}".format(string.strip()))
     sock.sendString(string)
@@ -73,8 +73,7 @@ def printMessage(message):
     print("RM: {} from {}".format(message, message.source))
 
 
-canLink = CanLink(NodeID(settings['localNodeID']))
-canLink.linkPhysicalLayer(physicalLayer)
+canLink = CanLink(physicalLayer, NodeID(settings['localNodeID']))
 canLink.registerMessageReceivedListener(printMessage)
 
 datagramService = DatagramService(canLink)
@@ -116,13 +115,31 @@ def memoryReadFail(memo):
 
 
 #######################
+def pumpEvents():
+    received = sock.receive()
+    if settings['trace']:
+        observer.push(received)
+        if observer.hasNext():
+            packet_str = observer.next()
+            print("   RR: "+packet_str.strip())
+    # pass to link processor
+    physicalLayer.handleData(received)
+    canLink.pollState()
+    frame = physicalLayer.pollFrame()
+    if frame:
+        sock.sendString(frame.encodeAsString())
+        if frame.afterSendState:
+            canLink.setState(frame.afterSendState)
 
 # have the socket layer report up to bring the link layer up and get an alias
-print("      SL : link up")
-physicalLayer.physicalLayerUp()
-while canLink.pollState() != CanLink.State.Permitted:
-    precise_sleep(.02)
 
+print("      SL : link up...")
+physicalLayer.physicalLayerUp()
+print("      SL : link up...waiting...")
+while canLink.pollState() != CanLink.State.Permitted:
+    pumpEvents()
+    precise_sleep(.02)
+print("      SL : link up")
 
 def memoryRead():
     """Create and send a read datagram.
@@ -148,13 +165,6 @@ observer = GridConnectObserver()
 
 # process resulting activity
 while True:
-    received = sock.receive()
-    if settings['trace']:
-        observer.push(received)
-        if observer.hasNext():
-            packet_str = observer.next()
-            print("   RR: "+packet_str.strip())
-    # pass to link processor
-    physicalLayer.handleData(received)
+    pumpEvents()
 
 canLink.onDisconnect()

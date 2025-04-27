@@ -47,3 +47,9 @@ while True:  # have to kill this manually
     if observer.hasNext():
         packet_str = observer.next()
         print("   RR: "+packet_str.strip())
+    canLink.pollState()
+    frame = physicalLayer.pollFrame()
+    if frame:
+        sock.sendString(frame.encodeAsString())
+        if frame.afterSendState:
+            canLink.setState(frame.afterSendState)

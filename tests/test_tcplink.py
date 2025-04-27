@@ -1,5 +1,6 @@
 import unittest
 
+from openlcb.rawphysicallayer import RealtimeRawPhysicalLayer
 from openlcb.tcplink.tcplink import TcpLink
 
 from openlcb.message import Message
@@ -30,9 +31,8 @@ class TestTcpLinkClass(unittest.TestCase):
         messageLayer = MessageMockLayer()
         tcpLayer = TcpMockLayer()
 
-        linkLayer = TcpLink(NodeID(100))
+        linkLayer = TcpLink(RealtimeRawPhysicalLayer, NodeID(100))
         linkLayer.registerMessageReceivedListener(messageLayer.receiveMessage)
-        linkLayer.linkPhysicalLayer(tcpLayer.send)
 
         linkLayer.linkUp()
 

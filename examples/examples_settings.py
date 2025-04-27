@@ -9,7 +9,10 @@ import shutil
 import sys
 
 from logging import getLogger
-logger = getLogger(__name__)
+if __name__ == "__main__":
+    logger = getLogger(__file__)
+else:
+    logger = getLogger(__name__)
 
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 if os.path.isfile(os.path.join(REPO_DIR, "openlcb", "__init__.py")):

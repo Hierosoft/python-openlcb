@@ -59,19 +59,19 @@ if settings['trace'] :
           " RL, SL are link (frame) interface")
 
 
-def sendToSocket(frame) :
-    string = frame.encodeAsString()
-    if settings['trace'] : print("   SR: "+string.strip())
-    sock.sendString(string)
-    if frame.afterSendState:
-        canLink.setState(frame.afterSendState)
+# def sendToSocket(frame: CanFrame) :
+    # string = frame.encodeAsString()
+    # if settings['trace'] : print("   SR: "+string.strip())
+    # sock.sendString(string)
+    # if frame.afterSendState:
+    #     canLink.setState(frame.afterSendState)
 
 
 def receiveFrame(frame) :
     if settings['trace']: print("RL: "+str(frame))
 
 
-physicalLayer = CanPhysicalLayerGridConnect(sendToSocket)
+physicalLayer = CanPhysicalLayerGridConnect()
 physicalLayer.registerFrameReceivedListener(receiveFrame)
 
 
@@ -80,8 +80,7 @@ def printMessage(msg):
     readQueue.put(msg)
 
 
-canLink = CanLink(NodeID(settings['localNodeID']))
-canLink.linkPhysicalLayer(physicalLayer)
+canLink = CanLink(physicalLayer, NodeID(settings['localNodeID']))
 canLink.registerMessageReceivedListener(printMessage)
 
 # create a node and connect it update
@@ -105,29 +104,47 @@ canLink.registerMessageReceivedListener(
     remoteNodeStore.processMessageFromLinkLayer
 )
 
-
 readQueue = Queue()
 
 observer = GridConnectObserver()
 
+def pumpEvents():
+    received = sock.receive()
+    if settings['trace']:
+        observer.push(received)
+        if observer.hasNext():
+            packet_str = observer.next()
+            print("   RR: "+packet_str.strip())
+    # pass to link processor
+    physicalLayer.handleData(received)
+    canLink.pollState()
+    frame = physicalLayer.pollFrame()
+    if frame:
+        string = frame.encodeAsString()
+        if settings['trace'] : print("   SR: "+string.strip())
+        sock.sendString(string)
+        if frame.afterSendState:
+            canLink.setState(frame.afterSendState)
 
-def receiveLoop() :
+
+# bring the CAN level up
+
+print("      SL : link up...")
+physicalLayer.physicalLayerUp()
+print("      SL : link up...waiting...")
+physicalLayer.physicalLayerUp()
+print("      SL : link up")
+
+while canLink.pollState() != CanLink.State.Permitted:
+    pumpEvents()
+    precise_sleep(.02)
+
+
+def receiveLoop():
     """put the read on a separate thread"""
-    # bring the CAN level up
-    if settings['trace'] : print("      SL : link up")
-    physicalLayer.physicalLayerUp()
-    while canLink.pollState() != CanLink.State.Permitted:
-        precise_sleep(.02)
 
     while True:
-        received = sock.receive()
-        if settings['trace']:
-            observer.push(received)
-            if observer.hasNext():
-                packet_str = observer.next()
-                print("   RR: "+packet_str.strip())
-        # pass to link processor
-        physicalLayer.handleData(received)
+        pumpEvents()
 
 
 import threading  # noqa E402

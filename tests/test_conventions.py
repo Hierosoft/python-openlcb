@@ -4,7 +4,10 @@ import unittest
 
 from logging import getLogger
 
-logger = getLogger(__name__)
+if __name__ == "__main__":
+    logger = getLogger(__file__)
+else:
+    logger = getLogger(__name__)
 
 
 if __name__ == "__main__":

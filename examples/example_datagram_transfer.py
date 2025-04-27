@@ -12,6 +12,7 @@ host|host:port            (optional) Set the address (or using a colon,
 # region same code as other examples
 from examples_settings import Settings
 from openlcb import precise_sleep
+from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.gridconnectobserver import GridConnectObserver  # do 1st to fix path if no pip install
 settings = Settings()
 
@@ -48,19 +49,19 @@ print("RR, SR are raw socket interface receive and send;"
       " RL, SL are link interface; RM, SM are message interface")
 
 
-def sendToSocket(frame):
-    string = frame.encodeAsString()
-    print("      SR: "+string.strip())
-    sock.sendString(string)
-    if frame.afterSendState:
-        canLink.setState(frame.afterSendState)
+# def sendToSocket(frame: CanFrame):
+#     string = frame.encodeAsString()
+#     print("      SR: "+string.strip())
+#     sock.sendString(string)
+#     if frame.afterSendState:
+#         canLink.setState(frame.afterSendState)
 
 
 def printFrame(frame):
     print("   RL: "+str(frame))
 
 
-physicalLayer = CanPhysicalLayerGridConnect(sendToSocket)
+physicalLayer = CanPhysicalLayerGridConnect()
 physicalLayer.registerFrameReceivedListener(printFrame)
 
 
@@ -68,8 +69,7 @@ def printMessage(message):
     print("RM: {} from {}".format(message, message.source))
 
 
-canLink = CanLink(NodeID(localNodeID))
-canLink.linkPhysicalLayer(physicalLayer)
+canLink = CanLink(physicalLayer, NodeID(localNodeID))
 canLink.registerMessageReceivedListener(printMessage)
 
 datagramService = DatagramService(canLink)
@@ -99,10 +99,33 @@ datagramService.registerDatagramReceivedListener(datagramReceiver)
 
 #######################
 
+
+def pumpEvents():
+    received = sock.receive()
+    if settings['trace']:
+        observer.push(received)
+        if observer.hasNext():
+            packet_str = observer.next()
+            print("   RR: "+packet_str.strip())
+    # pass to link processor
+    physicalLayer.handleData(received)
+    canLink.pollState()
+    frame = physicalLayer.pollFrame()
+    if frame:
+        sock.sendString(frame.encodeAsString())
+        if frame.afterSendState:
+            canLink.setState(frame.afterSendState)
+
+
 # have the socket layer report up to bring the link layer up and get an alias
-print("      SL : link up")
+print("      SL : link up...")
 physicalLayer.physicalLayerUp()
+print("      SL : link up...waiting...")
+physicalLayer.physicalLayerUp()
+print("      SL : link up")
+
 while canLink.pollState() != CanLink.State.Permitted:
+    pumpEvents()
     precise_sleep(.02)
 
 
@@ -130,14 +153,7 @@ observer = GridConnectObserver()
 
 # process resulting activity
 while True:
-    received = sock.receive()
-    if settings['trace']:
-        observer.push(received)
-        if observer.hasNext():
-            packet_str = observer.next()
-            print("   RR: "+packet_str.strip())
-    # pass to link processor
-    physicalLayer.handleData(received)
-    canLink.pollState()
+    pumpEvents()
+
 
 canLink.onDisconnect()

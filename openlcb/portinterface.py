@@ -161,15 +161,16 @@ class PortInterface:
     def close(self) -> None:
         return self._close()
 
-    def receiveString(self):
-        '''Receive (usually partial) GridConnect frame and return as string.
+    # replaced with pollFrame
+    # def receiveString(self):
+    #     '''Receive (usually partial) GridConnect frame and return as string.
 
-        Returns:
-            str: The received bytes decoded into a UTF-8 string.
-        '''
-        data = self.receive()
-        # Use receive (uses required semaphores) not _receive (not thread safe)
-        return data.decode("utf-8")
+    #     Returns:
+    #         str: The received bytes decoded into a UTF-8 string.
+    #     '''
+    #     data = self.receive()
+    #     # Use receive (uses required semaphores) not _receive (not thread safe)
+    #     return data.decode("utf-8")
 
     def sendString(self, string):
         """Send a single string.

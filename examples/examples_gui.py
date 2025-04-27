@@ -56,7 +56,10 @@ except ImportError:
         """Placeholder for when zeroconf is *not* present"""
         pass
 
-logger = getLogger(__name__)
+if __name__ == "__main__":
+    logger = getLogger(__file__)
+else:
+    logger = getLogger(__name__)
 
 
 class MyListener(ServiceListener):

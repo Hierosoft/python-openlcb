@@ -25,6 +25,9 @@ class NodeID:
         return ("{:02X}.{:02X}.{:02X}.{:02X}.{:02X}.{:02X}"
                 "".format(c[0], c[1], c[2], c[3], c[4], c[5]))
 
+    def __repr__(self):
+        return self.__str__()
+
     def __init__(self, data):
         # For args see class docstring.
         if isinstance(data, int):  # create from an integer value

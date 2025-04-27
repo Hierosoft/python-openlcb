@@ -31,6 +31,7 @@ from openlcb.linklayer import LinkLayer
 from openlcb.message import Message
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
+from openlcb.physicallayer import PhysicalLayer
 
 logger = getLogger(__name__)
 
@@ -128,7 +129,8 @@ class CanLink(LinkLayer):
     MIN_STATE_VALUE = min(entry.value for entry in State)
     MAX_STATE_VALUE = max(entry.value for entry in State)
 
-    def __init__(self, localNodeID, require_remote_nodes=True):  # a NodeID
+    def __init__(self, physicalLayer: PhysicalLayer, localNodeID,
+                 require_remote_nodes=True):
         # See class docstring for args
         self._previousLocalAliasSeed = None
         self.require_remote_nodes = require_remote_nodes
@@ -148,7 +150,7 @@ class CanLink(LinkLayer):
         self.accumulator = {}
         self.duplicateAliases = []
         self.nextInternallyAssignedNodeID = 1
-        LinkLayer.__init__(self, localNodeID)
+        LinkLayer.__init__(self, physicalLayer, localNodeID)
 
     # This method may never actually be necessary, as
     # sendMessage uses nodeIdToAlias (which has localNodeID
@@ -206,6 +208,8 @@ class CanLink(LinkLayer):
                 .format(emit_cast(alias)))
         return alias in self.duplicateAliases
 
+    # Commented since instead, socket code should call linkLayerUp and linkLayerDown.
+    #   Constructors should construct the openlcb stack.
     # def linkPhysicalLayer(self, cpl):
     #     """Set the physical layer to use.
     #     Also registers self.receiveListener as a listener on the given
@@ -221,10 +225,10 @@ class CanLink(LinkLayer):
     #     self.physicalLayer = cpl  # self.link = cpl
     #     cpl.registerFrameReceivedListener(self.receiveListener)
     #     # ^ Commented since it makes more sense for its
-    #     #   constructor to do this, since it needs a LinkLayer
+    #     #   constructor to do this, since it needs a PhysicalLayer
     #     #   in order to do anything
 
-    def _onStateChanged(self, _, newState):
+    def _onStateChanged(self, oldState, newState):
         # return super()._onStateChanged(oldState, newState)
         assert isinstance(newState, CanLink.State)
         if newState == CanLink.State.EnqueueAliasAllocationRequest:
@@ -253,8 +257,10 @@ class CanLink(LinkLayer):
             #   - (state was formerly set to Permitted at end of the
             #     _notifyReservation code, before _recordReservation
             #     code)
-
-        self.linkStateChange(newState)  # Notify upper layers
+        if ((oldState != CanLink.State.Permitted)
+                and (newState == CanLink.State.Permitted)):
+            self.linkStateChange(newState)  # Notify upper layers
+            # - formerly done at end of _recordReservation code.
         # TODO: Make sure upper layers handle any states
         #   necessary (formerly only states other than Initial were
         #   Inhibited & Permitted).
@@ -408,17 +414,21 @@ class CanLink(LinkLayer):
         #    notify upper levels
         self.linkStateChange(self._state)
 
-    def linkStateChange(self, state):
+    def linkStateChange(self, state: State):
         """invoked when the link layer comes up and down
 
         Args:
             state (CanLink.State): See CanLink.
         """
+        assert isinstance(state, CanLink.State)
         if state == CanLink.State.Permitted:
             print("[linkStateChange] Link_Layer_Up")
             msg = Message(MTI.Link_Layer_Up, NodeID(0), None, bytearray())
-        else:
+        elif state.value <= CanLink.State.Inhibited.value:
             msg = Message(MTI.Link_Layer_Down, NodeID(0), None, bytearray())
+        else:
+            raise TypeError(
+                "The other layers don't need to know the intermediate steps.")
         self.fireListeners(msg)
 
     def handleReceivedCID(self, frame):  # CanFrame
@@ -917,6 +927,7 @@ class CanLink(LinkLayer):
                             " only set to True for Standard"
                             " (permissive) behavior")
                     # finish the sends for the alias reservation:
+                    self._waitingForAliasStart = None
                     self.setState(CanLink.State.EnqueueAliasReservation)
 
         return self.getState()

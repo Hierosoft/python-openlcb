@@ -46,12 +46,12 @@ print("RR, SR are raw socket interface receive and send; RL,"
       " SL are link interface; RM, SM are message interface")
 
 
-def sendToSocket(frame):
-    string = frame.encodeAsString()
-    print("      SR: {}".format(string.strip()))
-    sock.sendString(string)
-    if frame.afterSendState:
-        canLink.setState(frame.afterSendState)
+# def sendToSocket(frame: CanFrame):
+#     string = frame.encodeAsString()
+#     print("      SR: {}".format(string.strip()))
+#     sock.sendString(string)
+#     if frame.afterSendState:
+#         canLink.setState(frame.afterSendState)
 
 
 def printFrame(frame):
@@ -67,17 +67,38 @@ def printMessage(msg):
 
 
 canLink = CanLink(NodeID(settings['localNodeID']))
-canLink.linkPhysicalLayer(physicalLayer)
 canLink.registerMessageReceivedListener(printMessage)
 
 #######################
 
+def pumpEvents():
+    received = sock.receive()
+    if settings['trace']:
+        observer.push(received)
+        if observer.hasNext():
+            packet_str = observer.next()
+            print("   RR: "+packet_str.strip())
+    # pass to link processor
+    physicalLayer.handleData(received)
+    canLink.pollState()
+    frame = physicalLayer.pollFrame()
+    if frame:
+        string = frame.encodeAsString()
+        print("      SR: {}".format(string.strip()))
+        sock.sendString(string)
+        if frame.afterSendState:
+            canLink.setState(frame.afterSendState)
+
 # have the socket layer report up to bring the link layer up and get an alias
-print("      SL : link up")
+
+print("      SL : link up...")
+physicalLayer.physicalLayerUp()
+print("      SL : link up...waiting...")
 physicalLayer.physicalLayerUp()
 while canLink.pollState() != CanLink.State.Permitted:
+    pumpEvents()
     precise_sleep(.02)
-
+print("      SL : link up")
 # send an VerifyNodes message to provoke response
 message = Message(MTI.Verify_NodeID_Number_Global,
                   NodeID(settings['localNodeID']), None)
@@ -88,13 +109,6 @@ observer = GridConnectObserver()
 
 # process resulting activity
 while True:
-    received = sock.receive()
-    if settings['trace']:
-        observer.push(received)
-        if observer.hasNext():
-            packet_str = observer.next()
-            print("   RR: "+packet_str.strip())
-    # pass to link processor
-    physicalLayer.handleData(received)
+    pumpEvents()
 
 canLink.onDisconnect()

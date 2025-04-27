@@ -17,6 +17,11 @@ making multiple copies of a single object.
 
 
 from enum import Enum
+from logging import getLogger
+
+from openlcb.physicallayer import PhysicalLayer
+
+logger = getLogger(__name__)
 
 
 class LinkLayer:
@@ -37,10 +42,27 @@ class LinkLayer:
     class State(Enum):
         Undefined = 1  # subclass constructor did not run (implement states)
 
-    def __init__(self, localNodeID):
+    def __init__(self, physicalLayer: PhysicalLayer, localNodeID):
+        assert isinstance(physicalLayer, PhysicalLayer)  # allows any subclass
+        # subclass should check type of localNodeID technically
         self.localNodeID = localNodeID
         self.listeners = []
         self._state = LinkLayer.State.Undefined
+        # region moved from CanLink linkPhysicalLayer
+        self.physicalLayer = physicalLayer  # formerly self.link = cpl
+        # if physicalLayer is not None:
+        physicalLayer.registerFrameReceivedListener(self.receiveListener)
+        # else:
+        #     print("Using {} without"
+        #           " registerFrameReceivedListener(self.receiveListener)"
+        #           " on physicalLayer, since no physicalLayer specified."
+        #           .format())
+        # endregion moved from CanLink linkPhysicalLayer
+
+    def receiveListener(self, frame):
+        logger.warning(
+            "{} abstract receiveListener called (expected implementation)"
+            .format(type(self).__name__))
 
     def onDisconnect(self):
         """Run this whenever the socket connection is lost
@@ -54,11 +76,12 @@ class LinkLayer:
     def getState(self):
         return self._state
 
-    def setState(self):
+    def setState(self, state):
         oldState = self._state
-        newState = 0  # keep a copy for _onStateChanged, for thread safety
+        newState = state  # keep a copy for _onStateChanged, for thread safety
+        #   (ensure value doesn't change between two lines below)
         self._state = newState
-        self._onStateChanged(self, oldState, newState)
+        self._onStateChanged(oldState, newState)
 
     def _onStateChanged(self, oldState, newState):
         raise NotImplementedError(

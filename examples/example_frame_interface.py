@@ -40,30 +40,15 @@ print("RR, SR are raw socket interface receive and send;"
       " RL, SL are link (frame) interface")
 
 
-def sendToSocket(frame):
+def sendToSocket(frame: CanFrame):
     string = frame.encodeAsString()
     print("   SR: {}".format(string.strip()))
     sock.sendString(string)
-    if frame.afterSendState:
-        canLink.setState(frame.afterSendState)
+    # if frame.afterSendState:
+    #     canLink.setState(frame.afterSendState)
 
 
-def printFrame(frame):
-    print("RL: {}".format(frame))
-
-
-physicalLayer = CanPhysicalLayerGridConnect(sendToSocket)
-physicalLayer.registerFrameReceivedListener(printFrame)
-
-# send an AME frame with arbitrary alias to provoke response
-frame = CanFrame(ControlFrame.AME.value, 1, bytearray())
-print("SL: {}".format(frame))
-physicalLayer.sendFrameAfter(frame)
-
-observer = GridConnectObserver()
-
-# display response - should be RID from nodes
-while True:
+def pumpEvents():
     received = sock.receive()
     if settings['trace']:
         observer.push(received)
@@ -72,3 +57,38 @@ while True:
             print("   RR: "+packet_str.strip())
     # pass to link processor
     physicalLayer.handleData(received)
+    # canLink.pollState()
+    frame = physicalLayer.pollFrame()
+    if frame:
+        string = frame.encodeAsString()
+        print("   SR: {}".format(string.strip()))
+        sock.sendString(string)
+        if frame.afterSendState:
+            print("Next state (unexpected, no link layer): {}"
+                  .format(frame.afterSendState))
+            # canLink.setState(frame.afterSendState)
+
+
+def printFrame(frame):
+    print("RL: {}".format(frame))
+
+
+physicalLayer = CanPhysicalLayerGridConnect()
+physicalLayer.registerFrameReceivedListener(printFrame)
+
+# send an AME frame with arbitrary alias to provoke response
+frame = CanFrame(ControlFrame.AME.value, 1, bytearray())
+print("SL: {}".format(frame))
+physicalLayer.sendFrameAfter(frame)
+
+while True:
+    frame = physicalLayer.pollFrame()
+    if not frame:
+        break
+    sendToSocket(frame)
+
+observer = GridConnectObserver()
+
+# display response - should be RID from nodes
+while True:
+    pumpEvents()

@@ -4,8 +4,10 @@ Created by Bob Jacobsen on 6/1/22.
 '''
 
 
+from openlcb import emit_cast
 from openlcb.mti import MTI
 from openlcb.node import Node
+from openlcb.nodeid import NodeID
 
 
 class Message:
@@ -19,7 +21,7 @@ class Message:
             empty bytearray().
     """
 
-    def __init__(self, mti, source, destination, data=None):
+    def __init__(self, mti, source: NodeID, destination: NodeID, data=None):
         # For args, see class docstring.
         if data is None:
             data = bytearray()
@@ -34,8 +36,13 @@ class Message:
 
     def assertTypes(self):
         assert isinstance(self.mti, MTI)
-        assert isinstance(self.source, Node)
-        assert isinstance(self.destination, Node)
+        assert isinstance(self.source, NodeID), \
+            "expected NodeID, got {}".format(emit_cast(self.source))
+        if self.destination is not None:
+            assert isinstance(self.destination, NodeID), \
+                "expected NodeID, got {}".format(emit_cast(self.destination))
+        # allowed to be None. See linkUp in tcplink.py
+        # TODO: Only allow in certain conditions?
 
     def isGlobal(self):
         return self.mti.value & 0x0008 == 0

@@ -35,12 +35,17 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
             interrupted in order to prevent canlink.state from
             proceeding to CanLink.State.Permitted)
     """
-    def __init__(self, canLink: CanLink):
-        assert hasattr(canLink, 'pollState')
+    def __init__(self):
+        # ^ A CanLink requires a physical layer to operate,
+        #   so CanLink now requires a PhysicalLayer instance
+        #   such as this in its constructor.
         CanPhysicalLayer.__init__(self)
-        # canLink.linkPhysicalLayer(self)  # self.setCallBack(callback)
-        canLink.physicalLayer = self
-        self.registerFrameReceivedListener(canLink.receiveListener)
+
+        # region moved to CanLink constructor
+        # from canLink.linkPhysicalLayer(self)  # self.setCallBack(callback):
+        # canLink.physicalLayer = self
+        # self.registerFrameReceivedListener(canLink.receiveListener)
+        # endregion moved to CanLink constructor
 
         self.inboundBuffer = bytearray()
 

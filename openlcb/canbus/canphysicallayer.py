@@ -5,9 +5,13 @@ This is a class because it represents a single physical connection to a layout
 and is subclassed.
 '''
 import sys
+from logging import getLogger
+
 from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.controlframe import ControlFrame
 from openlcb.physicallayer import PhysicalLayer
+
+logger = getLogger(__name__)
 
 
 class CanPhysicalLayer(PhysicalLayer):
@@ -30,6 +34,13 @@ class CanPhysicalLayer(PhysicalLayer):
         assert isinstance(frame, CanFrame)
         PhysicalLayer.sendFrameAfter(self, frame)
 
+    def pollFrame(self) -> CanFrame:  # overloaded for type hinting.
+        """Check if there is another frame queued and get it.
+        Returns:
+            CanFrame: next frame in FIFO buffer (_sends).
+        """
+        return PhysicalLayer.pollFrame(self)
+
     def encode(self, frame) -> str:
         '''abstract interface (encode frame to string)'''
         raise NotImplementedError("Each subclass must implement this.")
@@ -38,6 +49,12 @@ class CanPhysicalLayer(PhysicalLayer):
         self.listeners.append(listener)
 
     def fireListeners(self, frame):
+        if not self.listeners:
+            logger.warning(
+                "No listeners for frame received."
+                " CanLink (see LinkLayer superclass constructor)"
+                " should at least register its receiveFrame method"
+                " with a physical layer implementation.")
         for listener in self.listeners:
             listener(frame)
 

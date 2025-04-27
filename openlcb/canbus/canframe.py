@@ -87,6 +87,9 @@ class CanFrame:
     def encodeAsString(self) -> str:
         return self.encoder.encodeFrameAsString(self)
 
+    def encodeAsBytes(self) -> bytes:
+        return self.encodeAsString().encode("utf-8")
+
     @property
     def alias(self) -> int:
         return self._alias

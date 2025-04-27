@@ -32,22 +32,27 @@ class TcpLink(LinkLayer):
             software-defined node connecting to the LCC network via TCP.
     """
 
-    def __init__(self, localNodeID):
+    def __init__(self, physicalLayer, localNodeID):
+        LinkLayer.__init__(self, physicalLayer, localNodeID)
         # See class docstring for argument(s) and attributes.
-        self.localNodeID = localNodeID
-        self.linkCall = None
+        self.physicalLayer = physicalLayer
         self.accumulatedParts = {}
         self.nextInternallyAssignedNodeID = 1
         self.accumulatedData = bytearray()
+        self.physicalLayer = physicalLayer  # formerly linkCall
+        self.localNodeID = localNodeID  # unused here
 
-    def linkPhysicalLayer(self, lpl):
-        """Register the handler for when the layer is up.
+    # def linkPhysicalLayer(self, lpl):
+    #     """Register the handler for when the layer is up.
 
-        Args:
-            lpl (Callable): A handler that accepts a bytes object, usually a
-                socket connection send() method.
-        """
-        self.linkCall = lpl
+    #     Args:
+    #         lpl (Callable): A handler that accepts a bytes object, usually a
+    #             socket connection send() method.
+    #     """
+    #     raise NotImplementedError(
+    #         "Instead, we should just call linkLayerUp and linkLayerDown."
+    #         " Constructors should construct the openlcb stack.")
+    #     self.physicalLayer = lpl
 
     def _onStateChanged(self, oldState, newState):
         print(f"[TcpLink] _onStateChanged from {oldState} to {newState}"
@@ -220,4 +225,6 @@ class TcpLink(LinkLayer):
 
         outputBytes.extend(message.data)
 
-        self.linkCall(outputBytes)
+        self.physicalLayer.sendFrameAfter(outputBytes)
+        # ^ The physical layer should be one with "Raw" in the name
+        # since takes bytes. See example_tcp_message_interface.

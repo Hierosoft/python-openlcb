@@ -40,7 +40,10 @@ from openlcb.memoryservice import (
 )
 from openlcb.platformextras import SysDirs, clean_file_name
 
-logger = getLogger(__name__)
+if __name__ == "__main__":
+    logger = getLogger(__file__)
+else:
+    logger = getLogger(__name__)
 
 
 def element_to_dict(element):
@@ -125,7 +128,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
 
         # region connect
         self._port = None
-        self._canPhysicalLayerGridConnect = None
+        self._physicalLayer = None
         self._canLink = None
         self._datagramService = None
         self._memoryService = None
@@ -163,10 +166,9 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                 "[start_listening] A previous _port will be discarded.")
         self._port = connected_port
         self._callback_status("CanPhysicalLayerGridConnect...")
-        self._canPhysicalLayerGridConnect = \
-            CanPhysicalLayerGridConnect(self.sendFrameAfter)
+        self._physicalLayer = CanPhysicalLayerGridConnect()
 
-        # self._canPhysicalLayerGridConnect.registerFrameReceivedListener(
+        # self._physicalLayer.registerFrameReceivedListener(
         #     self._printFrame
         # )
         # ^ Commented since canlink already adds CanLink's default
@@ -174,11 +176,9 @@ class Dispatcher(xml.sax.handler.ContentHandler):
         #   for this application.
 
         self._callback_status("CanLink...")
-        self._canLink = CanLink(NodeID(localNodeID))
-        self._callback_status("CanLink...linkPhysicalLayer...")
-        self._canLink.linkPhysicalLayer(self._canPhysicalLayerGridConnect)
-        self._callback_status("CanLink...linkPhysicalLayer"
-                              "...registerMessageReceivedListener...")
+        self._canLink = CanLink(self._physicalLayer, NodeID(localNodeID))
+        self._callback_status("CanLink..."
+                              "registerMessageReceivedListener...")
         self._canLink.registerMessageReceivedListener(self._handleMessage)
         # NOTE: Incoming data (Memo) is handled by _memoryReadSuccess
         #   and _memoryReadFail.
@@ -205,7 +205,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
         #   once, then another 200ms on each alias collision if any)
 
         self._callback_status("physicalLayerUp...")
-        self._canPhysicalLayerGridConnect.physicalLayerUp()
+        self._physicalLayer.physicalLayerUp()
         while canLink.pollState() != CanLink.State.Permitted:
             precise_sleep(.02)
 
@@ -251,7 +251,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                 #   Frame Transfer Standard (sendMessage requires )
                 logger.debug("[_listen] _receive...")
                 try:
-                    sends = self._canPhysicalLayerGridConnect.popFrames()
+                    sends = self._physicalLayer.popFrames()
                     while sends:
                         # *Always* do send in the receive thread to
                         #   avoid overlapping calls to socket
@@ -287,7 +287,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                       file=sys.stderr)
                 # print("      RR: {}".format(received.strip()))
                 # pass to link processor
-                self._canPhysicalLayerGridConnect.handleData(received)
+                self._physicalLayer.handleData(received)
                 # ^ will trigger self._printFrame if that was added
                 #   via registerFrameReceivedListener during connect.
                 precise_sleep(.01)  # let processor sleep briefly before read
@@ -367,7 +367,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
         if not self._port:
             raise RuntimeError(
                 "No port connection. Call start_listening first.")
-        if not self._canPhysicalLayerGridConnect:
+        if not self._physicalLayer:
             raise RuntimeError(
                 "No physicalLayer. Call start_listening first.")
         self._cdi_offset = 0
