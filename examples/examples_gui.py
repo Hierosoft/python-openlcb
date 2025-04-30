@@ -28,7 +28,7 @@ except ImportError:
           file=sys.stderr)
     raise
 from tkinter import ttk
-from collections import OrderedDict
+from collections import OrderedDict, deque
 
 from examples_settings import Settings
 # ^ adds parent of module to sys.path, so openlcb imports *after* this
@@ -131,7 +131,7 @@ class MainForm(ttk.Frame):
         self.zeroconf = None
         self.listener = None
         self.browser = None
-        self.errors = []
+        self.errors = deque()
         self.root = parent
         self._connect_thread = None
         try:
@@ -170,7 +170,7 @@ class MainForm(ttk.Frame):
     def show_next_error(self):
         if not self.errors:
             return 0
-        error = self.errors.pop(0)
+        error = self.errors.popleft()
         if not error:
             return 0
         self.set_status(error)

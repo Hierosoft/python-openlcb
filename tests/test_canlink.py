@@ -17,11 +17,12 @@ from openlcb.canbus.controlframe import ControlFrame
 
 class PhyMockLayer(CanPhysicalLayer):
     def __init__(self):
-        self.receivedFrames = []
+        self.receivedPackets = []
         CanPhysicalLayer.__init__(self)
 
-    def sendFrameAfter(self, frame):
-        self.receivedFrames.append(frame)
+    def sendDataAfter(self, data):
+        assert isinstance(data, (bytes, bytearray))
+        self.receivedPackets.append(data)
 
 
 class MessageMockLayer:
@@ -124,7 +125,7 @@ class TestCanLinkClass(unittest.TestCase):
         canLink._state = CanLink.State.Permitted
 
         canPhysicalLayer.fireListeners(CanFrame(ControlFrame.EIR2.value, 0))
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
         canLink.onDisconnect()
 
     # MARK: - Test AME (Local Node)
@@ -135,9 +136,9 @@ class TestCanLinkClass(unittest.TestCase):
         canLink._state = CanLink.State.Permitted
 
         canPhysicalLayer.fireListeners(CanFrame(ControlFrame.AME.value, 0))
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 1)
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 1)
         self.assertEqual(
-            canPhysicalLayer.receivedFrames[0],
+            canPhysicalLayer.receivedPackets[0],
             CanFrame(ControlFrame.AMD.value, ourAlias,
                      canLink.localNodeID.toArray())
         )
@@ -149,7 +150,7 @@ class TestCanLinkClass(unittest.TestCase):
         canLink._state = CanLink.State.Inhibited
 
         canPhysicalLayer.fireListeners(CanFrame(ControlFrame.AME.value, 0))
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
         canLink.onDisconnect()
 
     def testAMEMatchEvent(self):
@@ -161,8 +162,8 @@ class TestCanLinkClass(unittest.TestCase):
         frame = CanFrame(ControlFrame.AME.value, 0)
         frame.data = bytearray([5, 1, 1, 1, 3, 1])
         canPhysicalLayer.fireListeners(frame)
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 1)
-        self.assertEqual(canPhysicalLayer.receivedFrames[0],
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 1)
+        self.assertEqual(canPhysicalLayer.receivedPackets[0],
                          CanFrame(ControlFrame.AMD.value, ourAlias,
                                   canLink.localNodeID.toArray()))
         canLink.onDisconnect()
@@ -175,7 +176,7 @@ class TestCanLinkClass(unittest.TestCase):
         frame = CanFrame(ControlFrame.AME.value, 0)
         frame.data = bytearray([0, 0, 0, 0, 0, 0])
         canPhysicalLayer.fireListeners(frame)
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
         canLink.onDisconnect()
 
     # MARK: - Test Alias Collisions (Local Node)
@@ -187,8 +188,8 @@ class TestCanLinkClass(unittest.TestCase):
 
         canPhysicalLayer.fireListeners(CanFrame(7, canLink.localNodeID,
                                                 ourAlias))
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 1)
-        self.assertEqual(canPhysicalLayer.receivedFrames[0],
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 1)
+        self.assertEqual(canPhysicalLayer.receivedPackets[0],
                          CanFrame(ControlFrame.RID.value, ourAlias))
         canLink.onDisconnect()
 
@@ -200,12 +201,12 @@ class TestCanLinkClass(unittest.TestCase):
 
         canPhysicalLayer.fireListeners(CanFrame(ControlFrame.RID.value,
                                                 ourAlias))
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 8)
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 8)
         # ^ includes recovery of new alias 4 CID, RID, AMR, AME
-        self.assertEqual(canPhysicalLayer.receivedFrames[0],
+        self.assertEqual(canPhysicalLayer.receivedPackets[0],
                          CanFrame(ControlFrame.AMR.value, ourAlias,
                                   bytearray([5, 1, 1, 1, 3, 1])))
-        self.assertEqual(canPhysicalLayer.receivedFrames[6],
+        self.assertEqual(canPhysicalLayer.receivedPackets[6],
                          CanFrame(ControlFrame.AMD.value, 0x539,
                                   bytearray([5, 1, 1, 1, 3, 1])))  # new alias
         self.assertEqual(canLink._state, CanLink.State.Permitted)
@@ -277,7 +278,7 @@ class TestCanLinkClass(unittest.TestCase):
         canPhysicalLayer.fireListeners(CanFrame(0x19490, 0x247))
         # ^ from previously seen alias
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
         # ^ nothing back down to CAN
         self.assertEqual(len(messageLayer.receivedMessages), 1)
         # ^ one message forwarded
@@ -304,7 +305,7 @@ class TestCanLinkClass(unittest.TestCase):
                                                 bytearray([8, 7, 6, 5, 4, 3])))
         # ^ VerifiedNodeID from unique alias
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
         # ^ nothing back down to CAN
         self.assertEqual(len(messageLayer.receivedMessages), 1)
         # ^ one message forwarded
@@ -332,7 +333,7 @@ class TestCanLinkClass(unittest.TestCase):
                                                 bytearray([8, 7, 6, 5, 4, 3])))
         # ^ Identify Events Addressed from unique alias
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
         # ^ nothing back down to CAN
         self.assertEqual(len(messageLayer.receivedMessages), 1)
         # ^ one message forwarded
@@ -563,8 +564,8 @@ class TestCanLinkClass(unittest.TestCase):
 
         canLink.sendMessage(message)
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 1)
-        self.assertEqual(str(canPhysicalLayer.receivedFrames[0]),
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 1)
+        self.assertEqual(str(canPhysicalLayer.receivedPackets[0]),
                          "CanFrame header: 0x1A000000 []")
         canLink.onDisconnect()
 
@@ -578,9 +579,9 @@ class TestCanLinkClass(unittest.TestCase):
 
         canLink.sendMessage(message)
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 1)
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 1)
         self.assertEqual(
-            str(canPhysicalLayer.receivedFrames[0]),
+            str(canPhysicalLayer.receivedPackets[0]),
             "CanFrame header: 0x1A000000 [1, 2, 3, 4, 5, 6, 7, 8]"
         )
         canLink.onDisconnect()
@@ -596,13 +597,13 @@ class TestCanLinkClass(unittest.TestCase):
 
         canLink.sendMessage(message)
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 2)
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 2)
         self.assertEqual(
-            str(canPhysicalLayer.receivedFrames[0]),
+            str(canPhysicalLayer.receivedPackets[0]),
             "CanFrame header: 0x1B000000 [1, 2, 3, 4, 5, 6, 7, 8]"
         )
         self.assertEqual(
-            str(canPhysicalLayer.receivedFrames[1]),
+            str(canPhysicalLayer.receivedPackets[1]),
             "CanFrame header: 0x1D000000 [9, 10, 11, 12, 13, 14, 15, 16]"
         )
         canLink.onDisconnect()
@@ -620,16 +621,16 @@ class TestCanLinkClass(unittest.TestCase):
 
         canLink.sendMessage(message)
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 3)
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 3)
         self.assertEqual(
-            str(canPhysicalLayer.receivedFrames[0]),
+            str(canPhysicalLayer.receivedPackets[0]),
             "CanFrame header: 0x1B000000 [1, 2, 3, 4, 5, 6, 7, 8]"
         )
         self.assertEqual(
-            str(canPhysicalLayer.receivedFrames[1]),
+            str(canPhysicalLayer.receivedPackets[1]),
             "CanFrame header: 0x1C000000 [9, 10, 11, 12, 13, 14, 15, 16]"
         )
-        self.assertEqual(str(canPhysicalLayer.receivedFrames[2]),
+        self.assertEqual(str(canPhysicalLayer.receivedPackets[2]),
                          "CanFrame header: 0x1D000000 [17, 18, 19]")
         canLink.onDisconnect()
 
@@ -645,7 +646,7 @@ class TestCanLinkClass(unittest.TestCase):
         self.assertEqual(len(canLink.aliasToNodeID), 1)
         self.assertEqual(len(canLink.nodeIdToAlias), 1)
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
         # ^ nothing back down to CAN
 
         canPhysicalLayer.fireListeners(CanFrame(0x0703, ourAlias+1))
@@ -654,7 +655,7 @@ class TestCanLinkClass(unittest.TestCase):
         self.assertEqual(len(canLink.aliasToNodeID), 0)
         self.assertEqual(len(canLink.nodeIdToAlias), 0)
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
         # ^ nothing back down to CAN
         canLink.onDisconnect()
 

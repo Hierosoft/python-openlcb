@@ -82,7 +82,8 @@ class CanLink(LinkLayer):
 
     # MIN_STATE_VALUE & MAX_STATE_VALUE are set statically below the
     #   State class declaration:
-    ALIAS_RESPONSE_DELAY = .2  # See docstring.
+    STANDARD_ALIAS_RESPONSE_DELAY = .2
+    ALIAS_RESPONSE_DELAY = 20  # See docstring.
 
     class State(Enum):
         """Used as a linux-like "runlevel"
@@ -104,7 +105,7 @@ class CanLink(LinkLayer):
                 determined to be success, this state triggers
                 _enqueueReserveID.
         """
-        Initial = LinkLayer.State.Undefined.value  # special case of .Inhibited
+        Initial = 1  # special case of .Inhibited
         #   where init hasn't started.
         Inhibited = 2
         EnqueueAliasAllocationRequest = 3
@@ -125,6 +126,9 @@ class CanLink(LinkLayer):
         BusyLocalMappingAlias = 18
         Permitted = 20  # formerly 3. queued via frame
         # (formerly set at end of _notifyReservation code)
+
+    InitialState = State.Initial
+    DisconnectedState = State.Inhibited
 
     MIN_STATE_VALUE = min(entry.value for entry in State)
     MAX_STATE_VALUE = max(entry.value for entry in State)
@@ -230,7 +234,8 @@ class CanLink(LinkLayer):
 
     def _onStateChanged(self, oldState, newState):
         # return super()._onStateChanged(oldState, newState)
-        assert isinstance(newState, CanLink.State)
+        assert isinstance(newState, CanLink.State), \
+            "expected a CanLink.State, got {}".format(emit_cast(newState))
         if newState == CanLink.State.EnqueueAliasAllocationRequest:
             self._enqueueCIDSequence()
             # - sets state to BusyLocalCIDSequence

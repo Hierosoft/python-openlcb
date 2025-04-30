@@ -1,25 +1,36 @@
 
 from logging import getLogger
+from typing import Union
 
 from openlcb.physicallayer import PhysicalLayer
 
 logger = getLogger(__name__)
 
 
-class RealtimeRawPhysicalLayer(PhysicalLayer):
+class RealtimePhysicalLayer(PhysicalLayer):
 
     def __init__(self, socket):
         # sock to distinguish from socket module or socket.socket class!
         self.sock = socket
 
-    def sendFrameAfter(self, data):
+    def sendDataAfter(self, data: Union[bytearray, bytes]):
         # if isinstance(data, list):
         #     raise TypeError(
         #         "Got {}({}) but expected str"
         #         .format(type(data).__name__, data)
         #     )
+        assert isinstance(data, (bytes, bytearray))
         print("      SR: {}".format(data))
         self.sock.send(data)
+
+    def sendFrameAfter(self, frame):
+        # if isinstance(data, list):
+        #     raise TypeError(
+        #         "Got {}({}) but expected str"
+        #         .format(type(data).__name__, data)
+        #     )
+        print("      SR: {}".format(frame.encode()))
+        self.sock.send(frame.encode())
 
     def registerFrameReceivedListener(self, listener):
         """_summary_

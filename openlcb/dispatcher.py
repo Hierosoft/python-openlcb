@@ -171,7 +171,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
         # self._physicalLayer.registerFrameReceivedListener(
         #     self._printFrame
         # )
-        # ^ Commented since canlink already adds CanLink's default
+        # ^ Commented since CanLink constructor now registers its default
         #   receiveListener to CanLinkPhysicalLayer & that's all we need
         #   for this application.
 
@@ -203,18 +203,21 @@ class Dispatcher(xml.sax.handler.ContentHandler):
         self.listen()  # Must listen for alias reservation responses
         #   (sendAliasConnectionSequence will occur for another 200ms
         #   once, then another 200ms on each alias collision if any)
+        #   - must also keep doing frame = pollFrame() and sending
+        #     if not None.
 
         self._callback_status("physicalLayerUp...")
         self._physicalLayer.physicalLayerUp()
-        while canLink.pollState() != CanLink.State.Permitted:
+        self._callback_status("Waiting for alias reservation...")
+        while self._canLink.pollState() != CanLink.State.Permitted:
             precise_sleep(.02)
-
         # ^ triggers fireListeners which calls CanLink's default
         #   receiveListener by default since added on CanPhysicalLayer
         #   arg of linkPhysicalLayer.
         #   - Must happen *after* listen thread starts, since
         #     generates ControlFrame.LinkUp and calls fireListeners
         #     which calls sendAliasConnectionSequence on this thread!
+        self._callback_status("Alias reservation complete.")
 
     def listen(self):
         self._listen_thread = threading.Thread(
@@ -244,19 +247,49 @@ class Dispatcher(xml.sax.handler.ContentHandler):
             #   the alias from each node (collision or not)
             #   to has to get the expected replies to the alias
             #   reservation sequence below.
-            precise_sleep(.05)   # Wait for physicalLayerUp to complete
+            precise_sleep(.05)   # Wait for physicalLayerUp non-network Message
             while True:
                 # Wait 200 ms for all nodes to announce (and for alias
                 #   reservation to complete), as per section 6.2.1 of CAN
                 #   Frame Transfer Standard (sendMessage requires )
                 logger.debug("[_listen] _receive...")
                 try:
-                    sends = self._physicalLayer.popFrames()
-                    while sends:
+                    # Receive mode (switches to write mode on BlockingIOError
+                    #   which is expected and used on purpose)
+                    # print("Waiting for _receive")
+                    received = self._receive()  # requires setblocking(False)
+                    print("[_listen] received {} byte(s)".format(len(received)),
+                          file=sys.stderr)
+                    # print("      RR: {}".format(received.strip()))
+                    # pass to link processor
+                    self._physicalLayer.handleData(received)
+                    # ^ will trigger self._printFrame if that was added
+                    #   via registerFrameReceivedListener during connect.
+                    precise_sleep(.01)  # let processor sleep before read
+                    if time.perf_counter() - self._connecting_t > .2:
+                        if self._canLink._state != CanLink.State.Permitted:
+                            if ((self._message_t is None)
+                                    or (time.perf_counter() - self._message_t
+                                        > 1)):
+                                logger.warning(
+                                    "CanLink is not ready yet."
+                                    " There must have been a collision"
+                                    "--processCollision increments node alias"
+                                    " in this case and tries again.")
+                        # else _on_link_state_change will be called
+                    # TODO: move *all* send calls to this loop.
+                except BlockingIOError:
+                    # Nothing to receive right now, so perform all sends
+                    #   This *must* occur (require socket.setblocking(False))
+                    # sends = self._physicalLayer.popFrames()
+                    # while sends:
+                    while True:
                         # *Always* do send in the receive thread to
                         #   avoid overlapping calls to socket
                         #   (causes undefined behavior)!
-                        frame = sends.pop()
+                        frame = self._physicalLayer.pollFrame()
+                        if frame is None:
+                            break  # allow receive to run!
                         if isinstance(frame, CanFrame):
                             if self._canLink.isDuplicateAlias(frame.alias):
                                 logger.warning(
@@ -266,43 +299,23 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                                     .format(frame.alias))
                                 continue
                             logger.debug("[_listen] _sendString...")
-                            self._port.sendString(frame.encodeAsString())
+                            packet = frame.encodeAsString()
+                            assert isinstance(packet, str)
+                            print("Sending {}".format(packet))
+                            self._port.sendString(packet)
                             if frame.afterSendState:
                                 self._canLink.setState(frame.afterSendState)
                         else:
                             raise NotImplementedError(
                                 "Event type {} is not handled."
                                 .format(type(frame).__name__))
-                    received = self._receive()  # requires setblocking(False)
                     #   so that it doesn't block (or occur during) recv
                     #   (overlapping calls would cause undefined behavior)!
-                    # TODO: move *all* send calls to this loop.
-                except BlockingIOError:
                     # delay = random.uniform(.005,.02)
                     # ^ random delay may help if send is on another thread
                     #   (but avoid that for stability and speed)
                     precise_sleep(.01)
-                    continue
-                print("[_listen] received {} byte(s)".format(len(received)),
-                      file=sys.stderr)
-                # print("      RR: {}".format(received.strip()))
-                # pass to link processor
-                self._physicalLayer.handleData(received)
-                # ^ will trigger self._printFrame if that was added
-                #   via registerFrameReceivedListener during connect.
-                precise_sleep(.01)  # let processor sleep briefly before read
-                if time.perf_counter() - self._connecting_t > .2:
-                    if self._canLink._state != CanLink.State.Permitted:
-                        if ((self._message_t is None)
-                                or (time.perf_counter() - self._message_t
-                                    > 1)):
-                            logger.warning(
-                                "CanLink is not ready yet."
-                                " There must have been a collision"
-                                "--processCollision increments node alias"
-                                " in this case and tries again.")
-                    # else _on_link_state_change will be called
-
+            # raise RuntimeError("We should never get here")
         except RuntimeError as ex:
             caught_ex = ex
             # If _port is a TcpSocket:

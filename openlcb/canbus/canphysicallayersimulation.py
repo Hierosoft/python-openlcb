@@ -8,8 +8,8 @@ from openlcb.canbus.canphysicallayer import CanPhysicalLayer
 class CanPhysicalLayerSimulation(CanPhysicalLayer):
 
     def __init__(self):
-        self.receivedFrames = []
+        self.receivedPackets = []
         CanPhysicalLayer.__init__(self)
 
-    def sendFrameAfter(self, frame):
-        self.receivedFrames.append(frame)
+    def handlePacket(self, frame):
+        self.receivedPackets.append(frame)

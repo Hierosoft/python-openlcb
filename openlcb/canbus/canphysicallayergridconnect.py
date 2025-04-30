@@ -12,19 +12,19 @@ Works with frames like
 
 from collections import deque
 from typing import Union
-from openlcb.canbus.canlink import CanLink
 from openlcb.canbus.canphysicallayer import CanPhysicalLayer
 from openlcb.canbus.canframe import CanFrame
+from openlcb.frameencoder import FrameEncoder
 
 GC_START_BYTE = 0x3a  # :
 GC_END_BYTE = 0x3b  # ;
 
 
-class CanPhysicalLayerGridConnect(CanPhysicalLayer):
+class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
     """CAN physical layer subclass for GridConnect
 
     This acts as frame.encoder for canLink, and manages the packet
-    _sends queue (deque is used for speed; defined & managed in base
+    _send_frames queue (deque is used for speed; defined & managed in base
     class: PhysicalLayer)
 
     Args:
@@ -39,7 +39,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
         # ^ A CanLink requires a physical layer to operate,
         #   so CanLink now requires a PhysicalLayer instance
         #   such as this in its constructor.
-        CanPhysicalLayer.__init__(self)
+        CanPhysicalLayer.__init__(self)  # creates self._send_frames
 
         # region moved to CanLink constructor
         # from canLink.linkPhysicalLayer(self)  # self.setCallBack(callback):
@@ -53,10 +53,6 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
     #     assert callable(callback)
     #     self.canSendCallback = callback
 
-    def sendFrameAfter(self, frame: CanFrame) -> None:
-        frame.encoder = self
-        self._sends.appendleft(frame)  # self.canSendCallback(frame)
-
     def encodeFrameAsString(self, frame) -> str:
         '''Encode frame to string.'''
         output = ":X{:08X}N".format(frame.header)  # at least 8 chars, hex
@@ -64,6 +60,11 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer):
             output += "{:02X}".format(byte)  # at least 2 chars, hex
         output += ";\n"
         return output
+
+    def encodeFrameAsData(self, frame) -> Union[bytearray, bytes]:
+        # TODO: Consider doing this manually (in Python 3,
+        #   bytes/bytearray has no attribute 'format')
+        return self.encodeFrameAsString(frame).encode("utf-8")
 
     def handleDataString(self, string: str):
         '''Provide string from the outside link to be parsed

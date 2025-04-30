@@ -14,7 +14,7 @@ host|host:port            (optional) Set the address (or using a colon,
 from logging import getLogger
 # region same code as other examples
 from examples_settings import Settings
-from openlcb.rawphysicallayer import RealtimeRawPhysicalLayer  # do 1st to fix path if no pip install
+from openlcb.realtimephysicallayer import RealtimePhysicalLayer  # do 1st to fix path if no pip install
 settings = Settings()
 
 if __name__ == "__main__":
@@ -56,14 +56,14 @@ print("RR, SR are raw socket interface receive and send; "
 #     assert isinstance(data, (bytes, bytearray))
 #     print("      SR: {}".format(data))
 #     sock.send(data)
-# ^ Moved to RealtimeRawPhysicalLayer sendFrameAfter override
+# ^ Moved to RealtimePhysicalLayer sendFrameAfter override
 
 
 def printMessage(msg):
     print("RM: {} from {}".format(msg, msg.source))
 
 
-physicalLayer = RealtimeRawPhysicalLayer(sock)
+physicalLayer = RealtimePhysicalLayer(sock)
 # ^ this was not in the example before
 # (just gave sendToSocket to TcpLink)
 

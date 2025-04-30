@@ -18,7 +18,9 @@ making multiple copies of a single object.
 
 from enum import Enum
 from logging import getLogger
+import warnings
 
+from openlcb import emit_cast
 from openlcb.physicallayer import PhysicalLayer
 
 logger = getLogger(__name__)
@@ -40,24 +42,42 @@ class LinkLayer:
     """
 
     class State(Enum):
-        Undefined = 1  # subclass constructor did not run (implement states)
+        Undefined = 0  # subclass constructor did not run (implement states)
+
+    DisconnectedState = State.Undefined  # change in subclass! Only for tests!
+    #   (enforced using type(self).__name__ != "LinkLayer" checks in methods)
 
     def __init__(self, physicalLayer: PhysicalLayer, localNodeID):
         assert isinstance(physicalLayer, PhysicalLayer)  # allows any subclass
         # subclass should check type of localNodeID technically
         self.localNodeID = localNodeID
         self.listeners = []
-        self._state = LinkLayer.State.Undefined
+        self._state = None  # LinkLayer.State.Undefined
         # region moved from CanLink linkPhysicalLayer
         self.physicalLayer = physicalLayer  # formerly self.link = cpl
         # if physicalLayer is not None:
-        physicalLayer.registerFrameReceivedListener(self.receiveListener)
+        # listener = self.receiveListener  # try to prevent
+        # "new bound method" Python behavior in subclass from making "is"
+        #   operator not work as expected in registerFrameReceivedListener.
+        physicalLayer.onReceivedFrame = self.receiveListener
+        # # ^ enforce queue paradigm (See use in PhysicalLayer subclass)
+        # physicalLayer.registerFrameReceivedListener(listener)
+        # ^ Doesn't work with "is" operator still! So just use
+        #   physicalLayer.onReceivedFrame in fireListeners in PhysicalLayer.
         # else:
         #     print("Using {} without"
         #           " registerFrameReceivedListener(self.receiveListener)"
         #           " on physicalLayer, since no physicalLayer specified."
         #           .format())
         # endregion moved from CanLink linkPhysicalLayer
+        if type(self).__name__ != "LinkLayer":
+            # ^ Use name, since isinstance returns True for any subclass.
+            if isinstance(type(self).DisconnectedState, LinkLayer.State):
+                raise NotImplementedError(
+                    " LinkLayer.State and LinkLayer.DisconnectedState"
+                    " are only for testing. Redefine them in each subclass"
+                    " (got LinkLayer.State({}) for {}.DisconnectedState)"
+                    .format(emit_cast(type(self).DisconnectedState), type(self).__name__))
 
     def receiveListener(self, frame):
         logger.warning(
@@ -68,20 +88,38 @@ class LinkLayer:
         """Run this whenever the socket connection is lost
         and override _onStateChanged to handle the change.
         * If you override this, you *must* call
-        `LinkLayer.onDisconnect(self)` to trigger _onStateChanged
-        if the implementation utilizes getState.
+          `LinkLayer.onDisconnect(self)` to trigger _onStateChanged
+          if the implementation utilizes getState.
+        * Override this in each subclass or state won't match!
         """
-        self._setState(LinkLayer.State.Undefined)
+        if type(self).__name__ != "LinkLayer":
+            # ^ Use name, since isinstance returns True for any subclass.
+            if isinstance(type(self).DisconnectedState, LinkLayer.State):
+                raise NotImplementedError(
+                    " LinkLayer.State and LinkLayer.DisconnectedState"
+                    " are only for testing. Redefine them in each subclass.")
+
+        self.setState(type(self).DisconnectedState)
 
     def getState(self):
         return self._state
 
     def setState(self, state):
+        """Reusable LinkLayer setState
+        (enforce type of state in _onStateChanged implementation in subclass)
+        """
         oldState = self._state
         newState = state  # keep a copy for _onStateChanged, for thread safety
         #   (ensure value doesn't change between two lines below)
         self._state = newState
-        self._onStateChanged(oldState, newState)
+        if type(self).__name__ != "LinkLayer":
+            # ^ Use name, since isinstance returns True for any subclass.
+            if isinstance(state, LinkLayer.State):
+                raise NotImplementedError(
+                    " LinkLayer.State and LinkLayer.DisconnectedState"
+                    " are only for testing. Redefine them in each subclass.")
+
+        self._onStateChanged(oldState, newState)  # enforce type in subclass
 
     def _onStateChanged(self, oldState, newState):
         raise NotImplementedError(

@@ -4,8 +4,8 @@ Generalize a CAN physical layer, real or simulated.
 This is a class because it represents a single physical connection to a layout
 and is subclassed.
 '''
-import sys
 from logging import getLogger
+import warnings
 
 from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.controlframe import ControlFrame
@@ -24,37 +24,61 @@ class CanPhysicalLayer(PhysicalLayer):
         PhysicalLayer.__init__(self)
         self.listeners = []
 
+    def onReceivedFrame(self):
+        raise NotImplementedError(
+            "Your LinkLayer/subclass must set this manually (monkeypatch)"
+            " to the CanLink instance's receiveListener method.")
+
     def sendFrameAfter(self, frame: CanFrame):
-        """See sendFrameAfter documentation in PhysicalLayer.
-        This implementation behaves the same except requires
-        a specific type (CanFrame).
+        """Enqueue: *IMPORTANT* Main/other thread may have
+        called this. Any other thread sending other than the _listen
+        thread is bad, since overlapping calls to socket cause undefined
+        behavior, so this just adds to a deque (double ended queue, used
+        as FIFO).
+        - CanPhysicalLayerGridConnect formerly had canSendCallback
+          but now it uses its own frame deque, and the socket code pops
+          and sends the frames.
+          (formerly canSendCallback was set to a sendToPort function
+          which was formerly a direct call to a port which was not
+          thread-safe and could be called from anywhere in the
+          openlcb stack)
+          - Add a generalized LocalEvent queue avoid deep callstack?
+            - See issue #62 comment about a local event queue.
+              For now, CanFrame is used (improved since issue #62
+              was solved by adding more states to CanLink so it
+              can have incremental states instead of requiring two-way
+              communication [race condition] during a single
+              blocking call to defineAndReserveAlias)
         """
-        # formerly sendCan Frame, but now behavior is defined by superclass
-        #   (regardless of frame type, it is just added to self._sends)
         assert isinstance(frame, CanFrame)
+        frame.encoder = self
         PhysicalLayer.sendFrameAfter(self, frame)
 
-    def pollFrame(self) -> CanFrame:  # overloaded for type hinting.
-        """Check if there is another frame queued and get it.
-        Returns:
-            CanFrame: next frame in FIFO buffer (_sends).
-        """
-        return PhysicalLayer.pollFrame(self)
+    def pollFrame(self) -> CanFrame:
+        frame = super().pollFrame()
+        if frame is None:
+            return None
+        assert isinstance(frame, CanFrame)
+        return frame
 
     def encode(self, frame) -> str:
         '''abstract interface (encode frame to string)'''
         raise NotImplementedError("Each subclass must implement this.")
 
     def registerFrameReceivedListener(self, listener):
+        assert listener is not None
+        warnings.warn(
+            "You don't really need to listen to packets."
+            " Use pollFrame instead, which will collect and decode"
+            " packets into frames (this layer communicates to upper layers"
+            " using self.onReceivedFrame set in LinkLayer/subclass"
+            " constructor).")
         self.listeners.append(listener)
 
     def fireListeners(self, frame):
-        if not self.listeners:
-            logger.warning(
-                "No listeners for frame received."
-                " CanLink (see LinkLayer superclass constructor)"
-                " should at least register its receiveFrame method"
-                " with a physical layer implementation.")
+        """At least the LinkLayer (CanLink in this case)
+        should register one listener."""
+
         for listener in self.listeners:
             listener(frame)
 

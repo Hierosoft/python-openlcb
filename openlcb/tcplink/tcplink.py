@@ -19,6 +19,8 @@ from openlcb.nodeid import NodeID
 import logging
 import time
 
+from openlcb.physicallayer import PhysicalLayer
+
 
 class TcpLink(LinkLayer):
     """A TCP link layer.
@@ -32,7 +34,7 @@ class TcpLink(LinkLayer):
             software-defined node connecting to the LCC network via TCP.
     """
 
-    def __init__(self, physicalLayer, localNodeID):
+    def __init__(self, physicalLayer: PhysicalLayer, localNodeID):
         LinkLayer.__init__(self, physicalLayer, localNodeID)
         # See class docstring for argument(s) and attributes.
         self.physicalLayer = physicalLayer
@@ -225,6 +227,6 @@ class TcpLink(LinkLayer):
 
         outputBytes.extend(message.data)
 
-        self.physicalLayer.sendFrameAfter(outputBytes)
+        self.physicalLayer.sendDataAfter(outputBytes)
         # ^ The physical layer should be one with "Raw" in the name
         # since takes bytes. See example_tcp_message_interface.

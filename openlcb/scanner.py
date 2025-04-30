@@ -44,7 +44,7 @@ class Scanner:
         if not isinstance(self._buffer, (bytes, bytearray)):
             raise TypeError("Buffer is {} (nextByte is for bytes/bytearray)"
                             .format(type(self._buffer).__name__))
-        return self._buffer.pop(0)
+        return self._buffer.popleft(0)
 
     def hasNextByte(self):
         return True if self._buffer else False

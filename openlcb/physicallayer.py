@@ -7,10 +7,10 @@ To change implementation of popFrames or other methods without
 NotImplementedError, call super() normally, as such methods are used
 similarly to how a template or generic class would be used in a strictly
 OOP language. However, re-implementation is typically not necessary
-since Python allows any type to be used for the elements of _sends.
+since Python allows any type to be used for the elements of _send_frames.
 
 We implement logic here not only because it is convenient but also
-because _sends (and the subclass being a state machine with states
+because _send_frames (and the subclass being a state machine with states
 specific to the physical layer type) is a the paradigm used by this
 openlcb stack (Python module) as a whole (connection and flow determined
 by application's port code, state determined by the openlcb stack). This
@@ -23,8 +23,7 @@ and predictable use in applications.
 
 from collections import deque
 from logging import getLogger
-
-from openlcb.canbus.canframe import CanFrame
+from typing import Union
 
 logger = getLogger(__name__)
 
@@ -55,43 +54,40 @@ class PhysicalLayer:
     """
 
     def __init__(self):
-        self._sends = deque()
+        self._send_frames = deque()
 
-    def sendFrameAfter(self, frame):
-        """Enqueue: *IMPORTANT* Main/other thread may have
-        called this. Any other thread sending other than the _listen
-        thread is bad, since overlapping calls to socket cause undefined
-        behavior, so this just adds to a deque (double ended queue, used
-        as FIFO).
-        - CanPhysicalLayerGridConnect formerly had canSendCallback
-          but now it uses its own frame deque, and the socket code pops
-          and sends the frames.
-          (formerly canSendCallback was set to a sendToPort function
-          which was formerly a direct call to a port which was not
-          thread-safe and could be called from anywhere in the
-          openlcb stack)
-          - Add a generalized LocalEvent queue avoid deep callstack?
-            - See issue #62 comment about a local event queue.
-              For now, CanFrame is used (improved since issue #62
-              was solved by adding more states to CanLink so it
-              can have incremental states instead of requiring two-way
-              communication [race condition] during a single
-              blocking call to defineAndReserveAlias)
-        """
-        self._sends.appendleft(frame)
+    # def sendDataAfter(self, data):
+    #     assert isinstance(data, (bytes, bytearray))
+    #     self._send_frames.append(data)
 
     def pollFrame(self):
         """Check if there is another frame queued and get it.
+        Subclass should call PhysicalLayer.pollFrame (or
+        super().pollFrame) then enforce type, only if not None, before
+        returning the return of this superclass method.
+
         Returns:
-            Any: next frame in FIFO buffer (_sends). In a
+            Any: next frame in FIFO buffer (_send_frames). In a
                 CanPhysicalLayer or subclass of that, type is CanFrame.
                 In a raw implementation it is either bytes or bytearray.
         """
         try:
-            return self._sends.pop()
-        except IndexError:  # "pop from an empty deque"
+            data = self._send_frames.popleft()
+            return data
+        except IndexError:  # "popleft from an empty deque"
             pass
         return None
+
+    def sendFrameAfter(self, frame):
+        """In subclass, enforce type and set frame.encoder to self
+        (which should inherit from both PhysicalLayer and FrameEncoder)
+        before calling this.
+
+        This only adds to a queue, so use pollFrame() in your socket
+        code so application manages flow, physicalLayer manages data,
+        and link manages state.
+        """
+        self._send_frames.append(frame)  # append: queue-like if using popleft
 
     def registerFrameReceivedListener(self, listener):
         """abstract method"""
