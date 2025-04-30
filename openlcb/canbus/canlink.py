@@ -83,7 +83,7 @@ class CanLink(LinkLayer):
     # MIN_STATE_VALUE & MAX_STATE_VALUE are set statically below the
     #   State class declaration:
     STANDARD_ALIAS_RESPONSE_DELAY = .2
-    ALIAS_RESPONSE_DELAY = 20  # See docstring.
+    ALIAS_RESPONSE_DELAY = 5  # See docstring.
 
     class State(Enum):
         """Used as a linux-like "runlevel"
@@ -134,8 +134,10 @@ class CanLink(LinkLayer):
     MAX_STATE_VALUE = max(entry.value for entry in State)
 
     def __init__(self, physicalLayer: PhysicalLayer, localNodeID,
-                 require_remote_nodes=True):
+                 require_remote_nodes=False):
         # See class docstring for args
+        self.physicalLayer = None
+        LinkLayer.__init__(self, physicalLayer, localNodeID)
         self._previousLocalAliasSeed = None
         self.require_remote_nodes = require_remote_nodes
         self._waitingForAliasStart = None
@@ -143,7 +145,6 @@ class CanLink(LinkLayer):
         self._localAlias = self.createAlias12(self._localAliasSeed)
         self.localNodeID = localNodeID
         self._state = CanLink.State.Initial
-        self.physicalLayer = None
         self._frameCount = 0
         self._aliasCollisionCount = 0
         self._errorCount = 0
@@ -154,7 +155,7 @@ class CanLink(LinkLayer):
         self.accumulator = {}
         self.duplicateAliases = []
         self.nextInternallyAssignedNodeID = 1
-        LinkLayer.__init__(self, physicalLayer, localNodeID)
+        self._state = CanLink.State.Initial
 
     # This method may never actually be necessary, as
     # sendMessage uses nodeIdToAlias (which has localNodeID
@@ -910,7 +911,8 @@ class CanLink(LinkLayer):
             as the application's (or Dispatcher's)
             socket calls.
         """
-        assert isinstance(self._state, CanLink.State)
+        assert isinstance(self._state, CanLink.State), \
+            "Expected a CanLink.State, got {}".format(emit_cast(self._state))
         if self._state in (CanLink.State.Inhibited, CanLink.State.Initial):
             # Do nothing. Dispatcher or application must first call
             # physicalLayerUp

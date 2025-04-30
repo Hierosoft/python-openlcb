@@ -84,7 +84,11 @@ class TcpSocket(PortInterface):
             list(int): one or more bytes, converted to a list of ints.
         '''
         # public receive (do not overload) asserts no overlapping call
-        data = self._device.recv(128)
+        try:
+            data = self._device.recv(128)
+        except BlockingIOError:
+            # None is only expected allowed in non-blocking mode
+            return None
         # ^ For block/fail scenarios (based on options previously set) see
         #   <https://manpages.debian.org/bookworm/manpages-dev/recv.2.en.html>
         #   as cited at

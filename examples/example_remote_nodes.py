@@ -80,7 +80,8 @@ def printMessage(msg):
     readQueue.put(msg)
 
 
-canLink = CanLink(physicalLayer, NodeID(settings['localNodeID']))
+canLink = CanLink(physicalLayer, NodeID(settings['localNodeID']),
+                  require_remote_nodes=True)
 canLink.registerMessageReceivedListener(printMessage)
 
 # create a node and connect it update
@@ -108,15 +109,18 @@ readQueue = Queue()
 
 observer = GridConnectObserver()
 
+
 def pumpEvents():
     received = sock.receive()
-    if settings['trace']:
-        observer.push(received)
-        if observer.hasNext():
-            packet_str = observer.next()
-            print("   RR: "+packet_str.strip())
-    # pass to link processor
-    physicalLayer.handleData(received)
+    if received is not None:
+        # may be None if socket.setblocking(False) mode
+        if settings['trace']:
+            observer.push(received)
+            if observer.hasNext():
+                packet_str = observer.next()
+                print("   RR: "+packet_str.strip())
+        # pass to link processor
+        physicalLayer.handleData(received)
     canLink.pollState()
     frame = physicalLayer.pollFrame()
     if frame:
@@ -131,9 +135,9 @@ def pumpEvents():
 
 print("      SL : link up...")
 physicalLayer.physicalLayerUp()
-print("      SL : link up...waiting...")
-physicalLayer.physicalLayerUp()
-print("      SL : link up")
+print("      SL : link up...waiting for alias reservation"
+      " (canLink.require_remote_nodes={})..."
+      .format(canLink.require_remote_nodes))
 
 while canLink.pollState() != CanLink.State.Permitted:
     pumpEvents()

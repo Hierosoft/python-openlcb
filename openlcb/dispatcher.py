@@ -176,7 +176,8 @@ class Dispatcher(xml.sax.handler.ContentHandler):
         #   for this application.
 
         self._callback_status("CanLink...")
-        self._canLink = CanLink(self._physicalLayer, NodeID(localNodeID))
+        self._canLink = CanLink(self._physicalLayer, NodeID(localNodeID),
+                                require_remote_nodes=True)
         self._callback_status("CanLink..."
                               "registerMessageReceivedListener...")
         self._canLink.registerMessageReceivedListener(self._handleMessage)
