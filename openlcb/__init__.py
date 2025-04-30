@@ -1,3 +1,4 @@
+from enum import Enum
 import re
 import time
 
@@ -24,6 +25,8 @@ def only_hex_pairs(value: str) -> bool:
 def emit_cast(value) -> str:
     """Get type and value, such as for debug output."""
     repr_str = repr(value)
+    if isinstance(value, Enum):
+        repr_str = "{}".format(value.value)
     if repr_str.startswith(type(value).__name__):
         return repr(value)  # type already included, such as bytearray(...)
     return "{}({})".format(type(value).__name__, repr_str)
