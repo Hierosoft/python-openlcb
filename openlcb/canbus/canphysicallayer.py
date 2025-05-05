@@ -71,14 +71,23 @@ class CanPhysicalLayer(PhysicalLayer):
             "You don't really need to listen to packets."
             " Use pollFrame instead, which will collect and decode"
             " packets into frames (this layer communicates to upper layers"
-            " using self.onReceivedFrame set in LinkLayer/subclass"
+            " using physicalLayer.onReceivedFrame set by LinkLayer/subclass"
             " constructor).")
         self.listeners.append(listener)
 
     def fireListeners(self, frame):
-        """At least the LinkLayer (CanLink in this case)
-        should register one listener."""
-
+        """Monitor each frame that is constructed
+        as the application provides handleData raw data from the port.
+        - LinkLayer (CanLink in this case) must set onReceivedFrame,
+          so registerFrameReceivedListener is now optional, and
+          a Message handler should usually be used instead.
+        """
+        # (onReceivedFrame was implemented to make it clear by way of
+        #   constructor code that the handler is required in order for
+        #   the openlcb network stack (This Python module) to
+        #   operate--See
+        #   <https://github.com/bobjacobsen/python-openlcb/issues/62#issuecomment-2775668681>
+        self.onReceivedFrame(frame)
         for listener in self.listeners:
             listener(frame)
 
