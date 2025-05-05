@@ -183,6 +183,7 @@ else:
     print("[main] CanLink state is still {} before moving on."
           .format(state))
 
+print("nodeIdToAlias: {}".format(canLink.nodeIdToAlias))
 
 def receiveLoop():
     """put the read on a separate thread"""
