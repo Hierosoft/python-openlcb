@@ -11,6 +11,7 @@ host|host:port            (optional) Set the address (or using a colon,
                           address and port.
 '''
 # region same code as other examples
+from timeit import default_timer
 from examples_settings import Settings
 from openlcb import precise_sleep
 from openlcb.canbus.gridconnectobserver import GridConnectObserver  # do 1st to fix path if no pip install
@@ -109,6 +110,9 @@ readQueue = Queue()
 
 observer = GridConnectObserver()
 
+assert len(physicalLayer.listeners) == 1, \
+    "{} listener(s) unexpectedly".format(len(physicalLayer.listeners))
+
 
 def pumpEvents():
     received = sock.receive()
@@ -118,14 +122,15 @@ def pumpEvents():
             observer.push(received)
             if observer.hasNext():
                 packet_str = observer.next()
-                print("   RR: "+packet_str.strip())
+                print("+ RECEIVED Remote: "+packet_str.strip())
         # pass to link processor
         physicalLayer.handleData(received)
     canLink.pollState()
     frame = physicalLayer.pollFrame()
     if frame:
         string = frame.encodeAsString()
-        if settings['trace'] : print("   SR: "+string.strip())
+        if True:  # if settings['trace']:
+            print("- SENT Remote: "+string.strip())
         sock.sendString(string)
         if frame.afterSendState:
             canLink.setState(frame.afterSendState)
@@ -133,20 +138,54 @@ def pumpEvents():
 
 # bring the CAN level up
 
-print("      SL : link up...")
+print("* QUEUE Message: link up...")
 physicalLayer.physicalLayerUp()
-print("      SL : link up...waiting for alias reservation"
+print("  QUEUED Message: link up...waiting for alias reservation"
       " (canLink.require_remote_nodes={})..."
       .format(canLink.require_remote_nodes))
 
-while canLink.pollState() != CanLink.State.Permitted:
+# These checks are for debugging. See other examples for simpler pollState loop
+cidSequenceStart = default_timer()
+previousState = canLink.getState()
+print("[main] CanLink previousState={}".format(previousState))
+while True:
+    # This is a pollState loop as our custom pumpEvents function
+    #   calls pollState.
+    state = canLink.getState()
+    if state != previousState:
+        print("[main] CanLink state changed from {} to {}"
+              .format(previousState, state))
+        previousState = state
+    if state == CanLink.State.Permitted:
+        break
     pumpEvents()
+    state = canLink.getState()
+    if state != previousState:
+        print("[main] CanLink state changed from {} to {}"
+              .format(previousState, state))
+        previousState = state
+
     precise_sleep(.02)
+    if default_timer() - cidSequenceStart > 2:  # measured in seconds
+        print("[main] Warning, no response received, assuming no remote nodes"
+              " continuing alias reservation"
+              " (ok to do so after 200ms"
+              " according to CAN Frame Transfer - Standard)")
+        break
+    state = canLink.getState()
+
+if state != previousState:
+    print("[main] CanLink state changed from {} to {}"
+          .format(previousState, state))
+elif state == CanLink.State.Initial:
+    raise NotImplementedError("The CanLink state is still {}".format(state))
+else:
+    print("[main] CanLink state is still {} before moving on."
+          .format(state))
 
 
 def receiveLoop():
     """put the read on a separate thread"""
-
     while True:
         pumpEvents()
 
