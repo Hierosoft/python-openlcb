@@ -55,6 +55,7 @@ class PhysicalLayer:
 
     def __init__(self):
         self._send_frames = deque()
+        self.onQueuedFrame = None
 
     # def sendDataAfter(self, data):
     #     assert isinstance(data, (bytes, bytearray))
@@ -88,11 +89,14 @@ class PhysicalLayer:
         and link manages state.
         """
         self._send_frames.append(frame)  # append: queue-like if using popleft
+        if self.onQueuedFrame:
+            self.onQueuedFrame(frame)
 
     def onSentFrame(self, frame):
         raise NotImplementedError(
-            "onSentFrame must be set (monkeypatched)"
-            " to use the LinkLayer subclass' one"
+            "The subclass must patch the instance:"
+            " PhysicalLayer instance's onSentFrame must be manually set"
+            " to the LinkLayer subclass instance' handleSentFrame"
             " so state can be updated if necessary.")
 
     def registerFrameReceivedListener(self, listener):
@@ -102,6 +106,18 @@ class PhysicalLayer:
             "{} abstract registerFrameReceivedListener called"
             " (expected implementation)"
             .format(type(self).__name__))
+
+    def encodeFrameAsString(self, frame) -> str:
+        '''abstract interface (encode frame to string)'''
+        raise NotImplementedError(
+            "If application uses this,"
+            " the subclass there must also implement FrameEncoder.")
+
+    def encodeFrameAsData(self, frame) -> Union[bytearray, bytes]:
+        '''abstract interface (encode frame to string)'''
+        raise NotImplementedError(
+            "If application uses this,"
+            " the subclass there must also implement FrameEncoder.")
 
     def physicalLayerUp(self):
         """abstract method"""

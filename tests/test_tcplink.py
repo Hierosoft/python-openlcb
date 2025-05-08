@@ -1,5 +1,6 @@
 import unittest
 
+from openlcb.physicallayer import PhysicalLayer
 from openlcb.realtimephysicallayer import RealtimePhysicalLayer
 from openlcb.tcplink.tcplink import TcpLink
 
@@ -8,7 +9,11 @@ from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
 
 
-class TcpMockLayer():
+# class MockPhysicalLayer(PhysicalLayer):
+#     pass
+
+
+class TcpMockLayer():  # or TcpMockLayer(PortInterface):
     def __init__(self):
         self.receivedText = []
 
@@ -31,7 +36,7 @@ class TestTcpLinkClass(unittest.TestCase):
         messageLayer = MessageMockLayer()
         tcpLayer = TcpMockLayer()
 
-        linkLayer = TcpLink(RealtimePhysicalLayer, NodeID(100))
+        linkLayer = TcpLink(RealtimePhysicalLayer(tcpLayer), NodeID(100))
         linkLayer.registerMessageReceivedListener(messageLayer.receiveMessage)
 
         linkLayer.linkUp()
@@ -43,9 +48,8 @@ class TestTcpLinkClass(unittest.TestCase):
         messageLayer = MessageMockLayer()
         tcpLayer = TcpMockLayer()
 
-        linkLayer = TcpLink(NodeID(100))
+        linkLayer = TcpLink(RealtimePhysicalLayer(tcpLayer), NodeID(100))
         linkLayer.registerMessageReceivedListener(messageLayer.receiveMessage)
-        linkLayer.linkPhysicalLayer(tcpLayer.send)
 
         linkLayer.linkRestarted()
 
@@ -56,9 +60,8 @@ class TestTcpLinkClass(unittest.TestCase):
         messageLayer = MessageMockLayer()
         tcpLayer = TcpMockLayer()
 
-        linkLayer = TcpLink(NodeID(100))
+        linkLayer = TcpLink(RealtimePhysicalLayer(tcpLayer), NodeID(100))
         linkLayer.registerMessageReceivedListener(messageLayer.receiveMessage)
-        linkLayer.linkPhysicalLayer(tcpLayer.send)
 
         linkLayer.linkDown()
 
@@ -69,9 +72,8 @@ class TestTcpLinkClass(unittest.TestCase):
         messageLayer = MessageMockLayer()
         tcpLayer = TcpMockLayer()
 
-        linkLayer = TcpLink(NodeID(100))
+        linkLayer = TcpLink(RealtimePhysicalLayer(tcpLayer), NodeID(100))
         linkLayer.registerMessageReceivedListener(messageLayer.receiveMessage)
-        linkLayer.linkPhysicalLayer(tcpLayer.send)
 
         messageText = bytearray([
             0x80, 0x00,                          # full message
@@ -92,9 +94,8 @@ class TestTcpLinkClass(unittest.TestCase):
         messageLayer = MessageMockLayer()
         tcpLayer = TcpMockLayer()
 
-        linkLayer = TcpLink(NodeID(100))
+        linkLayer = TcpLink(RealtimePhysicalLayer(tcpLayer), NodeID(100))
         linkLayer.registerMessageReceivedListener(messageLayer.receiveMessage)
-        linkLayer.linkPhysicalLayer(tcpLayer.send)
 
         messageText = bytearray([
             0x80, 0x00,                      # full message
@@ -119,9 +120,8 @@ class TestTcpLinkClass(unittest.TestCase):
         messageLayer = MessageMockLayer()
         tcpLayer = TcpMockLayer()
 
-        linkLayer = TcpLink(NodeID(100))
+        linkLayer = TcpLink(RealtimePhysicalLayer(tcpLayer), NodeID(100))
         linkLayer.registerMessageReceivedListener(messageLayer.receiveMessage)
-        linkLayer.linkPhysicalLayer(tcpLayer.send)
 
         messageText = bytearray([
             0x80, 0x00,                      # full message
@@ -150,9 +150,8 @@ class TestTcpLinkClass(unittest.TestCase):
         messageLayer = MessageMockLayer()
         tcpLayer = TcpMockLayer()
 
-        linkLayer = TcpLink(NodeID(100))
+        linkLayer = TcpLink(RealtimePhysicalLayer(tcpLayer), NodeID(100))
         linkLayer.registerMessageReceivedListener(messageLayer.receiveMessage)
-        linkLayer.linkPhysicalLayer(tcpLayer.send)
 
         messageText = bytearray([
             0x80, 0x00,                      # full message
@@ -185,9 +184,8 @@ class TestTcpLinkClass(unittest.TestCase):
         messageLayer = MessageMockLayer()
         tcpLayer = TcpMockLayer()
 
-        linkLayer = TcpLink(NodeID(100))
+        linkLayer = TcpLink(RealtimePhysicalLayer(tcpLayer), NodeID(100))
         linkLayer.registerMessageReceivedListener(messageLayer.receiveMessage)
-        linkLayer.linkPhysicalLayer(tcpLayer.send)
 
         messageText = bytearray([
             0x80, 0x40,                      # part 1
@@ -214,9 +212,8 @@ class TestTcpLinkClass(unittest.TestCase):
         messageLayer = MessageMockLayer()
         tcpLayer = TcpMockLayer()
 
-        linkLayer = TcpLink(NodeID(100))
+        linkLayer = TcpLink(RealtimePhysicalLayer(tcpLayer), NodeID(100))
         linkLayer.registerMessageReceivedListener(messageLayer.receiveMessage)
-        linkLayer.linkPhysicalLayer(tcpLayer.send)
 
         messageText = bytearray([
             0x80, 0x40,                      # part 1
@@ -249,9 +246,8 @@ class TestTcpLinkClass(unittest.TestCase):
         messageLayer = MessageMockLayer()
         tcpLayer = TcpMockLayer()
 
-        linkLayer = TcpLink(NodeID(100))
+        linkLayer = TcpLink(RealtimePhysicalLayer(tcpLayer), NodeID(100))
         linkLayer.registerMessageReceivedListener(messageLayer.receiveMessage)
-        linkLayer.linkPhysicalLayer(tcpLayer.send)
 
         message = Message(MTI.Verify_NodeID_Number_Global, NodeID(0x123), None,
                           NodeID(0x321).toArray())
@@ -280,9 +276,8 @@ class TestTcpLinkClass(unittest.TestCase):
         messageLayer = MessageMockLayer()
         tcpLayer = TcpMockLayer()
 
-        linkLayer = TcpLink(NodeID(100))
+        linkLayer = TcpLink(RealtimePhysicalLayer(tcpLayer), NodeID(100))
         linkLayer.registerMessageReceivedListener(messageLayer.receiveMessage)
-        linkLayer.linkPhysicalLayer(tcpLayer.send)
 
         message = Message(MTI.Verify_NodeID_Number_Addressed, NodeID(0x123),
                           NodeID(0x321), NodeID(0x321).toArray())

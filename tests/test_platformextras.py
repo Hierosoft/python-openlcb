@@ -47,3 +47,7 @@ class TestPlatformExtras(unittest.TestCase):
         # Can't think of anything else to test, since
         #   SysDirs is the authority on the values
         #   (and result is platform-specific).
+
+
+if __name__ == '__main__':
+    unittest.main()

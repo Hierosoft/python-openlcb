@@ -9,10 +9,23 @@ from openlcb.linklayer import LinkLayer
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
 from openlcb.message import Message
+from openlcb.physicallayer import PhysicalLayer
+
+
+class MockPhysicalLayer(PhysicalLayer):
+    pass
 
 
 class LinkMockLayer(LinkLayer):
     sentMessages = []
+
+    class State:
+        Initial = 0
+        Disconnected = 1
+        Permitted = 2
+
+    DisconnectedState = State.Disconnected
+
 
     def sendMessage(self, message):
         LinkMockLayer.sentMessages.append(message)
@@ -24,7 +37,9 @@ class LinkMockLayer(LinkLayer):
 
 class DatagramServiceTest(unittest.TestCase):
     def setUp(self):
-        self.service = DatagramService(LinkMockLayer(NodeID(12)))
+        self.service = DatagramService(
+            LinkMockLayer(MockPhysicalLayer(), NodeID(12))
+        )
         LinkMockLayer.sentMessages = []
         self.received = False
         self.readMemos = []

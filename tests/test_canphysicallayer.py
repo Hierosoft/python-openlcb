@@ -12,11 +12,19 @@ class TestCanPhysicalLayerClass(unittest.TestCase):
     def receiveListener(self, frame):
         self.received = True
 
+    def handleReceivedFrame(self, frame):
+        pass
+
+    def handleSentFrame(self, frame):
+        pass
+
     def testReceipt(self):
         self.received = False
         frame = CanFrame(0x000, bytearray())
         receiver = self.receiveListener
         layer = CanPhysicalLayer()
+        layer.onReceivedFrame = self.handleReceivedFrame
+        layer.onSentFrame = self.handleSentFrame
         layer.registerFrameReceivedListener(receiver)
 
         layer.fireListeners(frame)

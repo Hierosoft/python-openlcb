@@ -1,10 +1,11 @@
 import unittest
 
 
-from openlcb import precise_sleep
+from openlcb import formatted_ex, precise_sleep
 from openlcb.canbus.canlink import CanLink
 
 from openlcb.canbus.canframe import CanFrame
+from openlcb.canbus.canlinklayersimulation import CanLinkLayerSimulation
 from openlcb.canbus.canphysicallayer import CanPhysicalLayer
 from openlcb.canbus.canphysicallayersimulation import (
     CanPhysicalLayerSimulation
@@ -34,11 +35,19 @@ class MessageMockLayer:
         self.receivedMessages.append(msg)
 
 
+def getLocalNodeIDStr():
+    return "05.01.01.01.03.01"
+
+
+def getLocalNodeID():
+    return NodeID(getLocalNodeIDStr())
+
+
 class TestCanLinkClass(unittest.TestCase):
 
     # MARK: - Alias calculations
     def testIncrementAlias48(self):
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(PhyMockLayer(), getLocalNodeID())
 
         # check precision of calculation
         self.assertEqual(canLink.incrementAlias48(0), 0x1B0C_A37A_4BA9,
@@ -50,7 +59,7 @@ class TestCanLinkClass(unittest.TestCase):
         canLink.onDisconnect()
 
     def testIncrementAliasSequence(self):
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(PhyMockLayer(), getLocalNodeID())
 
         # sequence from TN
         next = canLink.incrementAlias48(0)
@@ -70,7 +79,7 @@ class TestCanLinkClass(unittest.TestCase):
         canLink.onDisconnect()
 
     def testCreateAlias12(self):
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(PhyMockLayer(), getLocalNodeID())
 
         # check precision of calculation
         self.assertEqual(canLink.createAlias12(0x001), 0x001, "0x001 input")
@@ -89,15 +98,14 @@ class TestCanLinkClass(unittest.TestCase):
 
     # MARK: - Test PHY Up
     def testLinkUpSequence(self):
-         = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"),
-                          require_remote_nodes=False)
+        canPhysicalLayer = CanPhysicalLayerSimulation()
+        canLink = CanLinkLayerSimulation(
+            canPhysicalLayer, getLocalNodeID(), require_remote_nodes=False)
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
         canPhysicalLayer.physicalLayerUp()
-        while canLink.pollState() != CanLink.State.Permitted:
-            precise_sleep(.02)
+        canLink.waitForReady()
 
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 7)
         self.assertEqual(canLink._state, CanLink.State.Permitted)
@@ -108,7 +116,7 @@ class TestCanLinkClass(unittest.TestCase):
     # MARK: - Test PHY Down, Up, Error Information
     def testLinkDownSequence(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
         canLink._state = CanLink.State.Permitted
@@ -121,21 +129,21 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testEIR2NoData(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         canLink._state = CanLink.State.Permitted
 
-        canPhysicalLayer.fireListeners(CanFrame(ControlFrame.EIR2.value, 0))
+        canPhysicalLayer.sendFrameAfter(CanFrame(ControlFrame.EIR2.value, 0))
         self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
         canLink.onDisconnect()
 
     # MARK: - Test AME (Local Node)
     def testAMENoData(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
         canLink._state = CanLink.State.Permitted
 
-        canPhysicalLayer.fireListeners(CanFrame(ControlFrame.AME.value, 0))
+        canPhysicalLayer.sendFrameAfter(CanFrame(ControlFrame.AME.value, 0))
         self.assertEqual(len(canPhysicalLayer.receivedPackets), 1)
         self.assertEqual(
             canPhysicalLayer.receivedPackets[0],
@@ -146,22 +154,23 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testAMEnoDataInhibited(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         canLink._state = CanLink.State.Inhibited
 
-        canPhysicalLayer.fireListeners(CanFrame(ControlFrame.AME.value, 0))
+        canPhysicalLayer.sendFrameAfter(CanFrame(ControlFrame.AME.value, 0))
         self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
         canLink.onDisconnect()
 
     def testAMEMatchEvent(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
         canLink._state = CanLink.State.Permitted
 
         frame = CanFrame(ControlFrame.AME.value, 0)
         frame.data = bytearray([5, 1, 1, 1, 3, 1])
-        canPhysicalLayer.fireListeners(frame)
+        result = canPhysicalLayer.sendFrameAfter(frame)
+        self.assertEqual(result, "CanPhysicalLayerSimulation")
         self.assertEqual(len(canPhysicalLayer.receivedPackets), 1)
         self.assertEqual(canPhysicalLayer.receivedPackets[0],
                          CanFrame(ControlFrame.AMD.value, ourAlias,
@@ -170,23 +179,23 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testAMENotMatchEvent(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         canLink._state = CanLink.State.Permitted
 
         frame = CanFrame(ControlFrame.AME.value, 0)
         frame.data = bytearray([0, 0, 0, 0, 0, 0])
-        canPhysicalLayer.fireListeners(frame)
+        canPhysicalLayer.sendFrameAfter(frame)
         self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
         canLink.onDisconnect()
 
     # MARK: - Test Alias Collisions (Local Node)
     def testCIDreceivedMatch(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
         canLink._state = CanLink.State.Permitted
 
-        canPhysicalLayer.fireListeners(CanFrame(7, canLink.localNodeID,
+        canPhysicalLayer.sendFrameAfter(CanFrame(7, canLink.localNodeID,
                                                 ourAlias))
         self.assertEqual(len(canPhysicalLayer.receivedPackets), 1)
         self.assertEqual(canPhysicalLayer.receivedPackets[0],
@@ -195,12 +204,12 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testRIDreceivedMatch(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
         canLink._state = CanLink.State.Permitted
 
-        canPhysicalLayer.fireListeners(CanFrame(ControlFrame.RID.value,
-                                                ourAlias))
+        canPhysicalLayer.sendFrameAfter(CanFrame(ControlFrame.RID.value,
+                                                 ourAlias))
         self.assertEqual(len(canPhysicalLayer.receivedPackets), 8)
         # ^ includes recovery of new alias 4 CID, RID, AMR, AME
         self.assertEqual(canPhysicalLayer.receivedPackets[0],
@@ -214,7 +223,7 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testCheckMTIMapping(self):
 
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(PhyMockLayer(), getLocalNodeID())
         self.assertEqual(
             canLink.canHeaderToFullFormat(CanFrame(0x19490247,
                                                    bytearray())),
@@ -222,7 +231,7 @@ class TestCanLinkClass(unittest.TestCase):
         )
 
     def testControlFrameDecode(self):
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(PhyMockLayer(), getLocalNodeID())
         frame = CanFrame(0x1000, 0x000)  # invalid control frame content
         self.assertEqual(canLink.decodeControlFrameFormat(frame),
                          ControlFrame.UnknownFormat)
@@ -265,7 +274,7 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testSimpleGlobalData(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
         canLink._state = CanLink.State.Permitted
@@ -273,9 +282,9 @@ class TestCanLinkClass(unittest.TestCase):
         # map an alias we'll use
         amd = CanFrame(0x0701, 0x247)
         amd.data = bytearray([1, 2, 3, 4, 5, 6])
-        canPhysicalLayer.fireListeners(amd)
+        canPhysicalLayer.sendFrameAfter(amd)
 
-        canPhysicalLayer.fireListeners(CanFrame(0x19490, 0x247))
+        canPhysicalLayer.sendFrameAfter(CanFrame(0x19490, 0x247))
         # ^ from previously seen alias
 
         self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
@@ -294,15 +303,15 @@ class TestCanLinkClass(unittest.TestCase):
         # This tests that a VerifiedNode will update that.
 
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
         canLink._state = CanLink.State.Permitted
 
         # Don't map an alias with an AMD for this test
 
-        canPhysicalLayer.fireListeners(CanFrame(0x19170, 0x247,
-                                                bytearray([8, 7, 6, 5, 4, 3])))
+        canPhysicalLayer.sendFrameAfter(CanFrame(0x19170, 0x247,
+                                                 bytearray([8, 7, 6, 5, 4, 3])))
         # ^ VerifiedNodeID from unique alias
 
         self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
@@ -322,15 +331,15 @@ class TestCanLinkClass(unittest.TestCase):
         '''
 
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
         canLink._state = CanLink.State.Permitted
 
         # Don't map an alias with an AMD for this test
 
-        canPhysicalLayer.fireListeners(CanFrame(0x19968, 0x247,
-                                                bytearray([8, 7, 6, 5, 4, 3])))
+        canPhysicalLayer.sendFrameAfter(
+            CanFrame(0x19968, 0x247, bytearray([8, 7, 6, 5, 4, 3])))
         # ^ Identify Events Addressed from unique alias
 
         self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
@@ -346,25 +355,24 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testSimpleAddressedData(self):  # Test start=yes, end=yes frame
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"),
-                          require_remote_nodes=False)
+        canLink = CanLinkLayerSimulation(
+            canPhysicalLayer, getLocalNodeID(), require_remote_nodes=False)
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
         canPhysicalLayer.physicalLayerUp()
-        while canLink.pollState() != CanLink.State.Permitted:
-            precise_sleep(.02)
+        canLink.waitForReady()
 
         # map an alias we'll use
         amd = CanFrame(0x0701, 0x247)
         amd.data = bytearray([1, 2, 3, 4, 5, 6])
-        canPhysicalLayer.fireListeners(amd)
+        canPhysicalLayer.sendFrameAfter(amd)
 
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
         frame = CanFrame(0x19488, 0x247)  # Verify Node ID Addressed
         frame.data = bytearray([((ourAlias & 0x700) >> 8), (ourAlias & 0xFF),
                                 12, 13])
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.sendFrameAfter(frame)  # from previously seen alias
 
         self.assertEqual(len(messageLayer.receivedMessages), 2)
         # ^ startup plus one message forwarded
@@ -383,14 +391,13 @@ class TestCanLinkClass(unittest.TestCase):
     def testSimpleAddressedDataNoAliasYet(self):
         '''Test start=yes, end=yes frame with no alias match'''
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"),
-                          require_remote_nodes=False)
+        canLink = CanLinkLayerSimulation(
+            canPhysicalLayer, getLocalNodeID(), require_remote_nodes=False)
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
         canPhysicalLayer.physicalLayerUp()
-        while canLink.pollState() != CanLink.State.Permitted:
-            precise_sleep(.02)
+        canLink.waitForReady()
 
         # don't map alias with AMD
 
@@ -400,7 +407,7 @@ class TestCanLinkClass(unittest.TestCase):
         frame.data = bytearray(
             [((ourAlias & 0x700) >> 8), (ourAlias & 0xFF), 12, 13]
         )
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.sendFrameAfter(frame)  # from previously seen alias
 
         self.assertEqual(len(messageLayer.receivedMessages), 2)
         # ^ startup plus one message forwarded
@@ -422,26 +429,25 @@ class TestCanLinkClass(unittest.TestCase):
         Test message in 3 frames
         '''
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"),
-                          require_remote_nodes=False)
+        canLink = CanLinkLayerSimulation(
+            canPhysicalLayer, getLocalNodeID(), require_remote_nodes=False)
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
         canPhysicalLayer.physicalLayerUp()
-        while canLink.pollState() != CanLink.State.Permitted:
-            precise_sleep(.02)
+        canLink.waitForReady()
 
         # map an alias we'll use
         amd = CanFrame(0x0701, 0x247)
         amd.data = bytearray([1, 2, 3, 4, 5, 6])
-        canPhysicalLayer.fireListeners(amd)
+        canPhysicalLayer.sendFrameAfter(amd)
 
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
         frame = CanFrame(0x19488, 0x247)  # Verify Node ID Addressed
         frame.data = bytearray([(((ourAlias & 0x700) >> 8) | 0x10),
                                 (ourAlias & 0xFF), 1, 2])
         # ^ start not end
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.sendFrameAfter(frame)  # from previously seen alias
 
         self.assertEqual(len(messageLayer.receivedMessages), 1)
         # ^ startup only, no message forwarded yet
@@ -450,7 +456,7 @@ class TestCanLinkClass(unittest.TestCase):
         frame.data = bytearray([(((ourAlias & 0x700) >> 8) | 0x20),
                                 (ourAlias & 0xFF), 3, 4])
         # ^ end, not start
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.sendFrameAfter(frame)  # from previously seen alias
 
         self.assertEqual(len(messageLayer.receivedMessages), 2)
         # ^ startup plus one message forwarded
@@ -466,26 +472,25 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testSimpleDatagram(self):  # Test start=yes, end=yes frame
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"),
-                          require_remote_nodes=False)
+        canLink = CanLinkLayerSimulation(
+            canPhysicalLayer, getLocalNodeID(), require_remote_nodes=False)
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
         canPhysicalLayer.physicalLayerUp()
-        while canLink.pollState() != CanLink.State.Permitted:
-            precise_sleep(.02)
+        canLink.waitForReady()
 
         # map two aliases we'll use
         amd = CanFrame(0x0701, 0x247)
         amd.data = bytearray([1, 2, 3, 4, 5, 6])
-        canPhysicalLayer.fireListeners(amd)
+        canPhysicalLayer.sendFrameAfter(amd)
         amd = CanFrame(0x0701, 0x123)
         amd.data = bytearray([6, 5, 4, 3, 2, 1])
-        canPhysicalLayer.fireListeners(amd)
+        canPhysicalLayer.sendFrameAfter(amd)
 
         frame = CanFrame(0x1A123, 0x247)  # single frame datagram
         frame.data = bytearray([10, 11, 12, 13])
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.sendFrameAfter(frame)  # from previously seen alias
 
         self.assertEqual(len(messageLayer.receivedMessages), 2)
         # ^ startup plus one message forwarded
@@ -505,31 +510,31 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testMultiFrameDatagram(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"), require_remote_nodes=False)
+        canLink = CanLinkLayerSimulation(
+            canPhysicalLayer, getLocalNodeID(), require_remote_nodes=False)
         messageLayer = MessageMockLayer()
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
         canPhysicalLayer.physicalLayerUp()
-        while canLink.pollState() != CanLink.State.Permitted:
-            precise_sleep(.02)
+        canLink.waitForReady()
 
         # map two aliases we'll use
         amd = CanFrame(0x0701, 0x247)
         amd.data = bytearray([1, 2, 3, 4, 5, 6])
-        canPhysicalLayer.fireListeners(amd)
+        canPhysicalLayer.sendFrameAfter(amd)
         amd = CanFrame(0x0701, 0x123)
         amd.data = bytearray([6, 5, 4, 3, 2, 1])
-        canPhysicalLayer.fireListeners(amd)
+        canPhysicalLayer.sendFrameAfter(amd)
 
         frame = CanFrame(0x1B123, 0x247)  # single frame datagram
         frame.data = bytearray([10, 11, 12, 13])
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.sendFrameAfter(frame)  # from previously seen alias
         frame = CanFrame(0x1C123, 0x247)  # single frame datagram
         frame.data = bytearray([20, 21, 22, 23])
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.sendFrameAfter(frame)  # from previously seen alias
         frame = CanFrame(0x1D123, 0x247)  # single frame datagram
         frame.data = bytearray([30, 31, 32, 33])
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.sendFrameAfter(frame)  # from previously seen alias
 
         self.assertEqual(len(messageLayer.receivedMessages), 2)
         # ^ startup plus one message forwarded
@@ -557,10 +562,10 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testZeroLengthDatagram(self):
         canPhysicalLayer = PhyMockLayer()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
 
-        message = Message(MTI.Datagram, NodeID("05.01.01.01.03.01"),
-                          NodeID("05.01.01.01.03.01"))
+        message = Message(MTI.Datagram, getLocalNodeID(),
+                          getLocalNodeID())
 
         canLink.sendMessage(message)
 
@@ -571,10 +576,10 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testOneFrameDatagram(self):
         canPhysicalLayer = PhyMockLayer()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
 
-        message = Message(MTI.Datagram, NodeID("05.01.01.01.03.01"),
-                          NodeID("05.01.01.01.03.01"),
+        message = Message(MTI.Datagram, getLocalNodeID(),
+                          getLocalNodeID(),
                           bytearray([1, 2, 3, 4, 5, 6, 7, 8]))
 
         canLink.sendMessage(message)
@@ -588,10 +593,10 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testTwoFrameDatagram(self):
         canPhysicalLayer = PhyMockLayer()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
 
-        message = Message(MTI.Datagram, NodeID("05.01.01.01.03.01"),
-                          NodeID("05.01.01.01.03.01"),
+        message = Message(MTI.Datagram, getLocalNodeID(),
+                          getLocalNodeID(),
                           bytearray([1, 2, 3, 4, 5, 6, 7, 8,
                                      9, 10, 11, 12, 13, 14, 15, 16]))
 
@@ -611,10 +616,10 @@ class TestCanLinkClass(unittest.TestCase):
     def testThreeFrameDatagram(self):
         # FIXME: Why was testThreeFrameDatagram named same? What should it be?
         canPhysicalLayer = PhyMockLayer()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
 
-        message = Message(MTI.Datagram, NodeID("05.01.01.01.03.01"),
-                          NodeID("05.01.01.01.03.01"),
+        message = Message(MTI.Datagram, getLocalNodeID(),
+                          getLocalNodeID(),
                           bytearray([1, 2, 3, 4, 5, 6, 7, 8,
                                      9, 10, 11, 12, 13, 14, 15, 16,
                                      17, 18, 19]))
@@ -637,10 +642,10 @@ class TestCanLinkClass(unittest.TestCase):
     # MARK: - Test Remote Node Alias Tracking
     def testAmdAmrSequence(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLink(canPhysicalLayer, NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
 
-        canPhysicalLayer.fireListeners(CanFrame(0x0701, ourAlias+1))
+        canPhysicalLayer.sendFrameAfter(CanFrame(0x0701, ourAlias+1))
         # ^ AMD from some other alias
 
         self.assertEqual(len(canLink.aliasToNodeID), 1)
@@ -649,7 +654,7 @@ class TestCanLinkClass(unittest.TestCase):
         self.assertEqual(len(canPhysicalLayer.receivedPackets), 0)
         # ^ nothing back down to CAN
 
-        canPhysicalLayer.fireListeners(CanFrame(0x0703, ourAlias+1))
+        canPhysicalLayer.sendFrameAfter(CanFrame(0x0703, ourAlias+1))
         # ^ AMR from some other alias
 
         self.assertEqual(len(canLink.aliasToNodeID), 0)
@@ -661,7 +666,7 @@ class TestCanLinkClass(unittest.TestCase):
 
     # MARK: - Data size handling
     def testSegmentAddressedDataArray(self):
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(PhyMockLayer(), getLocalNodeID())
 
         # no data
         self.assertEqual(
@@ -707,7 +712,7 @@ class TestCanLinkClass(unittest.TestCase):
         canLink.onDisconnect()
 
     def testSegmentDatagramDataArray(self):
-        canLink = CanLink(NodeID("05.01.01.01.03.01"))
+        canLink = CanLinkLayerSimulation(PhyMockLayer(), getLocalNodeID())
 
         # no data
         self.assertEqual(
@@ -762,3 +767,32 @@ class TestCanLinkClass(unittest.TestCase):
             usedValues.add(entry.value)
             # print('{} = {}'.format(entry.name, entry.value))
             self.assertIsInstance(entry, int)
+
+
+if __name__ == '__main__':
+    # unittest.main()
+    # For debugging a test that was hanging:
+    testCase = TestCanLinkClass()
+    count = 0
+    failedCount = 0
+    exceptions = []
+    errors = []
+    testCase.testMultiFrameDatagram()
+    for name in dir(testCase):
+        if name.startswith("test"):
+            fn = getattr(testCase, name)
+            try:
+                fn()  # Look at def test_* below if tracebacks start here
+                count += 1
+            except AssertionError as ex:
+                # raise ex
+                error = name + ": " + formatted_ex(ex)
+                # print(error)
+                failedCount += 1
+                exceptions.append(ex)
+                errors.append(error)
+    # for ex in exceptions:
+    #     print(formatted_ex(ex))
+    for error in errors:
+        print(error)
+    print("{} test(s) passed.".format(count))

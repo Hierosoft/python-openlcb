@@ -10,9 +10,10 @@ logger = getLogger(__name__)
 
 class RealtimePhysicalLayer(PhysicalLayer):
 
-    class State(Enum):
-        Disconnected = 0
-        Connected = 1
+    class State:
+        Initial = 0
+        Disconnected = 1
+        Permitted = 2
 
     DisconnectedState = State.Disconnected
 

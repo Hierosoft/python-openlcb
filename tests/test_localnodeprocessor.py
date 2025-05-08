@@ -5,12 +5,24 @@ from openlcb.localnodeprocessor import LocalNodeProcessor
 from openlcb.linklayer import LinkLayer
 from openlcb.mti import MTI
 from openlcb.message import Message
+from openlcb.physicallayer import PhysicalLayer
 from openlcb.pip import PIP
 from openlcb.node import Node
 
 
+class MockPhysicalLayer(PhysicalLayer):
+    pass
+
+
 class LinkMockLayer(LinkLayer):
     sentMessages = []
+
+    class State:
+        Initial = 0
+        Disconnected = 1
+        Permitted = 2
+
+    DisconnectedState = State.Disconnected
 
     def sendMessage(self, message):
         LinkMockLayer.sentMessages.append(message)
@@ -25,7 +37,9 @@ class TestLocalNodeProcessorClass(unittest.TestCase):
     def setUp(self):
         self.node21 = Node(NodeID(21))
         LinkMockLayer.sentMessages = []
-        self.processor = LocalNodeProcessor(LinkMockLayer(NodeID(100)))
+        self.processor = LocalNodeProcessor(
+            LinkMockLayer(MockPhysicalLayer(), NodeID(100))
+        )
 
     def testLinkUp(self):
         self.node21.state = Node.State.Uninitialized

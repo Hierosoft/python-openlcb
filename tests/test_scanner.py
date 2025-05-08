@@ -58,3 +58,7 @@ class TestScanner(unittest.TestCase) :
         self.assertFalse(scanner.hasNext())  # False:ensure _delimiter consumed
         self.assertEqual(scanner._buffer[0], bytes[-1])  # last byte is after
         #  delimiter, so it should remain.
+
+
+if __name__ == '__main__':
+    unittest.main()

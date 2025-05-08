@@ -23,7 +23,7 @@ from enum import Enum
 from logging import getLogger
 from timeit import default_timer
 
-from openlcb import emit_cast, formatted_ex
+from openlcb import emit_cast, formatted_ex, precise_sleep
 from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.controlframe import ControlFrame
 

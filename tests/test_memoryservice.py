@@ -5,6 +5,8 @@ import sys
 import unittest
 
 from logging import getLogger
+
+from openlcb.physicallayer import PhysicalLayer
 if __name__ == "__main__":
     logger = getLogger(__file__)
 else:
@@ -38,7 +40,19 @@ from openlcb.datagramservice import (  # noqa: E402
 )
 
 
+class MockPhysicalLayer(PhysicalLayer):
+    pass
+
+
 class LinkMockLayer(LinkLayer):
+
+    class State:
+        Initial = 0
+        Disconnected = 1
+        Permitted = 2
+
+    DisconnectedState = State.Disconnected
+
     sentMessages = []
 
     def sendMessage(self, message):
@@ -61,7 +75,9 @@ class TestMemoryServiceClass(unittest.TestCase):
         LinkMockLayer.sentMessages = []
         self.returnedMemoryReadMemo = []
         self.returnedMemoryWriteMemo = []
-        self.dService = DatagramService(LinkMockLayer(NodeID(12)))
+        self.dService = DatagramService(
+            LinkMockLayer(MockPhysicalLayer(), NodeID(12))
+        )
         self.mService = MemoryService(self.dService)
 
     def testReturnCyrillicStrings(self):

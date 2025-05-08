@@ -1,5 +1,7 @@
+from typing import Callable
 import unittest
 
+from openlcb import emit_cast
 from openlcb.canbus.canphysicallayergridconnect import (
     GC_END_BYTE,
     CanPhysicalLayerGridConnect,
@@ -13,19 +15,28 @@ class PhysicalLayerMock(CanPhysicalLayerGridConnect):
     # def frameSocketSendDummy(self, frame):
     def __init__(self):
         CanPhysicalLayerGridConnect.__init__(self)
-        self.registerFrameQueuedListener(self.captureString)
+        # ^ Sets onQueuedFrame on None, so set it afterward:
+        self.onQueuedFrame = self.captureString
 
-    def captureString(self, packet):
+    def captureString(self, frame):
         # formerly was in CanPhysicalLayerGridConnectTest
-        # but there isn't a send callback anymore
-        # (to avoid port contention in issue #62)
-        # just a physical layer.
-        self. capturedFrame = packet
-        self. capturedFrame.encoder = self.gc
+        #   but there isn't a send callback anymore
+        #   (to avoid port contention in issue #62)
+        #   just a physical layer.
+        assert isinstance(frame, CanFrame), \
+            "CanFrame expected, got {}".format(emit_cast(frame))
+        self.capturedFrame = frame
+        self.capturedFrame.encoder = self
+        self.capturedString = frame.encodeAsString()
 
     def onSentFrame(self, frame):
         pass
         # NOTE: not patching this method to be canLink.handleSentFrame
+        #   since testing only physical layer not link layer.
+
+    def onReceivedFrame(self, frame):
+        pass
+        # NOTE: not patching this method to be canLink.handleReceivedFrame
         #   since testing only physical layer not link layer.
 
 
@@ -47,31 +58,31 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
         self.receivedFrames += [frame]
 
     def testCID4Sent(self):
-        self.gc = CanPhysicalLayerGridConnect()
+        self.gc = PhysicalLayerMock()
         frame = CanFrame(4, NodeID(0x010203040506), 0xABC)
         # self.linklayer.sendFrameAfter(frame)
         # ^ It will use physical layer to encode and enqueue it
         #   (or send if using Realtime subclass of PhysicalLayer)
         #   but we are testing physical layer, so:
         self.gc.sendFrameAfter(frame)
-
+        assert self.gc.onQueuedFrame is not None
         # self.assertEqual(self.capturedString, ":X14506ABCN;\n")
-        self.assertEqual(self.physicalLayer.capturedFrame.encodeAsString(),
+        self.assertEqual(self.gc.capturedString,
                          ":X14506ABCN;\n")
 
     def testVerifyNodeSent(self):
-        self.gc = CanPhysicalLayerGridConnect(self.frameSocketSendDummy)
+        self.gc = PhysicalLayerMock()
         frame = CanFrame(0x19170, 0x365,
                          bytearray([0x02, 0x01, 0x12, 0xFE, 0x05, 0x6C]))
-        self.gc.sendFrameAfter(
-            self.gc.encode(frame)
-        )
+        frame.encoder = self.gc
+        assert self.gc.onQueuedFrame is not None
+        self.gc.sendFrameAfter(frame)
         # self.assertEqual(self.capturedString, ":X19170365N020112FE056C;\n")
-        self.assertEqual(self.physicalLayer.capturedFrame,
+        self.assertEqual(self.gc.capturedString,
                          ":X19170365N020112FE056C;\n")
 
     def testOneFrameReceivedExactlyHeaderOnly(self):
-        self.gc = CanPhysicalLayerGridConnect(self.frameSocketSendDummy)
+        self.gc = PhysicalLayerMock()
         self.gc.registerFrameReceivedListener(self.receiveListener)
         bytes = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33, 0x36, 0x35,
@@ -85,7 +96,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
         )
 
     def testOneFrameReceivedExactlyWithData(self):
-        self.gc = CanPhysicalLayerGridConnect(self.frameSocketSendDummy)
+        self.gc = PhysicalLayerMock()
         self.gc.registerFrameReceivedListener(self.receiveListener)
         bytes = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x31, 0x42, 0x30, 0x33, 0x36, 0x35,
@@ -103,7 +114,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
         )
 
     def testOneFrameReceivedHeaderOnlyTwice(self):
-        self.gc = CanPhysicalLayerGridConnect(self.frameSocketSendDummy)
+        self.gc = PhysicalLayerMock()
         self.gc.registerFrameReceivedListener(self.receiveListener)
         bytes = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33, 0x36, 0x35,
@@ -117,7 +128,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
                          CanFrame(0x19490365, bytearray()))
 
     def testOneFrameReceivedHeaderOnlyPlusPartOfAnother(self):
-        self.gc = CanPhysicalLayerGridConnect(self.frameSocketSendDummy)
+        self.gc = PhysicalLayerMock()
         self.gc.registerFrameReceivedListener(self.receiveListener)
         bytes = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33, 0x36,
@@ -137,7 +148,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
                          CanFrame(0x19490365, bytearray()))
 
     def testOneFrameReceivedInTwoChunks(self):
-        self.gc = CanPhysicalLayerGridConnect(self.frameSocketSendDummy)
+        self.gc = PhysicalLayerMock()
         self.gc.registerFrameReceivedListener(self.receiveListener)
         bytes1 = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x31, 0x37, 0x30, 0x33, 0x36, 0x35,
@@ -158,7 +169,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
         )
 
     def testSequence(self):
-        self.gc = CanPhysicalLayerGridConnect(self.frameSocketSendDummy)
+        self.gc = PhysicalLayerMock()
         self.gc.registerFrameReceivedListener(self.receiveListener)
         bytes = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33,

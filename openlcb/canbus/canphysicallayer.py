@@ -26,8 +26,9 @@ class CanPhysicalLayer(PhysicalLayer):
 
     def onReceivedFrame(self, frame):
         raise NotImplementedError(
-            "Your LinkLayer/subclass must set this manually (monkeypatch)"
-            " to the CanLink instance's receiveListener method.")
+            "Your LinkLayer/subclass must patch the instance:"
+            " Set this method manually to the CanLink instance's"
+            " receiveListener method.")
 
     def sendFrameAfter(self, frame: CanFrame):
         """Enqueue: *IMPORTANT* Main/other thread may have
@@ -52,7 +53,7 @@ class CanPhysicalLayer(PhysicalLayer):
         """
         assert isinstance(frame, CanFrame)
         frame.encoder = self
-        PhysicalLayer.sendFrameAfter(self, frame)
+        PhysicalLayer.sendFrameAfter(self, frame)  # calls onQueuedFrame if set
 
     def pollFrame(self) -> CanFrame:
         frame = super().pollFrame()
@@ -61,14 +62,11 @@ class CanPhysicalLayer(PhysicalLayer):
         assert isinstance(frame, CanFrame)
         return frame
 
-    def encode(self, frame) -> str:
-        '''abstract interface (encode frame to string)'''
-        raise NotImplementedError("Each subclass must implement this.")
-
     def registerFrameReceivedListener(self, listener):
         assert listener is not None
         warnings.warn(
-            "You don't really need to listen to packets."
+            "[registerFrameReceivedListener]"
+            " You don't really need to listen to packets."
             " Use pollFrame instead, which will collect and decode"
             " packets into frames (this layer communicates to upper layers"
             " using physicalLayer.onReceivedFrame set by LinkLayer/subclass"

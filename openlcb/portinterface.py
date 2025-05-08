@@ -28,7 +28,6 @@ class PortInterface:
       once (on different threads), which would cause undefined behavior
       (in OS-level implementation of serial port or socket).
     """
-    ports = []
 
     def __init__(self):
         """This must run for each subclass, such as using super"""
