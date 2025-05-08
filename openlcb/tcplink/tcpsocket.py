@@ -80,12 +80,15 @@ class TcpSocket(PortInterface):
         '''Receive one or more bytes and return as an [int]
         Blocks until at least one byte is received, but may return more.
 
+        See also public receive method: Do not overload that, since
+        asserts no overlapping _receive call!
+
         Returns:
             list(int): one or more bytes, converted to a list of ints.
         '''
-        # MSGLEN feature is only a convenience for CLI,
-        #   so was moved to GridConnectObserver.
-        # public receive (do not overload) asserts no overlapping call
+        # MSGLEN = 35 feature is only a convenience for CLI, so was
+        #   moved to GridConnectObserver (use ";" not len 35 though).
+
         try:
             data = self._device.recv(128)
         except BlockingIOError:
