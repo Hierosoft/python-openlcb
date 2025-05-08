@@ -89,6 +89,12 @@ class PhysicalLayer:
         """
         self._send_frames.append(frame)  # append: queue-like if using popleft
 
+    def onSentFrame(self, frame):
+        raise NotImplementedError(
+            "onSentFrame must be set (monkeypatched)"
+            " to use the LinkLayer subclass' one"
+            " so state can be updated if necessary.")
+
     def registerFrameReceivedListener(self, listener):
         """abstract method"""
         # raise NotImplementedError("Each subclass must implement this.")

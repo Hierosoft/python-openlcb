@@ -64,8 +64,7 @@ if settings['trace'] :
     # string = frame.encodeAsString()
     # if settings['trace'] : print("   SR: "+string.strip())
     # sock.sendString(string)
-    # if frame.afterSendState:
-    #     canLink.setState(frame.afterSendState)
+    # physicalLayer.onSentFrame(frame)
 
 
 def receiveFrame(frame) :
@@ -126,14 +125,16 @@ def pumpEvents():
         # pass to link processor
         physicalLayer.handleData(received)
     canLink.pollState()
-    frame = physicalLayer.pollFrame()
-    if frame:
+
+    while True:
+        frame = physicalLayer.pollFrame()
+        if frame is None:
+            break
         string = frame.encodeAsString()
         if True:  # if settings['trace']:
             print("- SENT Remote: "+string.strip())
         sock.sendString(string)
-        if frame.afterSendState:
-            canLink.setState(frame.afterSendState)
+        physicalLayer.onSentFrame(frame)
 
 
 # bring the CAN level up
@@ -185,10 +186,12 @@ else:
 
 print("nodeIdToAlias: {}".format(canLink.nodeIdToAlias))
 
+
 def receiveLoop():
     """put the read on a separate thread"""
     while True:
         pumpEvents()
+        precise_sleep(.01)
 
 
 import threading  # noqa E402

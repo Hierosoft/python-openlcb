@@ -57,8 +57,7 @@ print("RR, SR are raw socket interface receive and send;"
 #     string = frame.encodeAsString()
 #     print("      SR: {}".format(string.strip()))
 #     sock.sendString(string)
-#     if frame.afterSendState:
-#         canLink.setState(frame.afterSendState)
+#     physicalLayer.onSentFrame(frame)
 
 
 def printFrame(frame):
@@ -112,28 +111,34 @@ memoryService = MemoryService(datagramService)
 # def memoryReadFail(memo):
 #     print("memory read failed: {}".format(memo.data))
 
+
 def memoryLengthReply(address) :
     print ("memory length reply: "+str(address))
 
+
 #######################
+
 
 def pumpEvents():
     received = sock.receive()
-    if settings['trace']:
-        observer.push(received)
-        if observer.hasNext():
-            packet_str = observer.next()
-            print("   RR: "+packet_str.strip())
-    # pass to link processor
-    physicalLayer.handleData(received)
+    if received is not None:
+        if settings['trace']:
+            observer.push(received)
+            if observer.hasNext():
+                packet_str = observer.next()
+                print("   RR: "+packet_str.strip())
+        # pass to link processor
+        physicalLayer.handleData(received)
     canLink.pollState()
-    frame = physicalLayer.pollFrame()
-    if frame:
+
+    while True:
+        frame = physicalLayer.pollFrame()
+        if frame is None:
+            break
         string = frame.encodeAsString()
         print("      SR: {}".format(string.strip()))
         sock.sendString(string)
-        if frame.afterSendState:
-            canLink.setState(frame.afterSendState)
+        physicalLayer.onSentFrame(frame)
 
 # have the socket layer report up to bring the link layer up and get an alias
 
@@ -171,10 +176,9 @@ thread.start()
 observer = GridConnectObserver()
 
 
-
 # process resulting activity
 while True:
     pumpEvents()
-
+    precise_sleep(.01)
 
 canLink.onDisconnect()

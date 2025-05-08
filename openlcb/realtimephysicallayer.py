@@ -1,4 +1,5 @@
 
+from enum import Enum
 from logging import getLogger
 from typing import Union
 
@@ -8,6 +9,12 @@ logger = getLogger(__name__)
 
 
 class RealtimePhysicalLayer(PhysicalLayer):
+
+    class State(Enum):
+        Disconnected = 0
+        Connected = 1
+
+    DisconnectedState = State.Disconnected
 
     def __init__(self, socket):
         # sock to distinguish from socket module or socket.socket class!
@@ -31,6 +38,9 @@ class RealtimePhysicalLayer(PhysicalLayer):
         #     )
         print("      SR: {}".format(frame.encode()))
         self.sock.send(frame.encode())
+        # TODO: finish onSentFrame
+        if frame.afterSendState:
+            self.onSentFrame(frame)
 
     def registerFrameReceivedListener(self, listener):
         """_summary_

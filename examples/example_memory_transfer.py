@@ -10,7 +10,8 @@ host|host:port            (optional) Set the address (or using a colon,
                           address and port.
 '''
 # region same code as other examples
-from examples_settings import Settings  # do 1st to fix path if no pip install
+from examples_settings import Settings
+from openlcb.canbus.canframe import CanFrame  # do 1st to fix path if no pip install
 settings = Settings()
 
 if __name__ == "__main__":
@@ -57,15 +58,14 @@ def sendToSocket(frame: CanFrame):
     string = frame.encodeAsString()
     print("      SR: {}".format(string.strip()))
     sock.sendString(string)
-    if frame.afterSendState:
-        canLink.setState(frame.afterSendState)
+    physicalLayer.onSentFrame(frame)
 
 
 def printFrame(frame):
     print("   RL: {}".format(frame))
 
 
-physicalLayer = CanPhysicalLayerGridConnect(sendToSocket)
+physicalLayer = CanPhysicalLayerGridConnect()
 physicalLayer.registerFrameReceivedListener(printFrame)
 
 
@@ -117,21 +117,25 @@ def memoryReadFail(memo):
 #######################
 def pumpEvents():
     received = sock.receive()
-    if settings['trace']:
-        observer.push(received)
-        if observer.hasNext():
-            packet_str = observer.next()
-            print("   RR: "+packet_str.strip())
-    # pass to link processor
-    physicalLayer.handleData(received)
+    if received is not None:
+        if settings['trace']:
+            observer.push(received)
+            if observer.hasNext():
+                packet_str = observer.next()
+                print("   RR: "+packet_str.strip())
+        # pass to link processor
+        physicalLayer.handleData(received)
     canLink.pollState()
-    frame = physicalLayer.pollFrame()
-    if frame:
+
+    while True:
+        frame = physicalLayer.pollFrame()
+        if frame is None:
+            break
         sock.sendString(frame.encodeAsString())
-        if frame.afterSendState:
-            canLink.setState(frame.afterSendState)
+        physicalLayer.onSentFrame(frame)
 
 # have the socket layer report up to bring the link layer up and get an alias
+
 
 print("      SL : link up...")
 physicalLayer.physicalLayerUp()
@@ -140,6 +144,7 @@ while canLink.pollState() != CanLink.State.Permitted:
     pumpEvents()
     precise_sleep(.02)
 print("      SL : link up")
+
 
 def memoryRead():
     """Create and send a read datagram.
@@ -166,5 +171,6 @@ observer = GridConnectObserver()
 # process resulting activity
 while True:
     pumpEvents()
+    precise_sleep(.01)
 
 canLink.onDisconnect()

@@ -304,8 +304,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                             assert isinstance(packet, str)
                             print("Sending {}".format(packet))
                             self._port.sendString(packet)
-                            if frame.afterSendState:
-                                self._canLink.setState(frame.afterSendState)
+                            physicalLayer.onSentFrame(frame)
                         else:
                             raise NotImplementedError(
                                 "Event type {} is not handled."

@@ -18,6 +18,7 @@ if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
+from openlcb import precise_sleep
 from openlcb.canbus.gridconnectobserver import GridConnectObserver
 from openlcb.canbus.seriallink import SerialLink
 
@@ -43,13 +44,17 @@ observer = GridConnectObserver()
 # display response - should be RID from node(s)
 while True:  # have to kill this manually
     received = sock.receive()
-    observer.push(received)
-    if observer.hasNext():
-        packet_str = observer.next()
-        print("   RR: "+packet_str.strip())
-    canLink.pollState()
-    frame = physicalLayer.pollFrame()
-    if frame:
-        sock.sendString(frame.encodeAsString())
-        if frame.afterSendState:
-            canLink.setState(frame.afterSendState)
+    if received is not None:
+        observer.push(received)
+        if observer.hasNext():
+            packet_str = observer.next()
+            print("   RR: "+packet_str.strip())
+    # canLink.pollState()
+
+    # while True:
+    #     frame = physicalLayer.pollFrame()
+    #     if frame is None:
+    #         break
+    #     sock.sendString(frame.encodeAsString())
+    #     physicalLayer.onSentFrame(frame)
+    precise_sleep(.01)

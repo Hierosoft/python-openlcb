@@ -33,6 +33,11 @@ class TcpLink(LinkLayer):
         localNodeID (NodeID): The node ID of the Configuration Tool or other
             software-defined node connecting to the LCC network via TCP.
     """
+    class State:
+        Disconnected = 0
+        Connected = 1
+
+    DisconnectedState = State.Disconnected
 
     def __init__(self, physicalLayer: PhysicalLayer, localNodeID):
         LinkLayer.__init__(self, physicalLayer, localNodeID)

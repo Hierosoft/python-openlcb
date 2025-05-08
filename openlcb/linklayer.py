@@ -60,6 +60,7 @@ class LinkLayer:
         # "new bound method" Python behavior in subclass from making "is"
         #   operator not work as expected in registerFrameReceivedListener.
         physicalLayer.onReceivedFrame = self.receiveListener
+        physicalLayer.onSentFrame = self.handleSentFrame
         # # ^ enforce queue paradigm (See use in PhysicalLayer subclass)
         # physicalLayer.registerFrameReceivedListener(listener)
         # ^ Doesn't work with "is" operator still! So just use
@@ -83,6 +84,11 @@ class LinkLayer:
         logger.warning(
             "{} abstract receiveListener called (expected implementation)"
             .format(type(self).__name__))
+
+    def handleSentFrame(self, frame):
+        """Update state based on the frame having been sent."""
+        if frame.afterSendState:
+            self.setState(frame.afterSendState)
 
     def onDisconnect(self):
         """Run this whenever the socket connection is lost

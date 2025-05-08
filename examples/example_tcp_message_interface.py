@@ -14,6 +14,7 @@ host|host:port            (optional) Set the address (or using a colon,
 from logging import getLogger
 # region same code as other examples
 from examples_settings import Settings
+from openlcb import precise_sleep
 from openlcb.realtimephysicallayer import RealtimePhysicalLayer  # do 1st to fix path if no pip install
 settings = Settings()
 
@@ -90,13 +91,17 @@ tcpLinkLayer.sendMessage(message)
 # process resulting activity
 while True:
     received = sock.receive()
-    print("      RR: {}".format(received))
-    # pass to link processor
-    tcpLinkLayer.receiveListener(received)
+    if received is not None:
+        print("      RR: {}".format(received))
+        # pass to link processor
+        tcpLinkLayer.receiveListener(received)
     # Normally we would do (Probably N/A here):
     # canLink.pollState()
-    # frame = physicalLayer.pollFrame()
-    # if frame:
+    #
+    # while True:
+    #     frame = physicalLayer.pollFrame()
+    #     if frame is None:
+    #         break
     #     sock.sendString(frame.encodeAsString())
-    #     if frame.afterSendState:
-    #         canLink.setState(frame.afterSendState)
+    #     physicalLayer.onSentFrame(frame)
+    precise_sleep(.01)

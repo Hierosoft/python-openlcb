@@ -528,22 +528,24 @@ class CanLink(LinkLayer):
             sourceID = mapped
         except KeyboardInterrupt:
             raise
-        except:
+        except Exception as ex:
+            unmapped = frame.header & 0xFFF
+            logger.warning("[CanLink]" + formatted_ex(ex))
             #    special case for JMRI before 5.1.5 which sends
             #    VerifiedNodeID but not AMD
             if mti == MTI.Verified_NodeID:
                 sourceID = NodeID(frame.data)
                 logger.info(
-                    "Verified_NodeID from unknown source alias: {},"
+                    "Verified_NodeID frame {} from unknown source alias: {},"
                     " continue with observed ID {}"
-                    .format(frame, sourceID))
+                    .format(frame, unmapped, sourceID))
             else:
                 sourceID = NodeID(self.nextInternallyAssignedNodeID)
                 self.nextInternallyAssignedNodeID += 1
                 logger.warning(
-                    "message from unknown source alias: {},"
+                    "message frame {} from unknown source alias: {},"
                     " continue with created ID {}"
-                    .format(frame, sourceID))
+                    .format(frame, unmapped, sourceID))
 
             #    register that internally-generated nodeID-alias association
             self.aliasToNodeID[frame.header & 0xFFF] = sourceID
@@ -894,6 +896,8 @@ class CanLink(LinkLayer):
     # def sendAliasAllocationSequence(self):
     #     # actually, call self._enqueueCIDSequence()  # set _state&send data
     #     raise DeprecationWarning("Use setState to BusyLocalCIDSequence")
+    def getWaitForAliasResponseStart(self):
+        return self._waitingForAliasStart
 
     def pollState(self):
         """You must keep polling state after every time

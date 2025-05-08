@@ -39,8 +39,8 @@ from openlcb.datagramservice import (
 # port = 12021
 # endregion replaced by settings
 
-localNodeID = "05.01.01.01.03.01"
-farNodeID = "09.00.99.03.00.35"
+# localNodeID = "05.01.01.01.03.01"
+# farNodeID = "09.00.99.03.00.35"
 sock = TcpSocket()
 # s.settimeout(30)
 sock.connect(settings['host'], settings['port'])
@@ -53,8 +53,7 @@ print("RR, SR are raw socket interface receive and send;"
 #     string = frame.encodeAsString()
 #     print("      SR: "+string.strip())
 #     sock.sendString(string)
-#     if frame.afterSendState:
-#         canLink.setState(frame.afterSendState)
+#     physicalLayer.onSentFrame(frame)
 
 
 def printFrame(frame):
@@ -69,7 +68,7 @@ def printMessage(message):
     print("RM: {} from {}".format(message, message.source))
 
 
-canLink = CanLink(physicalLayer, NodeID(localNodeID))
+canLink = CanLink(physicalLayer, NodeID(settings['localNodeID']))
 canLink.registerMessageReceivedListener(printMessage)
 
 datagramService = DatagramService(canLink)
@@ -99,22 +98,26 @@ datagramService.registerDatagramReceivedListener(datagramReceiver)
 
 #######################
 
+observer = GridConnectObserver()
+
 
 def pumpEvents():
     received = sock.receive()
-    if settings['trace']:
-        observer.push(received)
-        if observer.hasNext():
-            packet_str = observer.next()
-            print("   RR: "+packet_str.strip())
-    # pass to link processor
-    physicalLayer.handleData(received)
+    if received is not None:
+        if settings['trace']:
+            observer.push(received)
+            if observer.hasNext():
+                packet_str = observer.next()
+                print("   RR: "+packet_str.strip())
+        # pass to link processor
+        physicalLayer.handleData(received)
     canLink.pollState()
-    frame = physicalLayer.pollFrame()
-    if frame:
+    while True:
+        frame = physicalLayer.pollFrame()
+        if frame is None:
+            break
         sock.sendString(frame.encodeAsString())
-        if frame.afterSendState:
-            canLink.setState(frame.afterSendState)
+        physicalLayer.onSentFrame(frame)
 
 
 # have the socket layer report up to bring the link layer up and get an alias
@@ -139,7 +142,7 @@ def datagramWrite():
     time.sleep(1)
 
     writeMemo = DatagramWriteMemo(
-        NodeID(farNodeID),
+        NodeID(settings['farNodeID']),
         bytearray([0x20, 0x43, 0x00, 0x00, 0x00, 0x00, 0x14]),
         writeCallBackCheck
     )
@@ -148,8 +151,6 @@ def datagramWrite():
 
 thread = threading.Thread(target=datagramWrite)
 thread.start()
-
-observer = GridConnectObserver()
 
 # process resulting activity
 while True:

@@ -7,6 +7,7 @@ from openlcb.canbus.canphysicallayergridconnect import (
 from openlcb.canbus.canframe import CanFrame
 from openlcb.nodeid import NodeID
 
+
 class PhysicalLayerMock(CanPhysicalLayerGridConnect):
     # PHY side
     # def frameSocketSendDummy(self, frame):
@@ -22,11 +23,11 @@ class PhysicalLayerMock(CanPhysicalLayerGridConnect):
         self. capturedFrame = packet
         self. capturedFrame.encoder = self.gc
 
-        if frame.afterSendState:
-            pass
-            # NOTE: skipping canLink.setState since testing only
-            # physical layer not link layer.
-            #     canLink.setState(frame.afterSendState)
+    def onSentFrame(self, frame):
+        pass
+        # NOTE: not patching this method to be canLink.handleSentFrame
+        #   since testing only physical layer not link layer.
+
 
 class CanPhysicalLayerGridConnectTest(unittest.TestCase):
 
@@ -40,7 +41,6 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
     # PHY side
     # def captureString(self, string):
     #     self.capturedString = string
-
 
     # Link Layer side
     def receiveListener(self, frame):

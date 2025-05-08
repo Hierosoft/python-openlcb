@@ -24,7 +24,7 @@ class CanPhysicalLayer(PhysicalLayer):
         PhysicalLayer.__init__(self)
         self.listeners = []
 
-    def onReceivedFrame(self):
+    def onReceivedFrame(self, frame):
         raise NotImplementedError(
             "Your LinkLayer/subclass must set this manually (monkeypatch)"
             " to the CanLink instance's receiveListener method.")

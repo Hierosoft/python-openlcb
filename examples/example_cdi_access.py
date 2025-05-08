@@ -11,6 +11,8 @@ host|host:port            (optional) Set the address (or using a colon,
                           address and port.
 '''
 # region same code as other examples
+import copy
+from timeit import default_timer
 from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb import precise_sleep
 from openlcb.canbus.canframe import CanFrame
@@ -57,8 +59,7 @@ sock.connect(settings['host'], settings['port'])
 #     string = frame.encodeAsString()
 #     # print("      SR: {}".format(string.strip()))
 #     sock.sendString(string)
-#     if frame.afterSendState:
-#         canLink.setState(frame.afterSendState)
+#     physicalLayer.onSentFrame(frame)
 
 
 def printFrame(frame):
@@ -104,6 +105,10 @@ resultingCDI = bytearray()
 
 # callbacks to get results of memory read
 
+observer = GridConnectObserver()
+
+complete_data = False
+read_failed = False
 
 def memoryReadSuccess(memo):
     """Handle a successful read
@@ -117,6 +122,7 @@ def memoryReadSuccess(memo):
     # print("successful memory read: {}".format(memo.data))
 
     global resultingCDI
+    global complete_data
 
     # is this done?
     if len(memo.data) == 64 and 0 not in memo.data:
@@ -143,12 +149,15 @@ def memoryReadSuccess(memo):
 
         # and process that
         processXML(cdiString)
+        complete_data = True
 
         # done
 
 
 def memoryReadFail(memo):
+    global read_failed
     print("memory read failed: {}".format(memo.data))
+    read_failed = True
 
 
 #######################
@@ -236,32 +245,51 @@ def processXML(content) :
 def pumpEvents():
     try:
         received = sock.receive()
-        if settings['trace']:
-            observer.push(received)
-            if observer.hasNext():
-                packet_str = observer.next()
-                # print("   RR: "+packet_str.strip())
-                # ^ commented since MyHandler shows parsed XML fields instead
-        # pass to link processor
-        physicalLayer.handleData(received)
+        if received is not None:
+            if settings['trace']:
+                observer.push(received)
+                if observer.hasNext():
+                    packet_str = observer.next()
+                    # print("   RR: "+packet_str.strip())
+                    # ^ commented since MyHandler shows parsed XML
+                    #   fields instead
+            # pass to link processor
+            physicalLayer.handleData(received)
     except BlockingIOError:
         pass
     canLink.pollState()
-    frame = physicalLayer.pollFrame()
-    if frame:
+    while True:
+        frame = physicalLayer.pollFrame()
+        if not frame:
+            break
         string = frame.encodeAsString()
-        print("      SR: "+string.strip())
+        # print("      SENT packet: "+string.strip())
+        # ^ This is too verbose for this example (each is a
+        #   request to read a 64 byte chunks of the CDI XML)
         sock.sendString(string)
+        physicalLayer.onSentFrame(frame)
 
 
 # have the socket layer report up to bring the link layer up and get an alias
-print("      SL : link up...")
+print("      QUEUE frames : link up...")
 physicalLayer.physicalLayerUp()
-print("      SL : link up...waiting...")
+print("      QUEUED frames : link up...waiting...")
 while canLink.pollState() != CanLink.State.Permitted:
-    pumpEvents()
+    pumpEvents()  # provides incoming data to physicalLayer & sends queued
+    if canLink.getState() == CanLink.State.WaitForAliases:
+        pumpEvents()  # prevent assertion error below, proceed to send.
+    if canLink.pollState() == CanLink.State.Permitted:
+        break
+    assert canLink.getWaitForAliasResponseStart() is not None, \
+        "openlcb didn't send the 7,6,5,4 CID frames (state={})".format(canLink.getState())
+    if default_timer() - canLink.getWaitForAliasResponseStart() > CanLink.ALIAS_RESPONSE_DELAY:
+        # 200ms = standard wait time for responses
+        if not canLink.require_remote_nodes:
+            raise TimeoutError(
+                "In Standard require_remote_nodes=False mode,"
+                " but failed to proceed to Permitted state.")
     precise_sleep(.02)
-print("      SL : link up")
+print("      SENT frames : link up")
 
 
 def memoryRead():
@@ -295,12 +323,26 @@ def memoryRead():
 import threading  # noqa E402
 thread = threading.Thread(target=memoryRead)
 thread.start()
-
-observer = GridConnectObserver()
-
-
+previous_nodes = copy.deepcopy(canLink.nodeIdToAlias)
 # process resulting activity
-while True:
+print()
+print("This example will exit on failure or complete data.")
+while not complete_data and not read_failed:
+    # In this example, requests are initiate by the
+    #   memoryRead thread, and pumpEvents actually
+    #   receives the data from the requested memory space (CDI in this
+    #   case) and offset (incremental position in the file/data,
+    #   incremented by this example's memoryReadSuccess handler).
     pumpEvents()
+    if canLink.nodeIdToAlias != previous_nodes:
+        print("nodeIdToAlias updated: {}".format(canLink.nodeIdToAlias))
+    precise_sleep(.01)
+    if canLink.nodeIdToAlias != previous_nodes:
+        previous_nodes = copy.deepcopy(canLink.nodeIdToAlias)
 
 canLink.onDisconnect()
+
+if read_failed:
+    print("Read complete (FAILED)")
+else:
+    print("Read complete (OK)")

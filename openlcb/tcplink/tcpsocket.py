@@ -83,6 +83,8 @@ class TcpSocket(PortInterface):
         Returns:
             list(int): one or more bytes, converted to a list of ints.
         '''
+        # MSGLEN feature is only a convenience for CLI,
+        #   so was moved to GridConnectObserver.
         # public receive (do not overload) asserts no overlapping call
         try:
             data = self._device.recv(128)

@@ -18,6 +18,7 @@ if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
+from openlcb import precise_sleep
 from openlcb.canbus.gridconnectobserver import GridConnectObserver
 from openlcb.tcplink.tcpsocket import TcpSocket
 from openlcb.canbus.canphysicallayergridconnect import (
@@ -44,29 +45,45 @@ def sendToSocket(frame: CanFrame):
     string = frame.encodeAsString()
     print("   SR: {}".format(string.strip()))
     sock.sendString(string)
-    # if frame.afterSendState:
-    #     canLink.setState(frame.afterSendState)
+    physicalLayer.onSentFrame(frame)
 
 
 def pumpEvents():
     received = sock.receive()
-    if settings['trace']:
-        observer.push(received)
-        if observer.hasNext():
-            packet_str = observer.next()
-            print("   RR: "+packet_str.strip())
-    # pass to link processor
-    physicalLayer.handleData(received)
+    if received is not None:
+        if settings['trace']:
+            observer.push(received)
+            if observer.hasNext():
+                packet_str = observer.next()
+                print("   RR: "+packet_str.strip())
+        # pass to link processor
+        physicalLayer.handleData(received)
     # canLink.pollState()
-    frame = physicalLayer.pollFrame()
-    if frame:
+
+    while True:
+        frame = physicalLayer.pollFrame()
+        if frame is None:
+            break
         string = frame.encodeAsString()
         print("   SR: {}".format(string.strip()))
         sock.sendString(string)
+        physicalLayer.onSentFrame(frame)
         if frame.afterSendState:
             print("Next state (unexpected, no link layer): {}"
                   .format(frame.afterSendState))
             # canLink.setState(frame.afterSendState)
+            # ^ setState is done by onSentFrame now
+            #   (physicalLayer.onSentFrame = self.handleSentFrame
+            #   in LinkLayer constructor)
+
+
+def handleSentFrame(frame):
+    # No state to manage since no link layer
+    pass
+
+def handleReceivedFrame(frame):
+    # No state to manage since no link layer
+    pass
 
 
 def printFrame(frame):
@@ -74,6 +91,8 @@ def printFrame(frame):
 
 
 physicalLayer = CanPhysicalLayerGridConnect()
+physicalLayer.onSentFrame = handleSentFrame
+physicalLayer.onReceivedFrame = handleReceivedFrame
 physicalLayer.registerFrameReceivedListener(printFrame)
 
 # send an AME frame with arbitrary alias to provoke response
@@ -92,3 +111,4 @@ observer = GridConnectObserver()
 # display response - should be RID from nodes
 while True:
     pumpEvents()
+    precise_sleep(.01)

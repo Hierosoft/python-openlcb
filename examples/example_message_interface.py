@@ -50,15 +50,14 @@ print("RR, SR are raw socket interface receive and send; RL,"
 #     string = frame.encodeAsString()
 #     print("      SR: {}".format(string.strip()))
 #     sock.sendString(string)
-#     if frame.afterSendState:
-#         canLink.setState(frame.afterSendState)
+#     physicalLayer.onSentFrame(frame)
 
 
 def printFrame(frame):
     print("   RL: {}".format(frame))
 
 
-physicalLayer = CanPhysicalLayerGridConnect(sendToSocket)
+physicalLayer = CanPhysicalLayerGridConnect()
 physicalLayer.registerFrameReceivedListener(printFrame)
 
 
@@ -66,30 +65,35 @@ def printMessage(msg):
     print("RM: {} from {}".format(msg, msg.source))
 
 
-canLink = CanLink(NodeID(settings['localNodeID']))
+canLink = CanLink(physicalLayer, NodeID(settings['localNodeID']))
 canLink.registerMessageReceivedListener(printMessage)
 
 #######################
 
+
 def pumpEvents():
     received = sock.receive()
-    if settings['trace']:
-        observer.push(received)
-        if observer.hasNext():
-            packet_str = observer.next()
-            print("   RR: "+packet_str.strip())
-    # pass to link processor
-    physicalLayer.handleData(received)
+    if received is not None:
+        if settings['trace']:
+            observer.push(received)
+            if observer.hasNext():
+                packet_str = observer.next()
+                print("   RR: "+packet_str.strip())
+        # pass to link processor
+        physicalLayer.handleData(received)
     canLink.pollState()
-    frame = physicalLayer.pollFrame()
-    if frame:
+
+    while True:
+        frame = physicalLayer.pollFrame()
+        if frame is None:
+            break
         string = frame.encodeAsString()
         print("      SR: {}".format(string.strip()))
         sock.sendString(string)
-        if frame.afterSendState:
-            canLink.setState(frame.afterSendState)
+        physicalLayer.onSentFrame(frame)
 
 # have the socket layer report up to bring the link layer up and get an alias
+
 
 print("      SL : link up...")
 physicalLayer.physicalLayerUp()
@@ -110,5 +114,6 @@ observer = GridConnectObserver()
 # process resulting activity
 while True:
     pumpEvents()
+    precise_sleep(.01)
 
 canLink.onDisconnect()

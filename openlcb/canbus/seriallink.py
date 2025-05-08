@@ -13,6 +13,10 @@ from openlcb.portinterface import PortInterface
 logger = getLogger(__name__)
 
 MSGLEN = 35
+# TODO: use non-blocking mode and eliminate MSGLEN, since MSGLEN is only
+#   a convenience for CLI programs (PhysicalLayer is able to assemble
+#   packets from arbitrary chunks) and GridConnectObserver can replace
+#   that.
 
 
 class SerialLink(PortInterface):
