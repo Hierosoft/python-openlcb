@@ -79,6 +79,21 @@ class PhysicalLayer:
             pass
         return None
 
+    def clearReservation(self, reservation: int):
+        """Clear a reservation attempt number.
+        Args:
+            reservation (int): Set this to LinkLayer subclass'
+                _reservation then call defineAndReserveAlias to
+                increment that.
+        """
+        assert isinstance(reservation, int)
+        newFrames = \
+            [frame for frame in self._send_frames if frame.reservation != reservation]
+        # ^ iterates from left to right, so this is ok (We use popleft,
+        #   and 0 will become left)
+        self._send_frames.clear()
+        self._send_frames.extend(newFrames)
+
     def sendFrameAfter(self, frame):
         """In subclass, enforce type and set frame.encoder to self
         (which should inherit from both PhysicalLayer and FrameEncoder)
@@ -93,6 +108,25 @@ class PhysicalLayer:
             self.onQueuedFrame(frame)
 
     def onSentFrame(self, frame):
+        """Stub patched at runtime:
+        LinkLayer subclass's constructor must set instance's onSentFrame
+        to LinkLayer subclass' handleSentFrame (The application must
+        pass this instance to LinkLayer subclass's constructor so it
+        will do that).
+
+        Args:
+            frame (Any): The frame to mark as sent (such as for starting
+                reserve alias 200ms Standard delay). The subclass
+                determines type (typically CanFrame; may differ in Mock
+                subclasses etc).
+
+        Raises:
+            NotImplementedError: If the class wasn't passed to
+                a PhysicalLayer subclass' constructor, or a test that
+                doesn't involve a PhysicalLayer didn't patch out this
+                method manually (See PhysicalLayerMock for proper
+                example of that if tests using it are passing).
+        """
         raise NotImplementedError(
             "The subclass must patch the instance:"
             " PhysicalLayer instance's onSentFrame must be manually set"
@@ -129,7 +163,4 @@ class PhysicalLayer:
 
     def physicalLayerDown(self):
         """abstract method"""
-        raise NotImplementedError("Each subclass must implement this.")
-
-    def encodeFrameAsString(self, frame) -> str:
         raise NotImplementedError("Each subclass must implement this.")

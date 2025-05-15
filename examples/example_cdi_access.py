@@ -281,13 +281,8 @@ while canLink.pollState() != CanLink.State.Permitted:
     if canLink.pollState() == CanLink.State.Permitted:
         break
     assert canLink.getWaitForAliasResponseStart() is not None, \
-        "openlcb didn't send the 7,6,5,4 CID frames (state={})".format(canLink.getState())
-    if default_timer() - canLink.getWaitForAliasResponseStart() > CanLink.ALIAS_RESPONSE_DELAY:
-        # 200ms = standard wait time for responses
-        if not canLink.require_remote_nodes:
-            raise TimeoutError(
-                "In Standard require_remote_nodes=False mode,"
-                " but failed to proceed to Permitted state.")
+        ("openlcb didn't send the 7,6,5,4 CID frames (state={})"
+         .format(canLink.getState()))
     precise_sleep(.02)
 print("      SENT frames : link up")
 
@@ -300,11 +295,19 @@ def memoryRead():
     """
     import time
     time.sleep(.21)
-    # ^ 200ms is the time span in which all nodes must reply to ensure
-    #   our alias is ok according to the LCC CAN Frame Transfer
-    #   Standard, but wait slightly more for OS latency.
-    #   - Then wait longer below if there was a failure/retry, before
-    #     trying to use the LCC network:
+    # ^ 200ms is the time span in which a node with the same alias
+    #   (*only if it has the same alias*) must reply to ensure our alias
+    #   is ok according to the LCC CAN Frame Transfer Standard.
+    #   - The countdown does not start until after the socket loop
+    #     calls onSentFrame. This ensures that nodes had a chance to
+    #     respond (the Standard only states to wait after sending, so
+    #     any latency after send is the responsibility of the Standard).
+    #   - Then wait longer below if there was a failure/retry:
+    #     According to the Standard any error or collision (See
+    #     processCollision in this implementation) must restart the
+    #     sequence and prevent CanLink.State.Permitted until the
+    #     sequence completes without error), before trying to use the
+    #     LCC network:
     while canLink._state != CanLink.State.Permitted:
         # Would only take more than ~200ms (possibly a few nanoseconds
         #   more for latency on the part of this program itself)

@@ -80,8 +80,7 @@ def printMessage(msg):
     readQueue.put(msg)
 
 
-canLink = CanLink(physicalLayer, NodeID(settings['localNodeID']),
-                  require_remote_nodes=True)
+canLink = CanLink(physicalLayer, NodeID(settings['localNodeID']))
 canLink.registerMessageReceivedListener(printMessage)
 
 # create a node and connect it update
@@ -141,9 +140,7 @@ def pumpEvents():
 
 print("* QUEUE Message: link up...")
 physicalLayer.physicalLayerUp()
-print("  QUEUED Message: link up...waiting for alias reservation"
-      " (canLink.require_remote_nodes={})..."
-      .format(canLink.require_remote_nodes))
+print("  QUEUED Message: link up...waiting for alias reservation...")
 
 # These checks are for debugging. See other examples for simpler pollState loop
 cidSequenceStart = default_timer()

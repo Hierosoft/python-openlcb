@@ -25,6 +25,7 @@ from timeit import default_timer
 
 from openlcb import emit_cast, formatted_ex, precise_sleep
 from openlcb.canbus.canframe import CanFrame
+from openlcb.canbus.canphysicallayer import CanPhysicalLayer
 from openlcb.canbus.controlframe import ControlFrame
 
 from openlcb.linklayer import LinkLayer
@@ -40,12 +41,13 @@ class CanLink(LinkLayer):
     """CAN link layer (manage stack's link state).
 
     Attributes:
-        ALIASES_RECEIVED_TIMEOUT (float): (seconds) CAN Frame Transfer -
-            Standard says to wait 200 ms for collisions, and if there
-            are no replies, the alias is good, otherwise increment and
-            restart alias reservation.
-            - However, in this implementation, require_remote_nodes
-              is True by default (See require_remote_nodes).
+        ALIASES_RECEIVED_TIMEOUT (float): (seconds) Section 6.2.1 of CAN
+            Frame Transfer - Standard says to wait 200 ms for
+            collisions, and if there are no replies, the alias is good
+            (nodes are only required to reply if they collide, as per
+            section 6.2.5 of CAN Frame Transfer - Standard). If a reply
+            has the same alias as self during this time, processCollision
+            increments alias and restarts reservation (sets lower state).
 
     Args:
         localNodeID (NodeID): The node ID of the device itself
@@ -62,28 +64,14 @@ class CanLink(LinkLayer):
               reserving your own range there with OpenLCB if your
               application/hardware does not apply to one of those
               ranges.
-        require_remote_nodes (bool): If True, getting no external frames
-            (See isInternal) within ALIASES_RECEIVED_TIMEOUT (seconds)
-            causes an exception in pollState. Defaults to True, which is
-            non-standard:
-            - CAN Frame Transfer - Standard specifies that after 200ms
-              the node should assume _localAlias is ok (even if there
-              are 0 responses, in which case assume no other LCC nodes
-              are connected).
-            - In this implementation we at least expect an LCC hub
-              (otherwise there is no hardware connection, or an issue
-              with socket timing, call order, or another hard-coded
-              problem in the stack or application).
-        physicalLayer (PhysicalLayer): The physical layer should
-            set this member by accepting a CanLink its constructor,
-            unless that is flipped around and added to this
-            constructor. See commented linkPhysicalLayer.
+        physicalLayer (PhysicalLayer): The PhysicalLayer/subclass to
+          use for sending frames (enqueue them via sendFrameAfter).
     """
 
     # MIN_STATE_VALUE & MAX_STATE_VALUE are set statically below the
     #   State class declaration:
     STANDARD_ALIAS_RESPONSE_DELAY = .2
-    ALIAS_RESPONSE_DELAY = 5  # See docstring.
+    ALIAS_RESPONSE_DELAY = STANDARD_ALIAS_RESPONSE_DELAY  # See docstring.
 
     class State(Enum):
         """Used as a linux-like "runlevel"
@@ -133,13 +121,12 @@ class CanLink(LinkLayer):
     MIN_STATE_VALUE = min(entry.value for entry in State)
     MAX_STATE_VALUE = max(entry.value for entry in State)
 
-    def __init__(self, physicalLayer: PhysicalLayer, localNodeID,
-                 require_remote_nodes=False):
+    def __init__(self, physicalLayer: PhysicalLayer, localNodeID):
         # See class docstring for args
-        self.physicalLayer = None
+        self.physicalLayer: CanPhysicalLayer = None  # set by super() below
+        # ^ typically CanPhysicalLayerGridConnect
         LinkLayer.__init__(self, physicalLayer, localNodeID)
         self._previousLocalAliasSeed = None
-        self.require_remote_nodes = require_remote_nodes
         self._waitingForAliasStart = None
         self._localAliasSeed = localNodeID.value
         self._localAlias = self.createAlias12(self._localAliasSeed)
@@ -148,7 +135,6 @@ class CanLink(LinkLayer):
         self._frameCount = 0
         self._aliasCollisionCount = 0
         self._errorCount = 0
-        self._previousAliasCollisionCount = None
         self._previousFrameCount = None
         self.aliasToNodeID = {}
         self.nodeIdToAlias = {}
@@ -156,6 +142,7 @@ class CanLink(LinkLayer):
         self.duplicateAliases = []
         self.nextInternallyAssignedNodeID = 1
         self._state = CanLink.State.Initial
+        self._reservation = -1  # incremented on use.
 
     # This method may never actually be necessary, as
     # sendMessage uses nodeIdToAlias (which has localNodeID
@@ -203,15 +190,21 @@ class CanLink(LinkLayer):
     #     assert isinstance(self._state, CanLink.State)
     #     return self._state == CanLink.State.Permitted
 
-    def isDuplicateAlias(self, alias):
-        if not isinstance(alias, int):
-            raise NotImplementedError(
-                "Can't check for duplicate due to alias not stored as int."
-                " bytearray parsing must be implemented in CanFrame"
-                " constructor if this markDuplicateAlias scenario is valid"
-                " (alias={})."
-                .format(emit_cast(alias)))
-        return alias in self.duplicateAliases
+    def isBadReservation(self, frame):
+        if frame.reservation is None:
+            return False
+        return frame.reservation < self._reservation
+
+    # def isDuplicateAlias(self, alias):
+    #     if not isinstance(alias, int):
+    #         raise NotImplementedError(
+    #             "Can't check for duplicate due to alias not stored as int."
+    #             " bytearray parsing must be implemented in CanFrame"
+    #             " constructor if this markDuplicateAlias scenario is valid"
+    #             " (alias={})."
+    #             .format(emit_cast(alias)))
+    #     return alias in self.duplicateAliases
+    # ^ Commented since isBadReservation handles both collision and error.
 
     # Commented since instead, socket code should call linkLayerUp and linkLayerDown.
     #   Constructors should construct the openlcb stack.
@@ -316,6 +309,11 @@ class CanLink(LinkLayer):
                                ControlFrame.EIR2,
                                ControlFrame.EIR3):
             self._errorCount += 1
+            if self.isRunningAliasReservation():
+                # Restart alias reservation process if an
+                #   error occurs during it, as per section
+                #   6.2.1 of CAN Frame Transfer - Standard.
+                self.defineAndReserveAlias()
         elif control_frame == ControlFrame.Data:
             # NOTE: We may process other bits of frame.header
             #   that were stripped from control_frame
@@ -332,6 +330,17 @@ class CanLink(LinkLayer):
             logger.warning(
                 "Invalid control frame format 0x{:08X}"
                 .format(control_frame))
+
+    def isRunningAliasReservation(self):
+        return self._state in (
+            CanLink.State.EnqueueAliasAllocationRequest,
+            CanLink.State.BusyLocalCIDSequence,
+            CanLink.State.WaitingForSendCIDSequence,
+            CanLink.State.WaitForAliases,
+            CanLink.State.EnqueueAliasReservation,
+            CanLink.State.BusyLocalReserveID,
+            CanLink.State.WaitingForSendReserveID
+        )
 
     def handleReceivedLinkUp(self, frame):
         """Link started, update state, start process to create alias.
@@ -464,8 +473,8 @@ class CanLink(LinkLayer):
         # check for matching node ID, which is a collision
         nodeID = NodeID(frame.data)
         if nodeID == self.localNodeID :
-            print("collide")
             # collision, restart
+            print("Alias collision occurred. Restarting alias reservation...")
             self.processCollision(frame)
             return
         #    This defines an alias, so store it
@@ -929,15 +938,11 @@ class CanLink(LinkLayer):
             else:
                 if ((default_timer() - self._waitingForAliasStart)
                         > CanLink.ALIAS_RESPONSE_DELAY):
-                    if self.require_remote_nodes:
-                        # keep the current state, in case
-                        # application wants to try again.
-                        raise ConnectionError(
-                            "At least an LCC node was expected within 200ms."
-                            " See require_remote_nodes documentation and"
-                            " only set to True for Standard"
-                            " (permissive) behavior")
-                    # finish the sends for the alias reservation:
+                    # There were no alias collisions (any nodes with the
+                    #   same alias are required to respond within this
+                    #   time as per Section 6.2.5 of CAN Frame Transfer
+                    #   Standard) so finish the sends for the alias
+                    #   reservation:
                     self._waitingForAliasStart = None
                     self.setState(CanLink.State.EnqueueAliasReservation)
 
@@ -958,6 +963,12 @@ class CanLink(LinkLayer):
         Message instance. The application manages flow and the
         openlcb stack (this Python module) manages state.
         """
+        if self._reservation > -1:
+            # If any reservation occurred before, clear it
+            #   (prevent race condition, don't require pollFrame loop
+            #   to check isDuplicateAlias)
+            self.physicalLayer.clearReservation(self._reservation)
+        self._reservation += 1
         self.setState(CanLink.State.EnqueueAliasAllocationRequest)
 
     def _enqueueCIDSequence(self):
@@ -977,85 +988,58 @@ class CanLink(LinkLayer):
         #   NodeIdToAlias, permitting openlcb to send to those
         #   destinations)
         self.physicalLayer.sendFrameAfter(CanFrame(7, self.localNodeID,
-                                          self._localAlias))
+                                          self._localAlias,
+                                          reservation=self._reservation))
         self.physicalLayer.sendFrameAfter(CanFrame(6, self.localNodeID,
-                                          self._localAlias))
+                                          self._localAlias,
+                                          reservation=self._reservation))
         self.physicalLayer.sendFrameAfter(CanFrame(5, self.localNodeID,
-                                          self._localAlias))
+                                          self._localAlias,
+                                          reservation=self._reservation))
         self.physicalLayer.sendFrameAfter(
             CanFrame(4, self.localNodeID, self._localAlias,
-                     afterSendState=CanLink.State.WaitForAliases)
+                     afterSendState=CanLink.State.WaitForAliases,
+                     reservation=self._reservation)
         )
-        self._previousAliasCollisionCount = self._aliasCollisionCount
+        self._previousErrorCount = self._errorCount
         self._previousFrameCount = self._frameCount
         self._previousLocalAliasSeed = self._localAliasSeed
         self.setState(CanLink.State.WaitingForSendCIDSequence)
 
     def _enqueueReserveID(self):
         """Send Reserve ID (RID)
-        If no collision after `CanLink.ALIAS_RESPONSE_DELAY`,
-        but this will not be called in no-response case if
-        `require_remote_nodes` is `True`.
 
         Triggered by CanLink.State.EnqueueAliasReservation
+        - If no collision during `CanLink.ALIAS_RESPONSE_DELAY`.
         """
         self._waitingForAliasStart = None  # done waiting for reply to 7,6,5,4
         self.setState(CanLink.State.BusyLocalReserveID)
-        # precise_sleep(.2)  # Waiting 200ms as per section 6.2.1
-        #  is now done by pollState (application must keep polling after
-        #  sending and receiving data) based on _waitingForAliasStart.
+        # Waiting 200ms as per section 6.2.1 of CAN Frame Transfer -
+        #   Standard is now done by pollState (application must keep
+        #   polling after sending and receiving data)
+        #   - But based on _waitingForAliasStart, so pollState is not a
+        #     blocking call.
 
-        #  See ("Reserving a Node ID Alias") of
-        #  LCC "CAN Frame Transfer" Standard
-        responseCount = self._frameCount - self._previousFrameCount
-        if responseCount < 1:
-            logger.warning(
-                "sendAliasAllocationSequence may be blocking the receive"
-                " thread or the network is taking too long to respond"
-                " (200ms is LCC standard time for all nodes to respond to"
-                " reservation request. If there any other nodes, this is"
-                " an error and this method should *not* continue sending"
-                " Reserve ID (RID) frame)...")
-        if self._aliasCollisionCount > self._previousAliasCollisionCount:
-            # processCollision will increment the non-unique alias try
-            #   defineAndReserveAlias again (so stop before completing
-            #   the sequence as per Standard)
-            logger.warning(
-                "Cancelled reservation of duplicate local alias seed {}"
-                " (processCollision increments ID to avoid,"
-                " & restarts sequence)."
-                .format(self._previousLocalAliasSeed))
-            #  TODO: maybe raise an exception since we should never get
-            #  here (since CanLink is a state machine now, the state
-            #  leading to this would have been rolled back by processCollision)
+        # The frame below must be cancelled by the application/other
+        #   pollFrame loop if there was a collision in the meantime
+        #   (simply don't send the result of pollFrame if
+        #   isDuplicateAlias)
+        # TODO: ^ Test that.
+        # NOTE: Below may cause a race condition, but more than
+        #   one thread *must not* be handling send, so this is the
+        #   solution for now:
+        thisErrorCount = self._errorCount - self._previousErrorCount
+        if thisErrorCount > 1:
+            # Restart reservation on error as per section 6.2.1 of
+            # CAN Frame Transfer - Standard.
+            # - This is not a collision, so don't increment alias.
+            print("Error occurred, restarting alias reservation...")
+            self.defineAndReserveAlias()
 
-            return False
-        if responseCount < 1:
-            if self.require_remote_nodes:
-                # TODO: Instead, just do setState(CanLink.State.Inhibited?)
-                raise ConnectionRefusedError(
-                    "pollState should not set EnqueueAliasReservation when"
-                    " responseCount < 1 and"
-                    " remote_nodes_required={}"
-                    .format(emit_cast(self.require_remote_nodes)))
-            else:
-                logger.warning(
-                    "Continuing to send Reservation (RID) anyway"
-                    "(Using Standard behavior, since"
-                    " remote_nodes_required={})"
-                    "--no response, so assuming alias seed {} is unique"
-                    " (If there are any other nodes on the network then"
-                    " thread management, the python-openlcb stack"
-                    " construction or call order,"
-                    " or network connection failed!)."
-                    .format(emit_cast(self.require_remote_nodes),
-                            self._localAliasSeed))
-        else:
-            print("Got {} new frame(s) during reservation."
-                  " No collisions, so completing reservation!")
         self.physicalLayer.sendFrameAfter(
             CanFrame(ControlFrame.RID.value, self._localAlias,
-                     afterSendState=CanLink.State.NotifyAliasReservation)
+                     afterSendState=CanLink.State.NotifyAliasReservation,
+                     reservation=self._reservation)
         )
         self.setState(CanLink.State.WaitingForSendReserveID)
 

@@ -176,8 +176,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
         #   for this application.
 
         self._callback_status("CanLink...")
-        self._canLink = CanLink(self._physicalLayer, NodeID(localNodeID),
-                                require_remote_nodes=True)
+        self._canLink = CanLink(self._physicalLayer, NodeID(localNodeID))
         self._callback_status("CanLink..."
                               "registerMessageReceivedListener...")
         self._canLink.registerMessageReceivedListener(self._handleMessage)
@@ -292,7 +291,8 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                         if frame is None:
                             break  # allow receive to run!
                         if isinstance(frame, CanFrame):
-                            if self._canLink.isDuplicateAlias(frame.alias):
+                            # if self._canLink.isDuplicateAlias(frame.alias):
+                            if self._canLink.isBadReservation(frame):
                                 logger.warning(
                                     "Discarded frame from a previous"
                                     " alias reservation attempt"

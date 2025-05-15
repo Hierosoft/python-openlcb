@@ -21,6 +21,7 @@ from logging import getLogger
 import warnings
 
 from openlcb import emit_cast
+from openlcb.message import Message
 from openlcb.physicallayer import PhysicalLayer
 
 logger = getLogger(__name__)
@@ -42,7 +43,7 @@ class LinkLayer:
     """
 
     class State(Enum):
-        Undefined = 0  # subclass constructor did not run (implement states)
+        Undefined = 0  # subclass constructor didn't run--Implement State there
 
     DisconnectedState = State.Undefined  # change in subclass! Only for tests!
     #   (enforced using type(self).__name__ != "LinkLayer" checks in methods)
@@ -131,13 +132,14 @@ class LinkLayer:
         raise NotImplementedError(
             "[LinkLayer] abstract _onStateChanged not implemented")
 
-    def sendMessage(self, msg):
+    def sendMessage(self, msg: Message):
         '''This is the basic abstract interface
         '''
 
     def registerMessageReceivedListener(self, listener):
         self.listeners.append(listener)
 
-    def fireListeners(self, msg):
+    def fireListeners(self, msg: Message):
+        """Fire *Message received* listeners."""
         for listener in self.listeners:
             listener(msg)

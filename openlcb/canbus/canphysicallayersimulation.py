@@ -2,29 +2,37 @@
 Simulated CanPhysicalLayer to record frames requested to be sent.
 '''
 
+from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.canphysicallayer import CanPhysicalLayer
+from openlcb.frameencoder import FrameEncoder
 
 
-class CanPhysicalLayerSimulation(CanPhysicalLayer):
+class CanPhysicalLayerSimulation(CanPhysicalLayer, FrameEncoder):
 
     def __init__(self):
-        self.receivedPackets = []
+        self.receivedFrames = []
         CanPhysicalLayer.__init__(self)
         self.onQueuedFrame = self._onQueuedFrame
 
-    def _onQueuedFrame(self, frame):
+    def _onQueuedFrame(self, frame: CanFrame):
         raise AttributeError(
-            "This should not be used for simulation"
-            "--Make sendFrameAfter realtime instead.")
+            "Not implemented for simulation")
 
-    def captureFrame(self, frame):
-        self.receivedPackets.append(frame)
-        return "CanPhysicalLayerSimulation"
+    def captureFrame(self, frame: CanFrame):
+        self.receivedFrames.append(frame)
 
-    def sendFrameAfter(self, frame):
-        return self.captureFrame(frame)  # pretend it was sent
-        #   (normally only onQueuedFrame would be called here,
-        #   and would be encoded to packet str/bytes/bytearray
-        #   and sent to socket later by the application's socket code,
-        #   which would then call onSentFrame which is set
-        #   to the LinkLayer subclass' handleSentFrame)
+    def encodeFrameAsString(self, frame: CanFrame):
+        return "(no encoding, only simulating CanPhysicalLayer superclass)"
+
+    def encodeFrameAsData(self, frame: CanFrame):
+        return self.encodeFrameAsString(frame).encode("utf-8")
+
+    def sendFrameAfter(self, frame: CanFrame):
+        frame.encoder = self
+        self.captureFrame(frame)
+        # NOTE: Can't actually do afterSendState here, because
+        #   _enqueueCIDSequence sets state to
+        #   CanLink.State.WaitingForSendCIDSequence
+        #   *after* calling this (so we must use afterSendState
+        #   later!)
+        self._send_frames.append(frame)

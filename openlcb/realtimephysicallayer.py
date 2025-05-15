@@ -38,10 +38,13 @@ class RealtimePhysicalLayer(PhysicalLayer):
         #         .format(type(data).__name__, data)
         #     )
         print("      SR: {}".format(frame.encode()))
+        # send and fireListeners would usually occur after
+        #   frame from _send_frames.popleft is sent,
+        #   but we do all this here in the Realtime subclass:
         self.sock.send(frame.encode())
         # TODO: finish onSentFrame
         if frame.afterSendState:
-            self.onSentFrame(frame)
+            self.fireListeners(frame)  # also calls self.onSentFrame(frame)
 
     def registerFrameReceivedListener(self, listener):
         """_summary_

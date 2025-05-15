@@ -73,8 +73,9 @@ class CanPhysicalLayer(PhysicalLayer):
             " constructor).")
         self.listeners.append(listener)
 
-    def fireListeners(self, frame):
-        """Monitor each frame that is constructed
+    def fireListeners(self, frame: CanFrame):
+        """Fire *CanFrame received* listeners.
+        Monitor each frame that is constructed
         as the application provides handleData raw data from the port.
         - LinkLayer (CanLink in this case) must set onReceivedFrame,
           so registerFrameReceivedListener is now optional, and

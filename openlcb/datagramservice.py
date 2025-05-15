@@ -162,7 +162,8 @@ class DatagramService:
         '''
         self.listeners.append(listener)
 
-    def fireListeners(self, dg):  # internal for testing
+    def fireListeners(self, dg: DatagramReadMemo):  # internal for testing
+        """Fire *datagram received* listeners."""
         replied = False
         for listener in self.listeners:
             replied = listener(dg) or replied

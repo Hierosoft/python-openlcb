@@ -33,6 +33,11 @@ class CanFrame:
     - header, data: If 2nd arg is list.
     - control, alias, data: If 2nd arg is int.
 
+    Attributes:
+        encoder (object): A required (in non-test scenarios) encoder
+            object (set to a PhysicalLayer subclass, since that layer
+            determines the encoding). Must implement FrameEncoder.
+
     Args:
         N_cid (int, optional): Frame sequence number (becomes first
             3 bits of 15-bit Check ID (CID) frame). 4 to 7 inclusive
@@ -51,14 +56,14 @@ class CanFrame:
         control (int, optional): Frame type (1: OpenLCB = 0x0800_000,
             0: CAN Control Frame) | Content Field (3 bits, 3 nibbles,
             mask = 0x07FF_F000).
-        encoder (object): a required encoder object (set to a
-            PhysicalLayer subclass, since that layer determines
-            the encoding). Must have an encodeFrameAsString method that
-            accepts a CanFrame.
         afterSendState (CanLink.State, optional): The frame incurs
             a new state in the CanLink instance *after* socket send is
             *complete*, at which time the PortInterface should call
             setState(frame.afterSendState).
+        reservation (int): The reservation sequence attempt (incremented
+            on each attempt) to allow clearReservation to work (cancel
+            previous reservation without race condition related to
+            _send_frames).
     """
 
     ARG_LISTS = [
@@ -94,9 +99,10 @@ class CanFrame:
     def alias(self) -> int:
         return self._alias
 
-    def __init__(self, *args, afterSendState=None):
+    def __init__(self, *args, afterSendState=None, reservation=None):
         self.afterSendState = afterSendState
         self.encoder = NoEncoder()
+        self.reservation = reservation
         arg1 = None
         arg2 = None
         arg3 = None
