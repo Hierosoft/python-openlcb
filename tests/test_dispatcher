@@ -1,6 +1,6 @@
 import unittest
 
-from openlcb.dispatcher import Dispatcher
+from openlcb.dispatcher import OpenLCBNetwork
 
 
 class DispatcherTest(unittest.TestCase):
@@ -10,7 +10,7 @@ class DispatcherTest(unittest.TestCase):
     def testEnum(self):
         usedValues = set()
         # ensure values are unique:
-        for entry in Dispatcher.Mode:
+        for entry in OpenLCBNetwork.Mode:
             self.assertNotIn(entry.value, usedValues)
             usedValues.add(entry.value)
             # print('{} = {}'.format(entry.name, entry.value))

@@ -49,7 +49,7 @@ class PortInterface:
             raise InterruptedError(
                 "Untracked {} ended during {}"
                 " Check busy() first or setListeners"
-                " (implementation problem: See Dispatcher"
+                " (implementation problem: See OpenLCBNetwork"
                 " for correct example)"
                 .format(caller, self._busy_message))
         self._busy_message = None
@@ -60,7 +60,7 @@ class PortInterface:
                 "{} was called during {}."
                 " Check busy() first or setListeners"
                 " and wait for {} ready"
-                " (or use Dispatcher to send&receive)"
+                " (or use OpenLCBNetwork to send&receive)"
                 .format(caller, self._busy_message, caller))
 
     def setListeners(self, onReadyToSend, onReadyToReceive):
@@ -116,7 +116,7 @@ class PortInterface:
         Raises:
             InterruptedError: (raised by assertNotBusy) if
                 port is in use. Use sendFrameAfter in
-                Dispatcher to avoid this.
+                OpenLCBNetwork to avoid this.
 
         Args:
             data (Union[bytes, bytearray]): _description_

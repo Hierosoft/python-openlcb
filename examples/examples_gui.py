@@ -450,7 +450,7 @@ class MainForm(ttk.Frame):
         self.cdi_refresh_button.grid(row=self.cdi_row, column=1)
 
         self.cdi_row += 1
-        self.cdi_form = CDIForm(self.cdi_tab)  # Dispatcher() subclass
+        self.cdi_form = CDIForm(self.cdi_tab)  # OpenLCBNetwork() subclass
         self.cdi_form.grid(row=self.cdi_row)
 
         self.example_tab = ttk.Frame(self.notebook)
@@ -493,7 +493,7 @@ class MainForm(ttk.Frame):
         the connect or _listen thread).
 
         Args:
-            event_d (dict): Information sent by Dispatcher's
+            event_d (dict): Information sent by OpenLCBNetwork's
                 connect method during the connection steps
                 including alias reservation. Potential keys:
                 - 'error' (str): Indicates a failure
@@ -541,18 +541,18 @@ class MainForm(ttk.Frame):
         implementation (called by _listen directly unless triggered by
         LCC Message).
 
-        In this program, this is added to Dispatcher via
+        In this program, this is added to OpenLCBNetwork via
         set_connect_listener.
 
         Therefore in this program, this is triggered during _listen in
-        Dispatcher: Connecting is actually done until
+        OpenLCBNetwork: Connecting is actually done until
         sendAliasAllocationSequence detects success and marks
         canLink._state to CanLink.State.Permitted (which triggers
         _handleMessage which calls this).
         - May also be directly called by _listen directly in case
           stopped listening (RuntimeError reading port, or other reason
           lower in the stack than LCC).
-        - Dispatcher's _connect_listener attribute is a method
+        - OpenLCBNetwork's _connect_listener attribute is a method
           reference to this if set via set_connect_listener.
         """
         # Trigger the main thread (only the main thread can access the
