@@ -1,3 +1,4 @@
+from timeit import default_timer
 import unittest
 
 from openlcb import formatted_ex
@@ -211,6 +212,8 @@ class TestCanLinkClass(unittest.TestCase):
 
         canPhysicalLayer.fireListeners(CanFrame(ControlFrame.RID.value,
                                                 ourAlias))
+        # ^ collision
+        canLink.waitForReady()
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 8)
         # ^ includes recovery of new alias 4 CID, RID, AMR, AME
         self.assertEqual(canPhysicalLayer.receivedFrames[0],
@@ -581,8 +584,8 @@ class TestCanLinkClass(unittest.TestCase):
 
         canLink.sendMessage(message)
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 1)
-        self.assertEqual(str(canPhysicalLayer.receivedFrames[0]),
+        self.assertEqual(len(canPhysicalLayer._send_frames), 1)
+        self.assertEqual(str(canPhysicalLayer._send_frames[0]),
                          "CanFrame header: 0x1A000000 []")
         canLink.onDisconnect()
 
@@ -596,9 +599,9 @@ class TestCanLinkClass(unittest.TestCase):
 
         canLink.sendMessage(message)
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 1)
+        self.assertEqual(len(canPhysicalLayer._send_frames), 1)
         self.assertEqual(
-            str(canPhysicalLayer.receivedFrames[0]),
+            str(canPhysicalLayer._send_frames[0]),
             "CanFrame header: 0x1A000000 [1, 2, 3, 4, 5, 6, 7, 8]"
         )
         canLink.onDisconnect()
@@ -614,13 +617,13 @@ class TestCanLinkClass(unittest.TestCase):
 
         canLink.sendMessage(message)
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 2)
+        self.assertEqual(len(canPhysicalLayer._send_frames), 2)
         self.assertEqual(
-            str(canPhysicalLayer.receivedFrames[0]),
+            str(canPhysicalLayer._send_frames[0]),
             "CanFrame header: 0x1B000000 [1, 2, 3, 4, 5, 6, 7, 8]"
         )
         self.assertEqual(
-            str(canPhysicalLayer.receivedFrames[1]),
+            str(canPhysicalLayer._send_frames[1]),
             "CanFrame header: 0x1D000000 [9, 10, 11, 12, 13, 14, 15, 16]"
         )
         canLink.onDisconnect()
@@ -638,16 +641,18 @@ class TestCanLinkClass(unittest.TestCase):
 
         canLink.sendMessage(message)
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 3)
+
+
+        self.assertEqual(len(canPhysicalLayer._send_frames), 3)
         self.assertEqual(
-            str(canPhysicalLayer.receivedFrames[0]),
+            str(canPhysicalLayer._send_frames[0]),
             "CanFrame header: 0x1B000000 [1, 2, 3, 4, 5, 6, 7, 8]"
         )
         self.assertEqual(
-            str(canPhysicalLayer.receivedFrames[1]),
+            str(canPhysicalLayer._send_frames[1]),
             "CanFrame header: 0x1C000000 [9, 10, 11, 12, 13, 14, 15, 16]"
         )
-        self.assertEqual(str(canPhysicalLayer.receivedFrames[2]),
+        self.assertEqual(str(canPhysicalLayer._send_frames[2]),
                          "CanFrame header: 0x1D000000 [17, 18, 19]")
         canLink.onDisconnect()
 
@@ -789,7 +794,7 @@ if __name__ == '__main__':
     failedCount = 0
     exceptions = []
     errors = []
-    # testCase.testLinkUpSequence()
+    testCase.testRIDreceivedMatch()
     for name in dir(testCase):
         if name.startswith("test"):
             fn = getattr(testCase, name)
