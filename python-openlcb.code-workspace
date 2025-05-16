@@ -64,6 +64,7 @@
 			"offvalue",
 			"onvalue",
 			"openlcb",
+			"openlcbnetwork",
 			"padx",
 			"pady",
 			"physicallayer",
