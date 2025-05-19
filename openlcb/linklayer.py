@@ -36,10 +36,10 @@ class LinkLayer:
             callbacks called from there.
         _state: The state (a.k.a. "runlevel" in linux terms)
             of the network link. This may be moved to an overall
-            stack handler such as Dispatcher.
+            stack handler such as OpenLCBNetwork.
         State (class(Enum)): values for _state. Implement in subclass.
             This may be moved to an overall stack handler such as
-            Dispatcher.
+            OpenLCBNetwork.
     """
 
     class State(Enum):

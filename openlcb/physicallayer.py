@@ -55,11 +55,16 @@ class PhysicalLayer:
 
     def __init__(self):
         self._send_frames = deque()
+        # self._send_chunks = deque()
         self.onQueuedFrame = None
 
-    # def sendDataAfter(self, data):
-    #     assert isinstance(data, (bytes, bytearray))
-    #     self._send_frames.append(data)
+    def sendDataAfter(self, data: Union[bytes, bytearray]):
+        raise NotImplementedError(
+            "This method is only for Realtime subclass(es)"
+            " (which should only be used when not using GridConnect"
+            " subclass, such for testing)")
+        # assert isinstance(data, (bytes, bytearray))
+        # self._send_chunks.append(data)
 
     def pollFrame(self):
         """Check if there is another frame queued and get it.

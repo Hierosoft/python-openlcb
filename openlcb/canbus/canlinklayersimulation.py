@@ -11,7 +11,7 @@ logger = getLogger(__name__)
 
 class CanLinkLayerSimulation(CanLink):
     # pumpEvents and waitForReady are based on examples
-    #   and may be moved to CanLink or Dispatcher
+    #   and may be moved to CanLink or OpenLCBNetwork
     #   to make the Python module easier to use.
 
     def pumpEvents(self):

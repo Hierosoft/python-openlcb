@@ -1,7 +1,7 @@
 class InternalEvent:
     """An event for internal use by the framework
     (framework state events)
-    - Should be eventually all handled by Dispatcher so
+    - Should be eventually all handled by OpenLCBNetwork so
       that it can handle state ("runlevel") as per issue #62.
     - For OpenLCB/LCC Events, see Events that are not
       subclasses of this.

@@ -54,7 +54,7 @@ class MTI(Enum):
     # specification.
     # TODO: Consider moving these and non-CAN values in ControlFrame
     #   all to InternalEvent (or creating a related event if necessary
-    #   using a listener, so Dispatcher can manage runlevel).
+    #   using a listener, so OpenLCBNetwork can manage runlevel).
     Link_Layer_Up                      = 0x2000   # entered Permitted state; needs to be marked global  # noqa: E501
     Link_Layer_Quiesce                 = 0x2010   # Link needs to be drained, will come back with Link_Layer_Restarted next  # noqa: E501
     Link_Layer_Restarted               = 0x2020   # link cycled without change of node state; needs to be marked global  # noqa: E501
