@@ -10,12 +10,15 @@ instead they work on the status of a provided node.  This allows
 on processor struct to handle communications for multiple nodes.
 '''
 
+from typing import Union
+from openlcb.message import Message
+from openlcb.node import Node
 from openlcb.nodeid import NodeID
 
 
 class Processor:
 
-    def process(self, message, node=None):
+    def process(self, message: Message, node: Node = None):
         """abstract method to be implemented below only in subclasses
         Accept a Message, adjust state as needed, possibly reply.
 
@@ -32,12 +35,12 @@ class Processor:
     # TODO: so maybe add _ to beginning of method names marked "# internal"
 
     # internal
-    def checkSourceID(self, message, arg):
+    def checkSourceID(self, message: Message, arg: Union[NodeID, Node]):
         """check whether a message came from a specific nodeID
 
         Args:
             message (Message): A message.
-            arg (Union[NodeID,int]): NodeID or Node ID int to compare against
+            arg (Union[NodeID,Node]): NodeID or Node ID int to compare against
                 message.source.
 
         Returns:
@@ -47,15 +50,16 @@ class Processor:
             return message.source == arg
         else:
             # assuming type is Node
+            assert isinstance(arg, Node)
             return message.source == arg.id
 
     # internal
-    def checkDestID(self, message, arg):
+    def checkDestID(self, message: Message, arg: Union[NodeID, Node]):
         """check whether a message is addressed to a specific nodeID
 
         Args:
             message (Message): A Message.
-            arg (Union[NodeID,int]): A Node ID.
+            arg (Union[NodeID,Node]): A Node ID.
 
         Returns:
             bool: Whether the message ID matches the arg. Global messages
@@ -64,4 +68,5 @@ class Processor:
         if isinstance(arg, NodeID):
             return message.destination == arg
         else:  # assuming type is Node
+            assert isinstance(arg, Node)
             return message.destination == arg.id
