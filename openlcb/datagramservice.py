@@ -25,6 +25,7 @@ Handles link quiesce/restart so that higher level services don't have to.
 from enum import Enum
 import logging
 
+from openlcb.linklayer import LinkLayer
 from openlcb.message import Message
 from openlcb.mti import MTI
 
@@ -93,7 +94,7 @@ class DatagramService:
         Unrecognized    = 0xFF  # Not formally assigned
 
     def __init__(self, linkLayer):
-        self.linkLayer = linkLayer
+        self.linkLayer: LinkLayer = linkLayer
         self.quiesced = False
         self.currentOutstandingMemo = None
         self.pendingWriteMemos = []
