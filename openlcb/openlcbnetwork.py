@@ -258,7 +258,8 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
                     #   which is expected and used on purpose)
                     # print("Waiting for _receive")
                     received = self._receive()  # requires setblocking(False)
-                    print("[_listen] received {} byte(s)".format(len(received)),
+                    print("[_listen] received {} byte(s)"
+                          .format(len(received)),
                           file=sys.stderr)
                     # print("      RR: {}".format(received.strip()))
                     # pass to link processor
@@ -304,7 +305,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
                             assert isinstance(packet, str)
                             print("Sending {}".format(packet))
                             self._port.sendString(packet)
-                            physicalLayer.onSentFrame(frame)
+                            self._physicalLayer.onSentFrame(frame)
                         else:
                             raise NotImplementedError(
                                 "Event type {} is not handled."
