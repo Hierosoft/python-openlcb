@@ -18,7 +18,7 @@ from tkinter import ttk
 from logging import getLogger
 from xml.etree import ElementTree as ET
 
-from openlcb.dispatcher import element_to_dict
+from openlcb.openlcbnetwork import element_to_dict
 
 if __name__ == "__main__":
     logger = getLogger(__file__)
@@ -36,7 +36,7 @@ else:
         " since test running from repo but could not find openlcb in {}."
         .format(repr(REPO_DIR)))
 try:
-    from openlcb.dispatcher import Dispatcher
+    from openlcb.openlcbnetwork import Dispatcher
 except ImportError as ex:
     print("{}: {}".format(type(ex).__name__, ex), file=sys.stderr)
     print("* You must run this from a venv that has openlcb installed"

@@ -1,6 +1,6 @@
 import unittest
 
-from openlcb.dispatcher import Dispatcher
+from openlcb.openlcbnetwork import Dispatcher
 
 
 class DispatcherTest(unittest.TestCase):
