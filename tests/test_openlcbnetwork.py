@@ -3,7 +3,7 @@ import unittest
 from openlcb.openlcbnetwork import OpenLCBNetwork
 
 
-class DispatcherTest(unittest.TestCase):
+class OpenLCBNetworkTest(unittest.TestCase):
     def setUp(self):
         pass
 
