@@ -1,16 +1,16 @@
 import unittest
 
-from openlcb.openlcbnetwork import Dispatcher
+from openlcb.openlcbnetwork import OpenLCBNetwork
 
 
-class DispatcherTest(unittest.TestCase):
+class OpenLCBNetworkTest(unittest.TestCase):
     def setUp(self):
         pass
 
     def testEnum(self):
         usedValues = set()
         # ensure values are unique:
-        for entry in Dispatcher.Mode:
+        for entry in OpenLCBNetwork.Mode:
             self.assertNotIn(entry.value, usedValues)
             usedValues.add(entry.value)
             # print('{} = {}'.format(entry.name, entry.value))

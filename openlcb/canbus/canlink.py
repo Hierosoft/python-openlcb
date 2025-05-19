@@ -87,8 +87,8 @@ class CanLink(LinkLayer):
                 CID sequence packet (first phase of reserving an alias).
                 - The last frame sets state to WaitForAliases *after*
                   sent by socket (wait for socket code in application or
-                  Dispatcher to notify us, sendFrameAfter is too soon to be
-                  sure our 200ms delay starts after send).
+                  OpenLCBNetwork to notify us, as sendFrameAfter is too
+                  soon to be sure our 200ms delay starts after send).
             EnqueueAliasReservation (State): After collision detection fully
                 determined to be success, this state triggers
                 _enqueueReserveID.
@@ -725,7 +725,7 @@ class CanLink(LinkLayer):
                 logger.error(
                     "Did not know destination = {} on datagram send ({})"
                     " self.nodeIdToAlias={}. Ensure recv loop"
-                    " (such as Dispatcher's _listen thread) is running"
+                    " (such as OpenLCBNetwork's _listen thread) is running"
                     " before and during alias reservation sequence delay."
                     " Check previous log messages for an exception"
                     " that may have ended the recv loop."
@@ -921,13 +921,13 @@ class CanLink(LinkLayer):
           could be called in the case of processCollision)
           - This being separate has the added benefit of the
             stack being able to work in the same thread
-            as the application's (or Dispatcher's)
+            as the application's (or OpenLCBNetwork's)
             socket calls.
         """
         assert isinstance(self._state, CanLink.State), \
             "Expected a CanLink.State, got {}".format(emit_cast(self._state))
         if self._state in (CanLink.State.Inhibited, CanLink.State.Initial):
-            # Do nothing. Dispatcher or application must first call
+            # Do nothing. OpenLCBNetwork or application must first call
             # physicalLayerUp
             # - which triggers handleReceivedLinkUp
             #   - which calls defineAndReserveAlias

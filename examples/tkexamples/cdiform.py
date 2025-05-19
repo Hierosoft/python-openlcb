@@ -36,7 +36,7 @@ else:
         " since test running from repo but could not find openlcb in {}."
         .format(repr(REPO_DIR)))
 try:
-    from openlcb.openlcbnetwork import Dispatcher
+    from openlcb.openlcbnetwork import OpenLCBNetwork
 except ImportError as ex:
     print("{}: {}".format(type(ex).__name__, ex), file=sys.stderr)
     print("* You must run this from a venv that has openlcb installed"
@@ -45,7 +45,7 @@ except ImportError as ex:
     raise  # sys.exit(1)
 
 
-class CDIForm(ttk.Frame, Dispatcher):
+class CDIForm(ttk.Frame, OpenLCBNetwork):
     """A GUI frame to represent the CDI visually as a tree.
 
     Args:
@@ -53,7 +53,7 @@ class CDIForm(ttk.Frame, Dispatcher):
             attribute set.
     """
     def __init__(self, *args, **kwargs):
-        Dispatcher.__init__(self, *args, **kwargs)
+        OpenLCBNetwork.__init__(self, *args, **kwargs)
         ttk.Frame.__init__(self, *args, **kwargs)
         self._top_widgets = []
         if len(args) < 1:
@@ -93,8 +93,8 @@ class CDIForm(ttk.Frame, Dispatcher):
         self.set_status("Display reset.")
 
     # def connect(self, new_socket, localNodeID, callback=None):
-    #     return Dispatcher.connect(self, new_socket, localNodeID,
-    #                               callback=callback)
+    #     return OpenLCBNetwork.connect(self, new_socket, localNodeID,
+    #                                   callback=callback)
 
     def downloadCDI(self, farNodeID, callback=None):
         self.set_status("Downloading CDI...")

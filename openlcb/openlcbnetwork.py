@@ -66,8 +66,9 @@ def attrs_to_dict(attrs) -> dict:
     return {key: attrs.getValue(key) for key in attrs.getNames()}
 
 
-# TODO: split Dispatcher (socket & event handler) from ContentHandler
-class Dispatcher(xml.sax.handler.ContentHandler):
+# TODO: split OpenLCBNetwork (socket & event handler) from ContentHandler
+#   and/or only handle data as XML if request is for CDI/FDI or other XML.
+class OpenLCBNetwork(xml.sax.handler.ContentHandler):
     """Manage Configuration Description Information.
     - Send events to downloadCDI caller describing the state and content
       of the document construction.
@@ -111,7 +112,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
         self._my_cache_dir = os.path.join(caches_dir, "python-openlcb")
         self._element_listener = None
         self._connect_listener = None
-        self._mode = Dispatcher.Mode.Initializing
+        self._mode = OpenLCBNetwork.Mode.Initializing
         # ^ In case some parsing step happens early,
         #   prepare these for _callback_msg.
         super().__init__()  # takes no arguments
@@ -228,7 +229,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
     def _listen(self):
         self._connecting_t = time.perf_counter()
         self._message_t = None
-        self._mode = Dispatcher.Mode.Idle  # Idle until data type is known
+        self._mode = OpenLCBNetwork.Mode.Idle  # Idle until data type is known
         caught_ex = None
         try:
             # NOTE: self._canLink.state is *definitely not*
@@ -323,13 +324,13 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                 }
                 if self._element_listener:
                     self._element_listener(event_d)
-                self._mode = Dispatcher.Mode.Disconnected
+                self._mode = OpenLCBNetwork.Mode.Disconnected
                 raise  # re-raise since incomplete (prevent done OK state)
         finally:
             self._canLink.onDisconnect()
         self._listen_thread = None
 
-        self._mode = Dispatcher.Mode.Disconnected
+        self._mode = OpenLCBNetwork.Mode.Disconnected
         # If we got here, the RuntimeError was ok since the
         #   null terminator '\0' was reached (otherwise re-raise occurs above)
         event_d = {
@@ -376,7 +377,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                 "No physicalLayer. Call start_listening first.")
         self._cdi_offset = 0
         self._reset_tree()
-        self._mode = Dispatcher.Mode.CDI
+        self._mode = OpenLCBNetwork.Mode.CDI
         if self._resultingCDI is not None:
             raise ValueError(
                 "A previous downloadCDI operation is in progress"
@@ -537,13 +538,13 @@ class Dispatcher(xml.sax.handler.ContentHandler):
         # print("successful memory read: {}".format(memo.data))
         if len(memo.data) == 64 and 0 not in memo.data:  # *not* last chunk
             self._string_terminated = False
-            if self._mode == Dispatcher.Mode.CDI:
+            if self._mode == OpenLCBNetwork.Mode.CDI:
                 # save content
                 self._CDIReadPartial(memo)
             else:
                 logger.error(
                     "Unknown data packet received"
-                    " (memory read not triggered by Dispatcher)")
+                    " (memory read not triggered by OpenLCBNetwork)")
             # update the address
             memo.address = memo.address + 64
             # and read again (read next)
@@ -552,13 +553,13 @@ class Dispatcher(xml.sax.handler.ContentHandler):
         else:  # last chunk
             self._string_terminated = True
             # and we're done!
-            if self._mode == Dispatcher.Mode.CDI:
+            if self._mode == OpenLCBNetwork.Mode.CDI:
                 self._CDIReadDone(memo)
             else:
                 logger.error(
                     "Unknown last data packet received"
-                    " (memory read not triggered by Dispatcher)")
-            self._mode = Dispatcher.Mode.Idle  # CDI no longer expected
+                    " (memory read not triggered by OpenLCBNetwork)")
+            self._mode = OpenLCBNetwork.Mode.Idle  # CDI no longer expected
             # done reading
 
     def _memoryReadFail(self, memo):
