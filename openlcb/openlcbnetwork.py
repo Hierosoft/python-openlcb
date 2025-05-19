@@ -67,6 +67,7 @@ def attrs_to_dict(attrs) -> dict:
 
 
 # TODO: split OpenLCBNetwork (socket & event handler) from ContentHandler
+#   and/or only handle data as XML if request is for CDI/FDI or other XML.
 class OpenLCBNetwork(xml.sax.handler.ContentHandler):
     """Manage Configuration Description Information.
     - Send events to downloadCDI caller describing the state and content

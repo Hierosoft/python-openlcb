@@ -94,7 +94,7 @@ class CDIForm(ttk.Frame, OpenLCBNetwork):
 
     # def connect(self, new_socket, localNodeID, callback=None):
     #     return OpenLCBNetwork.connect(self, new_socket, localNodeID,
-    #                               callback=callback)
+    #                                   callback=callback)
 
     def downloadCDI(self, farNodeID, callback=None):
         self.set_status("Downloading CDI...")

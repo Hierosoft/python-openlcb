@@ -87,8 +87,8 @@ class CanLink(LinkLayer):
                 CID sequence packet (first phase of reserving an alias).
                 - The last frame sets state to WaitForAliases *after*
                   sent by socket (wait for socket code in application or
-                  OpenLCBNetwork to notify us, sendFrameAfter is too soon to be
-                  sure our 200ms delay starts after send).
+                  OpenLCBNetwork to notify us, as sendFrameAfter is too
+                  soon to be sure our 200ms delay starts after send).
             EnqueueAliasReservation (State): After collision detection fully
                 determined to be success, this state triggers
                 _enqueueReserveID.
@@ -210,7 +210,7 @@ class CanLink(LinkLayer):
     #   Constructors should construct the openlcb stack.
     # def linkPhysicalLayer(self, cpl):
     #     """Set the physical layer to use.
-    #     Also registers self.receiveListener as a listener on the given
+    #     Also registers self.handleFrameReceived as a listener on the given
     #     physical layer. Before using sendMessage, wait for the
     #     connection phase to finish, as the phase receives aliases
     #     (populating nodeIdToAlias) and reserves a unique alias as per
@@ -221,7 +221,7 @@ class CanLink(LinkLayer):
     #         cpl (CanPhysicalLayer): The physical layer to use.
     #     """
     #     self.physicalLayer = cpl  # self.link = cpl
-    #     cpl.registerFrameReceivedListener(self.receiveListener)
+    #     cpl.registerFrameReceivedListener(self.handleFrameReceived)
     #     # ^ Commented since it makes more sense for its
     #     #   constructor to do this, since it needs a PhysicalLayer
     #     #   in order to do anything
@@ -278,7 +278,7 @@ class CanLink(LinkLayer):
         if not ControlFrame.isInternal(control_frame):
             self._frameCount += 1
         else:
-            print("[CanLink receiveListener] control_frame={}"
+            print("[CanLink handleFrameReceived] control_frame={}"
                   .format(control_frame))
 
         if control_frame == ControlFrame.LinkUp:

@@ -65,7 +65,7 @@ class TcpLink(LinkLayer):
         print(f"[TcpLink] _onStateChanged from {oldState} to {newState}"
               " (nothing to do since TcpLink)")
 
-    def handleFrameReceived(self, inputData: bytearray):  # [] input
+    def handleFrameReceived(self, inputData: bytearray):
         """Receives bytes from lower level
         and accumulates them into individual message parts.
 
@@ -105,7 +105,7 @@ class TcpLink(LinkLayer):
             # and repeat
 
     def receivedPart(self, messagePart, flags, length):
-        """Receives message parts from receiveListener
+        """Receives message parts from handleFrameReceived
         and groups them into single OpenLCB messages as needed
 
         Args:

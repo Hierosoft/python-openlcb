@@ -1,4 +1,3 @@
-from timeit import default_timer
 import unittest
 
 from openlcb import formatted_ex
@@ -641,8 +640,6 @@ class TestCanLinkClass(unittest.TestCase):
 
         canLink.sendMessage(message)
 
-
-
         self.assertEqual(len(canPhysicalLayer._send_frames), 3)
         self.assertEqual(
             str(canPhysicalLayer._send_frames[0]),
@@ -794,7 +791,6 @@ if __name__ == '__main__':
     failedCount = 0
     exceptions = []
     errors = []
-    testCase.testRIDreceivedMatch()
     for name in dir(testCase):
         if name.startswith("test"):
             fn = getattr(testCase, name)

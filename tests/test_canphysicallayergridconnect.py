@@ -36,7 +36,8 @@ class PhysicalLayerMock(CanPhysicalLayerGridConnect):
 
     def onFrameReceived(self, frame):
         pass
-        # NOTE: not patching self.onFrameReceived = canLink.handleFrameReceived
+        # NOTE: not patching
+        #   self.onFrameReceived = canLink.handleFrameReceived
         #   since testing only physical layer not link layer.
 
 

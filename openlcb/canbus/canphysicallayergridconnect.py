@@ -44,7 +44,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         # region moved to CanLink constructor
         # from canLink.linkPhysicalLayer(self)  # self.setCallBack(callback):
         # canLink.physicalLayer = self
-        # self.registerFrameReceivedListener(canLink.receiveListener)
+        # self.registerFrameReceivedListener(canLink.handleFrameReceived)
         # endregion moved to CanLink constructor
 
         self.inboundBuffer = bytearray()

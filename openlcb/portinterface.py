@@ -115,8 +115,7 @@ class PortInterface:
 
         Raises:
             InterruptedError: (raised by assertNotBusy) if
-                port is in use. Use sendFrameAfter in
-                OpenLCBNetwork to avoid this.
+                port is in use. Use sendFrameAfter to avoid this.
 
         Args:
             data (Union[bytes, bytearray]): _description_

@@ -36,9 +36,8 @@ class LinkLayer:
         _state: The state (a.k.a. "runlevel" in linux terms)
             of the network link. This may be moved to an overall
             stack handler such as OpenLCBNetwork.
-        State (class(Enum)): values for _state. Implement in subclass.
-            This may be moved to an overall stack handler such as
-            OpenLCBNetwork.
+        State (class(Enum)): values for _state. Implement all necessary
+            states in subclass to handle connection phases etc.
     """
 
     class State(Enum):
@@ -64,10 +63,10 @@ class LinkLayer:
         # # ^ enforce queue paradigm (See use in PhysicalLayer subclass)
         # physicalLayer.registerFrameReceivedListener(listener)
         # ^ Doesn't work with "is" operator still! So just use
-        #   physicalLayer.onFrameReceived in fireFrameReceived in PhysicalLayer.
+        #   physicalLayer.onFrameReceived in fireFrameReceived in PhysicalLayer
         # else:
         #     print("Using {} without"
-        #           " registerFrameReceivedListener(self.receiveListener)"
+        #           " registerFrameReceivedListener(self.handleFrameReceived)"
         #           " on physicalLayer, since no physicalLayer specified."
         #           .format())
         # endregion moved from CanLink linkPhysicalLayer
@@ -83,7 +82,7 @@ class LinkLayer:
 
     def handleFrameReceived(self, frame):
         logger.warning(
-            "{} abstract receiveListener called (expected implementation)"
+            "{} abstract handleFrameReceived called (expected implementation)"
             .format(type(self).__name__))
 
     def handleFrameSent(self, frame):
