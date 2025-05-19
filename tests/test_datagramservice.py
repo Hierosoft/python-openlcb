@@ -26,7 +26,6 @@ class LinkMockLayer(LinkLayer):
 
     DisconnectedState = State.Disconnected
 
-
     def sendMessage(self, message):
         LinkMockLayer.sentMessages.append(message)
 
@@ -193,6 +192,7 @@ class DatagramServiceTest(unittest.TestCase):
             self.assertNotIn(entry.value, usedValues)
             usedValues.add(entry.value)
             # print('{} = {}'.format(entry.name, entry.value))
+
 
 if __name__ == '__main__':
     unittest.main()

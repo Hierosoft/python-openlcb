@@ -29,7 +29,7 @@ class TcpSocket(PortInterface):
     def __init__(self):
         super(TcpSocket, self).__init__()
 
-    def _settimeout(self, seconds):
+    def _settimeout(self, seconds: float):
         """Set the timeout for connect and transfer.
 
         Args:
@@ -38,7 +38,7 @@ class TcpSocket(PortInterface):
         """
         self._device.settimeout(seconds)
 
-    def _connect(self, host, port, device=None):
+    def _connect(self, host: str, port: int, device=None):
         # public connect (do not overload) asserts no overlapping call
         if device is None:
             self._device = socket.socket(

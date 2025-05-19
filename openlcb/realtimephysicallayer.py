@@ -52,7 +52,7 @@ class RealtimePhysicalLayer(PhysicalLayer):
         self.onFrameReceived to its handler).
 
         Args:
-            listener (callable): A method that accepts decoded frame
+            listener (Callable): A method that accepts decoded frame
                 objects from the network.
         """
         logger.warning(

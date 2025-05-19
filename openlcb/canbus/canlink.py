@@ -23,7 +23,7 @@ from enum import Enum
 from logging import getLogger
 from timeit import default_timer
 
-from openlcb import emit_cast, formatted_ex, precise_sleep
+from openlcb import emit_cast, formatted_ex
 from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.canphysicallayer import CanPhysicalLayer
 from openlcb.canbus.controlframe import ControlFrame
@@ -121,7 +121,7 @@ class CanLink(LinkLayer):
     MIN_STATE_VALUE = min(entry.value for entry in State)
     MAX_STATE_VALUE = max(entry.value for entry in State)
 
-    def __init__(self, physicalLayer: PhysicalLayer, localNodeID):
+    def __init__(self, physicalLayer: PhysicalLayer, localNodeID: NodeID):
         # See class docstring for args
         self.physicalLayer: CanPhysicalLayer = None  # set by super() below
         # ^ typically CanPhysicalLayerGridConnect
@@ -147,7 +147,7 @@ class CanLink(LinkLayer):
     # This method may never actually be necessary, as
     # sendMessage uses nodeIdToAlias (which has localNodeID
     # *only after* a successful reservation)
-    def getLocalAlias(self):
+    def getLocalAlias(self) -> int:
         """Get the local alias, since it may differ from original
         localNodeID given at construction: It may have been
         reassigned (via incrementAlias48 and createAlias12 in
@@ -190,7 +190,7 @@ class CanLink(LinkLayer):
     #     assert isinstance(self._state, CanLink.State)
     #     return self._state == CanLink.State.Permitted
 
-    def isBadReservation(self, frame):
+    def isBadReservation(self, frame: CanFrame) -> bool:
         if frame.reservation is None:
             return False
         return frame.reservation < self._reservation
@@ -206,8 +206,9 @@ class CanLink(LinkLayer):
     #     return alias in self.duplicateAliases
     # ^ Commented since isBadReservation handles both collision and error.
 
-    # Commented since instead, socket code should call linkLayerUp and linkLayerDown.
-    #   Constructors should construct the openlcb stack.
+    # Commented since instead, socket code should call linkLayerUp and
+    #   linkLayerDown. Constructors should construct the openlcb stack:
+    #   github.com/bobjacobsen/python-openlcb/issues/62#issuecomment-2775668681
     # def linkPhysicalLayer(self, cpl):
     #     """Set the physical layer to use.
     #     Also registers self.handleFrameReceived as a listener on the given
@@ -226,7 +227,7 @@ class CanLink(LinkLayer):
     #     #   constructor to do this, since it needs a PhysicalLayer
     #     #   in order to do anything
 
-    def _onStateChanged(self, oldState, newState):
+    def _onStateChanged(self, oldState: State, newState: State):
         # return super()._onStateChanged(oldState, newState)
         assert isinstance(newState, CanLink.State), \
             "expected a CanLink.State, got {}".format(emit_cast(newState))
@@ -333,7 +334,7 @@ class CanLink(LinkLayer):
                 "Invalid control frame format 0x{:08X}"
                 .format(control_frame))
 
-    def isRunningAliasReservation(self):
+    def isRunningAliasReservation(self) -> bool:
         return self._state in (
             CanLink.State.EnqueueAliasAllocationRequest,
             CanLink.State.BusyLocalCIDSequence,
@@ -797,7 +798,7 @@ class CanLink(LinkLayer):
                 frame = CanFrame(header, msg.data)
                 self.physicalLayer.sendFrameAfter(frame)
 
-    def segmentDatagramDataArray(self, data):
+    def segmentDatagramDataArray(self, data: bytearray) -> list[bytearray]:
         """Segment data into zero or more arrays
         of no more than 8 bytes for datagram.
 
@@ -828,7 +829,8 @@ class CanLink(LinkLayer):
 
         return segments
 
-    def segmentAddressedDataArray(self, alias, data):
+    def segmentAddressedDataArray(self, alias: int,
+                                  data: bytearray) -> list[bytearray]:
         '''Segment data into zero or more arrays
         of no more than 8 bytes, with the alias at the start of each,
         for addressed non-datagram messages.
@@ -876,7 +878,7 @@ class CanLink(LinkLayer):
             self.processCollision(frame)
         return abort
 
-    def markDuplicateAlias(self, alias):
+    def markDuplicateAlias(self, alias: int):
         if not isinstance(alias, int):
             raise NotImplementedError(
                 "Can't mark collision due to alias not stored as int."
@@ -886,7 +888,7 @@ class CanLink(LinkLayer):
                 .format(emit_cast(alias)))
         self.duplicateAliases.append(alias)
 
-    def processCollision(self, frame: CanFrame) :
+    def processCollision(self, frame: CanFrame):
         ''' Collision! '''
         self._aliasCollisionCount += 1
         logger.warning(
@@ -910,7 +912,7 @@ class CanLink(LinkLayer):
     def getWaitForAliasResponseStart(self):
         return self._waitingForAliasStart
 
-    def pollState(self):
+    def pollState(self) -> State:
         """You must keep polling state after every time
         a state change frame is sent, and after
         every call to handleDataString or handleData
@@ -1045,7 +1047,7 @@ class CanLink(LinkLayer):
         )
         self.setState(CanLink.State.WaitingForSendReserveID)
 
-    def incrementAlias48(self, oldAlias):
+    def incrementAlias48(self, oldAlias: int) -> int:
         '''
         Implements the OpenLCB preferred alias
         generation mechanism:  a 48-bit computation
@@ -1057,7 +1059,7 @@ class CanLink(LinkLayer):
         maskedProduct = newProduct & 0xFFFF_FFFF_FFFF
         return maskedProduct
 
-    def createAlias12(self, rnd):
+    def createAlias12(self, rnd: int) -> int:
         '''Form 12 bit alias from 48-bit random number'''
 
         part1 = (rnd >> 36) & 0x0FFF
@@ -1073,7 +1075,7 @@ class CanLink(LinkLayer):
             return ((part1+part2+part3+part4) & 0xFF)
         return 0xAEF  # Why'd you say Burma?
 
-    def decodeControlFrameFormat(self, frame: CanFrame):
+    def decodeControlFrameFormat(self, frame: CanFrame) -> ControlFrame:
         if (frame.header & 0x0800_0000) == 0x0800_0000:
             # data case; not checking leading 1 bit
             # NOTE: handleReceivedData can get all header bits via frame
@@ -1093,7 +1095,7 @@ class CanLink(LinkLayer):
                 .format(frame.header))
             return ControlFrame.UnknownFormat
 
-    def canHeaderToFullFormat(self, frame: CanFrame):
+    def canHeaderToFullFormat(self, frame: CanFrame) -> MTI:
         '''Returns a full 16-bit MTI from the full 29 bits of a CAN header'''
         frameType = (frame.header >> 24) & 0x7
         canMTI = ((frame.header >> 12) & 0xFFF)

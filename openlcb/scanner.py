@@ -37,19 +37,21 @@ class Scanner:
             return
         self._onHasNext()
 
-    def nextByte(self):
+    def nextByte(self) -> int:
         if not self._buffer:
             raise EOFError("No more bytes (_buffer={})"
                            .format(emit_cast(self._buffer)))
         if not isinstance(self._buffer, (bytes, bytearray)):
             raise TypeError("Buffer is {} (nextByte is for bytes/bytearray)"
                             .format(type(self._buffer).__name__))
-        return self._buffer.popleft(0)
+        result = self._buffer[0]
+        del self._buffer[0]
+        return result
 
-    def hasNextByte(self):
+    def hasNextByte(self) -> bool:
         return True if self._buffer else False
 
-    def hasNext(self):
+    def hasNext(self) -> bool:
         if self._delimiter == Scanner.EOF:
             return self.hasNextByte()
         return self._delimiter in self._buffer

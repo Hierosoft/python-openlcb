@@ -7,6 +7,7 @@ provides a routine for converting a numeric value to a set of enum constants.
 '''
 
 from enum import Enum
+from typing import Iterable, Union
 
 
 class PIP(Enum):
@@ -35,31 +36,47 @@ class PIP(Enum):
     FIRMWARE_ACTIVE                        = 0x00_00_10_00
 
     # get a list of all enum entries
-    def list():
+    def list() -> list:
         return list(map(lambda c: c, PIP))
 
-    # return an array of strings found in an int value
-    def contentsNamesFromInt(contents):
+    def contentsNamesFromInt(bitmask: int) -> list[str]:
+        """Convert protocol bits to strings.
+
+        Args:
+            contents (int): 0 or more PIP values
+                (protocol bits) combined (as a single bitmask).
+
+        Returns:
+            list[str]: Names found in an int value.
+        """
         retval = []
         for pip in PIP.list():
-            if (pip.value & contents == pip.value):
+            if (pip.value & bitmask == pip.value):
                 val = pip.name.replace("_", " ").title()
                 if val.startswith("Adcdi"):
                     val = "ADCDI Protocol"  # Handle special case
                 retval.append(val)
         return retval
 
-    # return an array of strings for all values included in a collection
-    def contentsNamesFromList(contents):
+    def contentsNamesFromList(pipList: Iterable) -> list[str]:
+        """Convert a list of PIP values to strings.
+
+        Args:
+            contents (Iterable[PIP]): 0 or more PIP enums.
+                May be a list or any other collection.
+
+        Returns:
+            list[str]: Names of PIP enums in contents.
+        """
         retval = []
-        for pip in contents:
+        for pip in pipList:
             val = pip.name.replace("_", " ").title()
             if val.startswith("Adcdi") :
                 val = "ADCDI Protocol"  # Handle special case
             retval.append(val)
         return retval
 
-    def setContentsFromInt(bitmask):
+    def setContentsFromInt(bitmask: int) -> set:
         """Get a set of contents from a single numeric bitmask
 
         Args:
@@ -67,16 +84,17 @@ class PIP(Enum):
                 protocol bits.
 
         Returns:
-            set (PIP): The set of protocol bits (bitmasks where 1 bit is on in
+            set(PIP): The set of protocol bits (bitmasks where 1 bit is on in
                 each) derived from the bitmask.
         """
         retVal = []
-        for val in PIP.list():
-            if (val.value & bitmask != 0):
-                retVal.append(val)
+        for pip in PIP.list():  # for each PIP
+            if (pip.value & bitmask != 0):
+                retVal.append(pip)
         return set(retVal)
 
-    def setContentsFromList(raw):
+    def setContentsFromList(
+            values: Union[bytearray, bytes, Iterable[int]]) -> set:
         """set contents from a list of numeric inputs
 
         Args:
@@ -85,13 +103,13 @@ class PIP(Enum):
         Returns:
             set (PIP): The set of protocol bits derived from the raw data.
         """
-        data = 0
+        bitmask = 0
         if (len(raw) > 0):
-            data |= ((raw[0]) << 24)
+            bitmask |= ((raw[0]) << 24)
         if (len(raw) > 1):
-            data |= ((raw[1]) << 16)
+            bitmask |= ((raw[1]) << 16)
         if (len(raw) > 2):
-            data |= ((raw[2]) << 8)
+            bitmask |= ((raw[2]) << 8)
         if (len(raw) > 3):
-            data |= ((raw[3]))
-        return PIP.setContentsFromInt(data)
+            bitmask |= ((raw[3]))
+        return PIP.setContentsFromInt(bitmask)

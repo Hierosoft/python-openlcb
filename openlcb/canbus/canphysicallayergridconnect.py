@@ -10,7 +10,7 @@ Works with frames like
 - :X19170365N020112FE056C;
 '''
 
-from collections import deque
+
 from typing import Union
 from openlcb.canbus.canphysicallayer import CanPhysicalLayer
 from openlcb.canbus.canframe import CanFrame
@@ -53,7 +53,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
     #     assert callable(callback)
     #     self.canSendCallback = callback
 
-    def encodeFrameAsString(self, frame) -> str:
+    def encodeFrameAsString(self, frame: CanFrame) -> str:
         '''Encode frame to string.'''
         output = ":X{:08X}N".format(frame.header)  # at least 8 chars, hex
         for byte in frame.data:
@@ -61,7 +61,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         output += ";\n"
         return output
 
-    def encodeFrameAsData(self, frame) -> Union[bytearray, bytes]:
+    def encodeFrameAsData(self, frame: CanFrame) -> Union[bytearray, bytes]:
         # TODO: Consider doing this manually (in Python 3,
         #   bytes/bytearray has no attribute 'format')
         return self.encodeFrameAsString(frame).encode("utf-8")

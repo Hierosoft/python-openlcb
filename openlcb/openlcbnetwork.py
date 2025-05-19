@@ -16,10 +16,13 @@ import os
 import threading
 import time
 import sys
+from typing import Callable, Union
 import xml.sax  # noqa: E402
 import xml.etree.ElementTree as ET
 
 from logging import getLogger
+import xml.sax.handler
+from xml.sax.xmlreader import AttributesImpl
 # from xml.sax.xmlreader import AttributesImpl  # for autocomplete only
 
 from openlcb import formatted_ex, precise_sleep
@@ -29,9 +32,11 @@ from openlcb.canbus.canphysicallayergridconnect import (
     CanPhysicalLayerGridConnect,
 )
 from openlcb.canbus.canlink import CanLink
+from openlcb.message import Message
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
 from openlcb.datagramservice import (
+    DatagramReadMemo,
     DatagramService,
 )
 from openlcb.memoryservice import (
@@ -78,14 +83,14 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         etree (Element): The XML root element (Does not correspond to an
             XML tag but rather the document itself, and contains all
             actual top-level elements as children).
-        _open_el (SubElement): Tracks currently-open tag (no `</...>`
+        _openEl (SubElement): Tracks currently-open tag (no `</...>`
             yet) during parsing, or if no tags are open then equals
             etree.
         _tag_stack (list[SubElement]): Tracks scope during parse since
             self.etree doesn't have awareness of whether end tag is
             finished (and therefore doesn't know which element is the
             parent of a new startElement).
-        _element_listener (Callable): Called if an XML element is
+        _onElement (Callable): Called if an XML element is
             received (including either a start or end tag).
             Typically set as `callback` argument to downloadCDI.
         _resultingCDI (str): CDI document being collected from the
@@ -109,14 +114,14 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
 
     def __init__(self, *args, **kwargs):
         caches_dir = SysDirs.Cache
-        self._my_cache_dir = os.path.join(caches_dir, "python-openlcb")
-        self._element_listener = None
-        self._connect_listener = None
+        self._myCacheDir = os.path.join(caches_dir, "python-openlcb")
+        self._onElement = None
+        self._onConnect = None
         self._mode = OpenLCBNetwork.Mode.Initializing
         # ^ In case some parsing step happens early,
         #   prepare these for _callback_msg.
         super().__init__()  # takes no arguments
-        self._string_terminated = None  # None means no read is occurring.
+        self._stringTerminated = None  # None means no read is occurring.
         self._parser = xml.sax.make_parser()
         self._parser.setContentHandler(self)
 
@@ -136,52 +141,53 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         self._resultingCDI = None
         # endregion connect
 
-        self._connecting_t = None
+        self._connectingStart: float = None
 
-    def _reset_tree(self):
+    def _resetTree(self):
         self.etree = ET.Element("root")
-        self._open_el = self.etree
+        self._openEl = self.etree
 
-    def _callback_status(self, status, callback=None):
+    def _fireStatus(self, status, callback=None):
+        """Fire status handlers with the given status."""
         if callback is None:
-            callback = self._element_listener
+            callback = self._onElement
         if callback is None:
-            callback = self._connect_listener
+            callback = self._onConnect
         if callback:
             print("CDIForm callback_msg({})".format(repr(status)))
-            self._connect_listener({
+            self._onConnect({
                 'status': status,
             })
         else:
             logger.warning("No callback, but set status: {}".format(status))
 
-    def set_element_listener(self, listener):
-        self._element_listener = listener
+    def setElementHandler(self, handler: Callable):
+        self._onElement = handler
 
-    def set_connect_listener(self, listener):
-        self._connect_listener = listener
+    def setConnectHandler(self, handler: Callable):
+        self._onConnect = handler
 
-    def start_listening(self, connected_port, localNodeID):
+    def startListening(self, connected_port,
+                       localNodeID: Union[NodeID, int, str, bytearray]):
         if self._port is not None:
             logger.warning(
-                "[start_listening] A previous _port will be discarded.")
+                "[startListening] A previous _port will be discarded.")
         self._port = connected_port
-        self._callback_status("CanPhysicalLayerGridConnect...")
+        self._fireStatus("CanPhysicalLayerGridConnect...")
         self._physicalLayer = CanPhysicalLayerGridConnect()
 
-        self._callback_status("CanLink...")
+        self._fireStatus("CanLink...")
         self._canLink = CanLink(self._physicalLayer, NodeID(localNodeID))
         # ^ CanLink constructor sets _physicalLayer's onFrameReceived
         #   and onFrameSent to handlers in _canLink.
-        self._callback_status("CanLink..."
-                              "registerMessageReceivedListener...")
+        self._fireStatus("CanLink...registerMessageReceivedListener...")
         self._canLink.registerMessageReceivedListener(self._handleMessage)
         # NOTE: Incoming data (Memo) is handled by _memoryReadSuccess
         #   and _memoryReadFail.
         #   - These are set when constructing the MemoryReadMemo which
         #     is provided to openlcb's requestMemoryRead method.
 
-        self._callback_status("DatagramService...")
+        self._fireStatus("DatagramService...")
         self._datagramService = DatagramService(self._canLink)
         self._canLink.registerMessageReceivedListener(
             self._datagramService.process
@@ -191,10 +197,10 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
             self._printDatagram
         )
 
-        self._callback_status("MemoryService...")
+        self._fireStatus("MemoryService...")
         self._memoryService = MemoryService(self._datagramService)
 
-        self._callback_status("listen...")
+        self._fireStatus("listen...")
 
         self.listen()  # Must listen for alias reservation responses
         #   (sendAliasConnectionSequence will occur for another 200ms
@@ -202,9 +208,9 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         #   - must also keep doing frame = pollFrame() and sending
         #     if not None.
 
-        self._callback_status("physicalLayerUp...")
+        self._fireStatus("physicalLayerUp...")
         self._physicalLayer.physicalLayerUp()
-        self._callback_status("Waiting for alias reservation...")
+        self._fireStatus("Waiting for alias reservation...")
         while self._canLink.pollState() != CanLink.State.Permitted:
             precise_sleep(.02)
         # ^ triggers fireFrameReceived which calls CanLink's default
@@ -213,15 +219,15 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         #   - Must happen *after* listen thread starts, since
         #     fireFrameReceived (ControlFrame.LinkUp)
         #     calls sendAliasConnectionSequence on this thread!
-        self._callback_status("Alias reservation complete.")
+        self._fireStatus("Alias reservation complete.")
 
     def listen(self):
-        self._listen_thread = threading.Thread(
+        self._listenThread = threading.Thread(
             target=self._listen,
             daemon=True,  # True to terminate on program exit
         )
         print("[listen] Starting port receive loop...")
-        self._listen_thread.start()
+        self._listenThread.start()
 
     def _receive(self) -> bytearray:
         """Receive data from the port.
@@ -232,8 +238,8 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         return self._port.receive()
 
     def _listen(self):
-        self._connecting_t = time.perf_counter()
-        self._message_t = None
+        self._connectingStart = time.perf_counter()
+        self._messageStart = None
         self._mode = OpenLCBNetwork.Mode.Idle  # Idle until data type is known
         caught_ex = None
         try:
@@ -263,11 +269,10 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
                     # ^ will trigger self._printFrame if that was added
                     #   via registerFrameReceivedListener during connect.
                     precise_sleep(.01)  # let processor sleep before read
-                    if time.perf_counter() - self._connecting_t > .2:
+                    if time.perf_counter() - self._connectingStart > .2:
                         if self._canLink._state != CanLink.State.Permitted:
-                            if ((self._message_t is None)
-                                    or (time.perf_counter() - self._message_t
-                                        > 1)):
+                            delta = time.perf_counter() - self._messageStart
+                            if ((self._messageStart is None) or (delta > 1)):
                                 logger.warning(
                                     "CanLink is not ready yet."
                                     " There must have been a collision"
@@ -320,20 +325,20 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
             #   manually.
             #   - Usually "socket connection broken" due to no more
             #     bytes to read, but ok if "\0" terminator was reached.
-            if self._resultingCDI is not None and not self._string_terminated:
+            if self._resultingCDI is not None and not self._stringTerminated:
                 # This boolean is managed by the memoryReadSuccess
                 # callback.
                 event_d = {  # same as self._event_listener here
                     'error': formatted_ex(ex),
                     'done': True,  # stop progress in gui/other main thread
                 }
-                if self._element_listener:
-                    self._element_listener(event_d)
+                if self._onElement:
+                    self._onElement(event_d)
                 self._mode = OpenLCBNetwork.Mode.Disconnected
                 raise  # re-raise since incomplete (prevent done OK state)
         finally:
             self._canLink.onDisconnect()
-        self._listen_thread = None
+        self._listenThread: threading.Thread = None
 
         self._mode = OpenLCBNetwork.Mode.Disconnected
         # If we got here, the RuntimeError was ok since the
@@ -343,12 +348,13 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
                       .format(formatted_ex(caught_ex))),
             'done': True,
         }
-        if not (self._connect_listener and self._connect_listener(event_d)):
+        if not (self._onConnect and self._onConnect(event_d)):
             # The message was not handled, so log it.
             logger.error(event_d['error'])
         return event_d  # return it in case running synchronously (no thread)
 
-    def _memoryRead(self, farNodeID, offset):
+    def _memoryRead(self, farNodeID: Union[NodeID, int, str, bytearray],
+                    offset: int):
         """Create and send a read datagram.
         This is a read of 20 bytes from the start of CDI space.
         We will fire it on a separate thread to give time for other nodes to
@@ -364,24 +370,24 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
                                  self._memoryReadFail, self._memoryReadSuccess)
         self._memoryService.requestMemoryRead(memMemo)
 
-    def downloadCDI(self, farNodeID, callback=None):
+    def downloadCDI(self, farNodeID: str, callback=None):
         if not farNodeID or not farNodeID.strip():
             raise ValueError("No farNodeID specified.")
         self._farNodeID = farNodeID
-        self._string_terminated = False
+        self._stringTerminated = False
         if callback is None:
             def callback(event_d):
                 print("downloadCDI default callback: {}".format(event_d),
                       file=sys.stderr)
-        self._element_listener = callback
+        self._onElement = callback
         if not self._port:
             raise RuntimeError(
-                "No port connection. Call start_listening first.")
+                "No port connection. Call startListening first.")
         if not self._physicalLayer:
             raise RuntimeError(
-                "No physicalLayer. Call start_listening first.")
+                "No physicalLayer. Call startListening first.")
         self._cdi_offset = 0
-        self._reset_tree()
+        self._resetTree()
         self._mode = OpenLCBNetwork.Mode.CDI
         if self._resultingCDI is not None:
             raise ValueError(
@@ -392,16 +398,16 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         # ^ On a successful memory read, _memoryReadSuccess will trigger
         #   _memoryRead again and again until end/fail.
 
-    # def _sendToPort(self, string):
+    # def _sendToPort(self, string: str):
     #     # print("      SR: {}".format(string.strip()))
     #     DeprecationWarning("Use a PhysicalLayer subclass' sendFrameAfter")
     #     self.sendFrameAfter(string)
 
-    # def _printFrame(self, frame):
+    # def _printFrame(self, frame: CanFrame):
     #     # print("   RL: {}".format(frame))
     #     pass
 
-    def _handleMessage(self, message):
+    def _handleMessage(self, message: Message):
         """Handle a Message from the LCC network.
         The Message Type Indicator (MTI) is checked in case the
         application should visualize a change in the connection state
@@ -422,28 +428,28 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
               .format(message, message.source))
         print("[_handleMessage]   message.mti={}".format(message.mti))
         if message.mti == MTI.Link_Layer_Down:
-            if self._connect_listener:
-                self._connect_listener({
+            if self._onConnect:
+                self._onConnect({
                     'done': True,
                     'error': "Disconnected",
                     'message': message,
                 })
-                self._message_t = None  # prevent _listen from discarding error
+                self._messageStart = None  # so _listen won't discard error
                 return True
         elif message.mti == MTI.Link_Layer_Up:
-            if self._connect_listener:
-                self._connect_listener({
+            if self._onConnect:
+                self._onConnect({
                     'done': True,  # 'done' without error indicates connected.
                     'message': message,
                 })
                 return True
         return False
 
-    def _printDatagram(self, memo):
+    def _printDatagram(self, memo: DatagramReadMemo):
         """A call-back for when datagrams received
 
         Args:
-            DatagramReadMemo: The datagram object
+            memo (DatagramReadMemo): The datagram object
 
         Returns:
             bool: Always False (True would mean we sent a reply to the
@@ -452,7 +458,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         # print("Datagram receive call back: {}".format(memo.data))
         return False
 
-    def _CDIReadPartial(self, memo):
+    def _CDIReadPartial(self, memo: MemoryReadMemo):
         """Handle partial CDI XML (any packet except last)
         The last packet is not yet reached, so don't parse (but
         feed if self._realtime)
@@ -465,7 +471,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         if self._realtime:
             self._parser.feed(partial_str)  # may call startElement/endElement
 
-    def _CDIReadDone(self, memo):
+    def _CDIReadDone(self, memo: MemoryReadMemo):
         """Handle end of CDI XML (last packet)
         End of data, so parse (or feed if self._realtime)
 
@@ -497,9 +503,9 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
             # print (cdiString)
             self.parse(cdiString)
             # ^ startElement, endElement, etc. all consecutive using parse
-            # self._callback_status("Done loading CDI.")
-            if self._element_listener:
-                self._element_listener({
+            # self._fireStatus("Done loading CDI.")
+            if self._onElement:
+                self._onElement({
                     'done': True,  # 'done' and not 'error' means got all
                 })
         if self._realtime:
@@ -513,8 +519,8 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
             print('Saved "{}"'.format(path))
         self._resultingCDI = None  # Ensure isn't reused for more than one doc
 
-    def cache_cdi_path(self, item_id):
-        cdi_cache_dir = os.path.join(self._my_cache_dir, "cdi")
+    def cache_cdi_path(self, item_id: Union[NodeID, str]):
+        cdi_cache_dir = os.path.join(self._myCacheDir, "cdi")
         if not os.path.isdir(cdi_cache_dir):
             os.makedirs(cdi_cache_dir)
         # TODO: add hardware name and firmware version and from SNIP to
@@ -531,7 +537,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
             raise ValueError("Cannot specify absolute path.")
         return path + ".xml"
 
-    def _memoryReadSuccess(self, memo):
+    def _memoryReadSuccess(self, memo: MemoryReadMemo):
         """Handle a successful read
         Invoked when the memory read successfully returns,
         this queues a new read until the entire CDI has been
@@ -542,7 +548,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         """
         # print("successful memory read: {}".format(memo.data))
         if len(memo.data) == 64 and 0 not in memo.data:  # *not* last chunk
-            self._string_terminated = False
+            self._stringTerminated = False
             if self._mode == OpenLCBNetwork.Mode.CDI:
                 # save content
                 self._CDIReadPartial(memo)
@@ -556,7 +562,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
             self._memoryService.requestMemoryRead(memo)
             # The last packet is not yet reached
         else:  # last chunk
-            self._string_terminated = True
+            self._stringTerminated = True
             # and we're done!
             if self._mode == OpenLCBNetwork.Mode.CDI:
                 self._CDIReadDone(memo)
@@ -567,17 +573,17 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
             self._mode = OpenLCBNetwork.Mode.Idle  # CDI no longer expected
             # done reading
 
-    def _memoryReadFail(self, memo):
+    def _memoryReadFail(self, memo: MemoryReadMemo):
         error = "memory read failed: {}".format(memo.data)
-        if self._element_listener:
-            self._element_listener({
+        if self._onElement:
+            self._onElement({
                 'error': error,
                 'done': True,  # stop progress in gui/other main thread
             })
         else:
             logger.error(error)
 
-    def startElement(self, name, attrs):
+    def startElement(self, name: str, attrs: AttributesImpl[str]):
         """See xml.sax.handler.ContentHandler documentation."""
         tab = "  " * len(self._tag_stack)
         print(tab, "Start: ", name)
@@ -585,22 +591,22 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
             print(tab, "  Attributes: ", attrs.getNames())
         # el = ET.Element(name, attrs)
         attrib = attrs_to_dict(attrs)
-        el = ET.SubElement(self._open_el, name, attrib)
+        el = ET.SubElement(self._openEl, name, attrib)
         # if self._tag_stack:
         #     parent = self._tag_stack[-1]
         event_d = {'name': name, 'end': False, 'attrs': attrs,
                    'element': el}
-        if self._element_listener:
-            self._element_listener(event_d)
+        if self._onElement:
+            self._onElement(event_d)
 
         # self._callback_msg(
         #     "loaded: {}{}".format(tab, ET.tostring(el, encoding="unicode")))
         self._tag_stack.append(el)
-        self._open_el = el
+        self._openEl = el
 
-    def checkDone(self, event_d):
+    def checkDone(self, event_d: dict):
         """Notify the caller if parsing is over.
-        Calls _element_listener with `'done': True` in the argument if
+        Calls _onElement with `'done': True` in the argument if
         'name' is "cdi" (case-insensitive). That notifies the
         downloadCDI caller that parsing is over, so that caller should
         end progress bar/other status tracking for downloadCDI in that
@@ -608,7 +614,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
 
         Returns:
             dict: Reserved for use without events (doesn't need to be
-                processed if self._element_listener is set since that
+                processed if self._onElement is set since that
                 also gets the dict if 'done'). 'done' is only True if
                 'name' is "cdi" (case-insensitive).
         """
@@ -618,11 +624,11 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
             # Not </cdi>, so not done yet
             return event_d
         event_d['done'] = True  # since "cdi" if avoided conditional return
-        if self._element_listener:
-            self._element_listener(event_d)
+        if self._onElement:
+            self._onElement(event_d)
         return event_d
 
-    def endElement(self, name):
+    def endElement(self, name: str):
         """See xml.sax.handler.ContentHandler documentation."""
         indent = len(self._tag_stack)
         tab = "  " * indent
@@ -648,9 +654,9 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
             return
         del self._tag_stack[-1]
         if self._tag_stack:
-            self._open_el = self._tag_stack[-1]
+            self._openEl = self._tag_stack[-1]
         else:
-            self._open_el = self.etree
+            self._openEl = self.etree
         if self._tag_stack:
             event_d['parent'] = self._tag_stack[-1]
         event_d['element'] = top_el
@@ -659,7 +665,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
             # Notify downloadCDI's caller since it can potentially add
             #   UI widget(s) for at least one setting/segment/group
             #   using this 'element'.
-            self._element_listener(event_d)
+            self._onElement(event_d)
 
     # def _flushCharBuffer(self):
     #     """Decode the buffer, clear it, and return all content.
@@ -672,7 +678,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
     #     self._chunks.clear()
     #     return s
 
-    # def characters(self, data):
+    # def characters(self, data: Union[bytearray, bytes, list[int]]):
     #     """Received characters handler.
     #     See xml.sax.handler.ContentHandler documentation.
 

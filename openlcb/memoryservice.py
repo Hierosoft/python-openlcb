@@ -22,8 +22,10 @@ To do memory read:
 '''
 
 import logging
+from typing import Union
 from openlcb.datagramservice import (
     # DatagramReadMemo,
+    DatagramReadMemo,
     DatagramWriteMemo,
     DatagramService,
 )
@@ -182,13 +184,15 @@ class MemoryService:
                                         self.receivedOkReplyToWrite)
         self.service.sendDatagram(dgWriteMemo)
 
-    def receivedOkReplyToWrite(self, memo):
+    def receivedOkReplyToWrite(self, memo: DatagramWriteMemo):
         '''Wait for following response to be returned via listener.
         This is normal.
         '''
         pass
 
-    def datagramReceivedListener(self, dmemo):
+    def datagramReceivedListener(self,
+                                 dmemo: Union[DatagramReadMemo,
+                                              DatagramWriteMemo]) -> bool:
         '''Process a datagram.
 
         Sends the positive reply and returns true if this is from our service.
@@ -276,7 +280,7 @@ class MemoryService:
 
         return True
 
-    def requestMemoryWrite(self, memo):
+    def requestMemoryWrite(self, memo: MemoryWriteMemo):
         """Request memory write.
 
         Args:
@@ -335,7 +339,7 @@ class MemoryService:
         )
         self.service.sendDatagram(dgReqMemo)
 
-    def arrayToInt(self, data):
+    def arrayToInt(self, data: Union[bytes, bytearray, list[int]]) -> int:
         """Convert an array in MSB-first order to an integer
 
         Args:

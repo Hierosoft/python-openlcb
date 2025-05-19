@@ -1,4 +1,3 @@
-from typing import Callable
 import unittest
 
 from openlcb import emit_cast
@@ -18,7 +17,7 @@ class PhysicalLayerMock(CanPhysicalLayerGridConnect):
         # ^ Sets onQueuedFrame on None, so set it afterward:
         self.onQueuedFrame = self.captureString
 
-    def captureString(self, frame):
+    def captureString(self, frame: CanFrame):
         # formerly was in CanPhysicalLayerGridConnectTest
         #   but there isn't a send callback anymore
         #   (to avoid port contention in issue #62)
@@ -29,12 +28,12 @@ class PhysicalLayerMock(CanPhysicalLayerGridConnect):
         self.capturedFrame.encoder = self
         self.capturedString = frame.encodeAsString()
 
-    def onFrameSent(self, frame):
+    def onFrameSent(self, frame: CanFrame):
         pass
         # NOTE: not patching this method to be canLink.handleFrameSent
         #   since testing only physical layer not link layer.
 
-    def onFrameReceived(self, frame):
+    def onFrameReceived(self, frame: CanFrame):
         pass
         # NOTE: not patching
         #   self.onFrameReceived = canLink.handleFrameReceived
@@ -55,7 +54,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
     #     self.capturedString = string
 
     # Link Layer side
-    def receiveListener(self, frame):
+    def receiveListener(self, frame: CanFrame):
         self.receivedFrames += [frame]
 
     def testCID4Sent(self):

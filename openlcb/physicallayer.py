@@ -92,8 +92,9 @@ class PhysicalLayer:
                 increment that.
         """
         assert isinstance(reservation, int)
+        idx = reservation
         newFrames = \
-            [frame for frame in self._send_frames if frame.reservation != reservation]
+            [frame for frame in self._send_frames if frame.reservation != idx]
         # ^ iterates from left to right, so this is ok (We use popleft,
         #   and 0 will become left)
         self._send_frames.clear()

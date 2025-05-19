@@ -36,7 +36,6 @@ class CanLinkLayerSimulation(CanLink):
             frame = self.physicalLayer.pollFrame()
             if not frame:
                 break
-            first = False
             string = frame.encodeAsString()
             print("      SENT (simulated socket) packet: "+string.strip())
             # ^ This is too verbose for this example (each is a

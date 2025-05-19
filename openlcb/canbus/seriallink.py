@@ -24,11 +24,12 @@ class SerialLink(PortInterface):
     def __init__(self):
         super(SerialLink, self).__init__()
 
-    def _settimeout(self, seconds):
+    def _settimeout(self, seconds: float):
         logger.warning("settimeout is not implemented for SerialLink")
         pass
 
-    def _connect(self, _, port, device=None, baudrate=230400):
+    def _connect(self, _, port: str, device: serial.Serial = None,
+                 baudrate: int = 230400):
         """Connect to a serial port.
 
         Args:

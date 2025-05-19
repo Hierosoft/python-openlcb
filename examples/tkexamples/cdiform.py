@@ -16,7 +16,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from logging import getLogger
-from xml.etree import ElementTree as ET
+# from xml.etree import ElementTree as ET
 
 from openlcb.openlcbnetwork import element_to_dict
 
@@ -108,7 +108,7 @@ class CDIForm(ttk.Frame, OpenLCBNetwork):
     def on_cdi_element(self, event_d):
         """Handler for incoming CDI tag
         (Use this for callback in downloadCDI, which sets parser's
-        _element_listener)
+        _onElement)
 
         Args:
             event_d (dict): Document parsing state info:

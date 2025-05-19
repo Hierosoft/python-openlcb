@@ -62,17 +62,17 @@ class MTI(Enum):
 
     New_Node_Seen                      = 0x2048   # alias resolution found new node; marked addressed (0x8 bit)  # noqa: E501
 
-    def priority(self):
+    def priority(self) -> int:
         return (self.value & 0x0C00) >> 10
 
-    def addressPresent(self):
+    def addressPresent(self) -> bool:
         return (self.value & 0x0008) != 0
 
-    def eventIDPresent(self):
+    def eventIDPresent(self) -> bool:
         return (self.value & 0x0004) != 0
 
-    def simpleProtocol(self):
+    def simpleProtocol(self) -> bool:
         return (self.value & 0x0010) != 0
 
-    def isGlobal(self):
+    def isGlobal(self) -> bool:
         return (self.value & 0x0008) == 0

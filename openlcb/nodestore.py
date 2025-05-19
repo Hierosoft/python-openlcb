@@ -1,4 +1,8 @@
+from typing import Union
+from openlcb.message import Message
+from openlcb.node import Node
 from openlcb.nodeid import NodeID
+from openlcb.processor import Processor
 
 
 class NodeStore :
@@ -10,13 +14,13 @@ class NodeStore :
     '''
 
     def __init__(self) :
-        self.byIdMap = {}
-        self.nodes = []
-        self.processors = []
+        self.byIdMap: dict = {}
+        self.nodes: list[Node] = []
+        self.processors: list[Processor] = []
 
     # Store a new node or replace an existing stored node
     # - Parameter node: new Node content
-    def store(self, node) :
+    def store(self, node: Node) :
         self.byIdMap[node.id] = node
         self.nodes.append(node)
 
@@ -37,7 +41,7 @@ class NodeStore :
     #     userProvidedDescription: string to match SNIP content
     #     nodeID: for direct lookup
     # - Returns: None if the there's no match
-    def lookup(self, parm) :
+    def lookup(self, parm: Union[NodeID, str]) -> Node:
         if isinstance(parm, NodeID) :
             if parm not in self.byIdMap :
                 self.byIdMap[parm] = None
@@ -49,7 +53,7 @@ class NodeStore :
         return None
 
     # Process a message across all nodes
-    def invokeProcessorsOnNodes(self, message) :
+    def invokeProcessorsOnNodes(self, message: Message) -> bool:
         publish = False  # has any processor returned True?
         for processor in self.processors :
             for node in self.byIdMap.values() :

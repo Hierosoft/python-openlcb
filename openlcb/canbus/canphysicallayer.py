@@ -5,6 +5,7 @@ This is a class because it represents a single physical connection to a layout
 and is subclassed.
 '''
 from logging import getLogger
+from typing import Callable
 import warnings
 
 from openlcb.canbus.canframe import CanFrame
@@ -22,7 +23,7 @@ class CanPhysicalLayer(PhysicalLayer):
 
     def __init__(self,):
         PhysicalLayer.__init__(self)
-        self._frameReceivedListeners = []
+        self._frameReceivedListeners: list[Callable[[CanFrame], None]] = []
 
     def sendFrameAfter(self, frame: CanFrame):
         """Enqueue: *IMPORTANT* Main/other thread may have
@@ -56,7 +57,9 @@ class CanPhysicalLayer(PhysicalLayer):
         assert isinstance(frame, CanFrame)
         return frame
 
-    def registerFrameReceivedListener(self, listener):
+    def registerFrameReceivedListener(self,
+                                      listener: Callable[[CanFrame], None]):
+        # ^ 2nd arg to Callable type is the return type.
         assert listener is not None
         warnings.warn(
             "[registerFrameReceivedListener]"

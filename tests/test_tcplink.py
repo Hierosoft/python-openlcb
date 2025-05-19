@@ -1,6 +1,5 @@
 import unittest
 
-from openlcb.physicallayer import PhysicalLayer
 from openlcb.realtimephysicallayer import RealtimePhysicalLayer
 from openlcb.tcplink.tcplink import TcpLink
 

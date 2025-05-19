@@ -12,10 +12,8 @@ host|host:port            (optional) Set the address (or using a colon,
 '''
 # region same code as other examples
 import copy
-from timeit import default_timer
 from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb import precise_sleep
-from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.gridconnectobserver import GridConnectObserver
 from openlcb.tcplink.tcpsocket import TcpSocket
 settings = Settings()
@@ -24,15 +22,15 @@ if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-from openlcb.canbus.canphysicallayergridconnect import (
+from openlcb.canbus.canphysicallayergridconnect import (  # noqa:E402
     CanPhysicalLayerGridConnect,
 )
-from openlcb.canbus.canlink import CanLink
-from openlcb.nodeid import NodeID
-from openlcb.datagramservice import (
+from openlcb.canbus.canlink import CanLink  # noqa:E402
+from openlcb.nodeid import NodeID  # noqa:E402
+from openlcb.datagramservice import (  # noqa:E402
     DatagramService,
 )
-from openlcb.memoryservice import (
+from openlcb.memoryservice import (  # noqa:E402
     MemoryReadMemo,
     MemoryService,
 )
@@ -109,6 +107,7 @@ observer = GridConnectObserver()
 
 complete_data = False
 read_failed = False
+
 
 def memoryReadSuccess(memo):
     """Handle a successful read
@@ -249,7 +248,8 @@ def pumpEvents():
             if settings['trace']:
                 observer.push(received)
                 if observer.hasNext():
-                    packet_str = observer.next()
+                    _ = observer.next()
+                    # packet_str = _
                     # print("   RR: "+packet_str.strip())
                     # ^ commented since MyHandler shows parsed XML
                     #   fields instead

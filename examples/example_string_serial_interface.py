@@ -18,9 +18,9 @@ if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-from openlcb import precise_sleep
-from openlcb.canbus.gridconnectobserver import GridConnectObserver
-from openlcb.canbus.seriallink import SerialLink
+from openlcb import precise_sleep  # noqa: E402
+from openlcb.canbus.gridconnectobserver import GridConnectObserver  # noqa:E402
+from openlcb.canbus.seriallink import SerialLink  # noqa: E402
 
 # specify connection information
 # region replaced by settings

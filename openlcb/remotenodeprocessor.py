@@ -1,5 +1,6 @@
 
 from openlcb.eventid import EventID
+from openlcb.linklayer import LinkLayer
 from openlcb.node import Node
 # from openlcb.nodeid import NodeID
 from openlcb.message import Message
@@ -17,10 +18,10 @@ class RemoteNodeProcessor(Processor) :
     track memory (config, CDI) contents due to size.
     '''
 
-    def __init__(self, linkLayer=None) :
+    def __init__(self, linkLayer: LinkLayer = None) :
         self.linkLayer = linkLayer
 
-    def process(self, message, node) :
+    def process(self, message: Message, node: Node) :
         """Do a fast drop of messages not to us, from us, or global
         NOTE: linkLayer up/down are marked as global
 
@@ -71,7 +72,7 @@ class RemoteNodeProcessor(Processor) :
             return False
         return False
 
-    def initializationComplete(self, message, node) :
+    def initializationComplete(self, message: Message, node: Node) :
         if self.checkSourceID(message, node) :  # Send by us?
             node.state = Node.State.Initialized
             # clear out PIP, SNIP caches
@@ -79,17 +80,17 @@ class RemoteNodeProcessor(Processor) :
             node.pipSet = set(())
             node.snip = SNIP()
 
-    def linkUpMessage(self, message, node) :
+    def linkUpMessage(self, message: Message, node: Node) :
         # affects everybody
         node.state = Node.State.Uninitialized
         # don't clear out PIP, SNIP caches, they're probably still good
 
-    def linkDownMessage(self, message, node) :
+    def linkDownMessage(self, message: Message, node: Node) :
         # affects everybody
         node.state = Node.State.Uninitialized
         # don't clear out PIP, SNIP caches, they're probably still good
 
-    def newNodeSeen(self, message, node) :
+    def newNodeSeen(self, message: Message, node: Node) :
         # send pip and snip requests for info from the new node
         pip = Message(MTI.Protocol_Support_Inquiry,
                       self.linkLayer.localNodeID, node.id, bytearray())
@@ -104,7 +105,7 @@ class RemoteNodeProcessor(Processor) :
                            self.linkLayer.localNodeID, node.id, bytearray())
         self.linkLayer.sendMessage(eventReq)
 
-    def protocolSupportReply(self, message, node) :
+    def protocolSupportReply(self, message: Message, node: Node) :
         if self.checkSourceID(message, node) :  # sent by us?
             part0 = ((message.data[0]) << 24) if (len(message.data) > 0) else 0
             part1 = ((message.data[1]) << 16) if (len(message.data) > 1) else 0
@@ -114,26 +115,26 @@ class RemoteNodeProcessor(Processor) :
             content = part0 | part1 | part2 | part3
             node.pipSet = PIP.setContentsFromInt(content)
 
-    def simpleNodeIdentInfoRequest(self, message, node) :
+    def simpleNodeIdentInfoRequest(self, message: Message, node: Node) :
         if self.checkDestID(message, node) :  # sent by us? - overlapping SNIP activity is otherwise confusing  # noqa: E501
             # clear SNIP in the node to start accumulating
             node.snip = SNIP()
 
-    def simpleNodeIdentInfoReply(self, message, node) :
+    def simpleNodeIdentInfoReply(self, message: Message, node: Node) :
         if self.checkSourceID(message, node) :  # sent by this node? - overlapping SNIP activity is otherwise confusing  # noqa: E501
             # accumulate data in the node
             if len(message.data) > 2 :
                 node.snip.addData(message.data)
                 node.snip.updateStringsFromSnipData()
 
-    def producedEventIndicated(self, message, node) :
+    def producedEventIndicated(self, message: Message, node: Node) :
         if self.checkSourceID(message, node) :  # produced by this node?
             # make an event id from the data
             eventID = EventID(message.data)
             # register it
             node.events.produces(eventID)
 
-    def consumedEventIndicated(self, message, node) :
+    def consumedEventIndicated(self, message: Message, node: Node) :
         if self.checkSourceID(message, node) :  # consumed by this node?
             # make an event id from the data
             eventID = EventID(message.data)

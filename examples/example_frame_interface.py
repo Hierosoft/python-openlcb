@@ -18,14 +18,14 @@ if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-from openlcb import precise_sleep
-from openlcb.canbus.gridconnectobserver import GridConnectObserver
-from openlcb.tcplink.tcpsocket import TcpSocket
-from openlcb.canbus.canphysicallayergridconnect import (
+from openlcb import precise_sleep  # noqa: E402
+from openlcb.canbus.gridconnectobserver import GridConnectObserver  # noqa:E402
+from openlcb.tcplink.tcpsocket import TcpSocket  # noqa: E402
+from openlcb.canbus.canphysicallayergridconnect import (  # noqa: E402
     CanPhysicalLayerGridConnect,
 )
-from openlcb.canbus.canframe import CanFrame
-from openlcb.canbus.controlframe import ControlFrame
+from openlcb.canbus.canframe import CanFrame  # noqa: E402
+from openlcb.canbus.controlframe import ControlFrame  # noqa: E402
 
 # specify connection information
 # region replaced by settings

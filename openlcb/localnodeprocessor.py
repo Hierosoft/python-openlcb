@@ -12,6 +12,7 @@ Process messages destined for a node implemented by this application.
 # multiple local nodes.
 
 import logging
+from openlcb.linklayer import LinkLayer
 from openlcb.node import Node
 from openlcb.mti import MTI
 from openlcb.message import Message
@@ -21,11 +22,11 @@ from openlcb.nodeid import NodeID
 
 class LocalNodeProcessor(Processor):
 
-    def __init__(self, linkLayer=None, node=None):
+    def __init__(self, linkLayer: LinkLayer = None, node: Node = None):
         self.linkLayer = linkLayer
         self.node = node
 
-    def process(self, message, givenNode=None):
+    def process(self, message: Message, givenNode=None):
         if givenNode is None:
             node = self.node
         else:
@@ -69,7 +70,7 @@ class LocalNodeProcessor(Processor):
         return False
 
     # private method
-    def linkUpMessage(self, message, node):
+    def linkUpMessage(self, message: Message, node: Node):
         node.state = Node.State.Initialized
         msgIC = Message(MTI.Initialization_Complete, node.id,
                         None, node.id.toArray())
@@ -79,11 +80,11 @@ class LocalNodeProcessor(Processor):
         # self.linkLayer.sendMessage(msgVN)
 
     # private method
-    def linkDownMessage(self, message, node):
+    def linkDownMessage(self, message: Message, node: Node):
         node.state = Node.State.Uninitialized
 
     # private method
-    def verifyNodeIDNumberGlobal(self, message, node):
+    def verifyNodeIDNumberGlobal(self, message: Message, node: Node):
         if not (len(message.data) == 0 or node.id == NodeID(message.data)):
             return  # not to us
         msg = Message(MTI.Verified_NodeID, node.id, message.source,
@@ -91,13 +92,13 @@ class LocalNodeProcessor(Processor):
         self.linkLayer.sendMessage(msg)
 
     # private method
-    def verifyNodeIDNumberAddressed(self, message, node):
+    def verifyNodeIDNumberAddressed(self, message: Message, node: Node):
         msg = Message(MTI.Verified_NodeID,  node.id, message.source,
                       node.id.toArray())
         self.linkLayer.sendMessage(msg)
 
     # private method
-    def protocolSupportInquiry(self, message, node):
+    def protocolSupportInquiry(self, message: Message, node: Node):
         pips = 0
         for pip in node.pipSet:
             pips |= pip.value
@@ -112,19 +113,19 @@ class LocalNodeProcessor(Processor):
         self.linkLayer.sendMessage(msg)
 
     # private method
-    def simpleNodeIdentInfoRequest(self, message, node):
+    def simpleNodeIdentInfoRequest(self, message: Message, node: Node):
         msg = Message(MTI.Simple_Node_Ident_Info_Reply, node.id,
                       message.source, node.snip.returnStrings())
         self.linkLayer.sendMessage(msg)
 
     # private method
-    def identifyEventsAddressed(self, message, node):
+    def identifyEventsAddressed(self, message: Message, node: Node):
         '''EventProtocol in PIP, but no Events here to reply about;
         no reply necessary
         '''
         return
 
-    def _unrecognizedMTI(self, message, node):
+    def _unrecognizedMTI(self, message: Message, node: Node):
         '''Handle a message with an unrecognized MTI
         by returning OptionalInteractionRejected
         '''
@@ -150,6 +151,6 @@ class LocalNodeProcessor(Processor):
         self.linkLayer.sendMessage(msg)
 
     # private method
-    def errorMessageReceived(self, message, node):
+    def errorMessageReceived(self, message: Message, node: Node):
         # these are just logged until we have more complex interactions
         logging.info("received unexpected {}".format(message))

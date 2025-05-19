@@ -13,23 +13,21 @@ host|host:port            (optional) Set the address (or using a colon,
 '''
 from logging import getLogger
 # region same code as other examples
-from examples_settings import Settings
+from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb import precise_sleep
-from openlcb.realtimephysicallayer import RealtimePhysicalLayer  # do 1st to fix path if no pip install
+from openlcb.realtimephysicallayer import RealtimePhysicalLayer
 settings = Settings()
 
 if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-import openlcb.physicallayer
-from openlcb.tcplink.tcpsocket import TcpSocket
-from openlcb.tcplink.tcplink import TcpLink
+from openlcb.tcplink.tcpsocket import TcpSocket  # noqa: E402
+from openlcb.tcplink.tcplink import TcpLink  # noqa: E402
 
-from openlcb.nodeid import NodeID
-from openlcb.message import Message
-from openlcb.mti import MTI
-from openlcb.physicallayer import PhysicalLayer
+from openlcb.nodeid import NodeID  # noqa: E402
+from openlcb.message import Message  # noqa: E402
+from openlcb.mti import MTI  # noqa: E402
 
 if __name__ == "__main__":
     logger = getLogger(__file__)

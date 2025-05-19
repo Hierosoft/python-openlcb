@@ -44,10 +44,10 @@ class Message:
         # allowed to be None. See linkUp in tcplink.py
         # TODO: Only allow in certain conditions?
 
-    def isGlobal(self):
+    def isGlobal(self) -> bool:
         return self.mti.value & 0x0008 == 0
 
-    def isAddressed(self):
+    def isAddressed(self) -> bool:
         return self.mti.value & 0x0008 != 0
 
     def __str__(self):

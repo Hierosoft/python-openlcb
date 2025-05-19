@@ -10,10 +10,9 @@ host|host:port            (optional) Set the address (or using a colon,
                           address and port.
 '''
 # region same code as other examples
-from examples_settings import Settings
+from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb import precise_sleep
-from openlcb.canbus.canframe import CanFrame
-from openlcb.canbus.gridconnectobserver import GridConnectObserver  # do 1st to fix path if no pip install
+from openlcb.canbus.gridconnectobserver import GridConnectObserver
 settings = Settings()
 
 if __name__ == "__main__":

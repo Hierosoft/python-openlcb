@@ -30,8 +30,7 @@ except ImportError:
 from tkinter import ttk
 from collections import OrderedDict, deque
 
-from examples_settings import Settings
-# ^ adds parent of module to sys.path, so openlcb imports *after* this
+from examples_settings import Settings  # do 1st to fix path if no pip install
 
 from openlcb.tcplink.tcpsocket import TcpSocket
 from examples.tkexamples.cdiform import CDIForm
@@ -542,7 +541,7 @@ class MainForm(ttk.Frame):
         LCC Message).
 
         In this program, this is added to OpenLCBNetwork via
-        set_connect_listener.
+        setConnectHandler.
 
         Therefore in this program, this is triggered during _listen in
         OpenLCBNetwork: Connecting is actually done until
@@ -552,8 +551,8 @@ class MainForm(ttk.Frame):
         - May also be directly called by _listen directly in case
           stopped listening (RuntimeError reading port, or other reason
           lower in the stack than LCC).
-        - OpenLCBNetwork's _connect_listener attribute is a method
-          reference to this if set via set_connect_listener.
+        - OpenLCBNetwork's _onConnect attribute is a method
+          reference to this if set via setConnectHandler.
         """
         # Trigger the main thread (only the main thread can access the
         # GUI):
@@ -583,8 +582,8 @@ class MainForm(ttk.Frame):
             self._tcp_socket = TcpSocket()
             # self._sock.settimeout(30)
             self._tcp_socket.connect(host, port)
-            self.cdi_form.set_connect_listener(self.connect_state_changed)
-            result = self.cdi_form.start_listening(
+            self.cdi_form.setConnectHandler(self.connect_state_changed)
+            result = self.cdi_form.startListening(
                 self._tcp_socket,
                 localNodeID,
             )

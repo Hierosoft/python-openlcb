@@ -12,9 +12,9 @@ host|host:port            (optional) Set the address (or using a colon,
 '''
 # region same code as other examples
 from timeit import default_timer
-from examples_settings import Settings
+from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb import precise_sleep
-from openlcb.canbus.gridconnectobserver import GridConnectObserver  # do 1st to fix path if no pip install
+from openlcb.canbus.gridconnectobserver import GridConnectObserver
 settings = Settings()
 
 if __name__ == "__main__":
@@ -107,9 +107,9 @@ canLink.registerMessageReceivedListener(
 readQueue = Queue()
 
 observer = GridConnectObserver()
-
-assert len(physicalLayer._frameReceivedListeners) == 1, \
-    "{} listener(s) unexpectedly".format(len(physicalLayer._frameReceivedListeners))
+_frameReceivedListeners = physicalLayer._frameReceivedListeners
+assert len(_frameReceivedListeners) == 1, \
+    "{} listener(s) unexpectedly".format(len(_frameReceivedListeners))
 
 
 def pumpEvents():

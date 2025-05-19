@@ -103,6 +103,7 @@ class PortInterface:
     def connectLocal(self, port):
         """Convenience method for connecting local port such as serial
         (where host is not applicable since host is this machine).
+        See connect for documentation, but host is None in this case.
         """
         self.connect(None, port)
 

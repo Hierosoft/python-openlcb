@@ -10,29 +10,29 @@ host|host:port            (optional) Set the address (or using a colon,
                           address and port.
 '''
 # region same code as other examples
-from examples_settings import Settings
-from openlcb.canbus.canframe import CanFrame  # do 1st to fix path if no pip install
+from examples_settings import Settings  # do 1st to fix path if no pip install
+from openlcb.canbus.canframe import CanFrame
 settings = Settings()
 
 if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-from openlcb import precise_sleep
-from openlcb.canbus.gridconnectobserver import GridConnectObserver
-from openlcb.tcplink.tcpsocket import TcpSocket
+from openlcb import precise_sleep  # noqa: E402
+from openlcb.canbus.gridconnectobserver import GridConnectObserver  # noqa:E402
+from openlcb.tcplink.tcpsocket import TcpSocket  # noqa: E402
 
-from openlcb.canbus.canphysicallayergridconnect import (
+from openlcb.canbus.canphysicallayergridconnect import (  # noqa: E402
     CanPhysicalLayerGridConnect,
 )
-from openlcb.canbus.canlink import CanLink
-from openlcb.nodeid import NodeID
-from openlcb.datagramservice import (
+from openlcb.canbus.canlink import CanLink  # noqa: E402
+from openlcb.nodeid import NodeID  # noqa: E402
+from openlcb.datagramservice import (  # noqa: E402
     # DatagramWriteMemo,
     # DatagramReadMemo,
     DatagramService,
 )
-from openlcb.memoryservice import (
+from openlcb.memoryservice import (  # noqa: E402
     MemoryReadMemo,
     # MemoryWriteMemo,
     MemoryService,

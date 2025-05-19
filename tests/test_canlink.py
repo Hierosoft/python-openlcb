@@ -134,7 +134,8 @@ class TestCanLinkClass(unittest.TestCase):
         canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         canLink._state = CanLink.State.Permitted
 
-        canPhysicalLayer.fireFrameReceived(CanFrame(ControlFrame.EIR2.value, 0))
+        canPhysicalLayer.fireFrameReceived(
+            CanFrame(ControlFrame.EIR2.value, 0))
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
         canLink.onDisconnect()
 
@@ -196,8 +197,8 @@ class TestCanLinkClass(unittest.TestCase):
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
         canLink._state = CanLink.State.Permitted
 
-        canPhysicalLayer.fireFrameReceived(CanFrame(7, canLink.localNodeID,
-                                                ourAlias))
+        canPhysicalLayer.fireFrameReceived(
+            CanFrame(7, canLink.localNodeID, ourAlias))
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 1)
         self.assertEqual(canPhysicalLayer.receivedFrames[0],
                          CanFrame(ControlFrame.RID.value, ourAlias))
@@ -209,8 +210,8 @@ class TestCanLinkClass(unittest.TestCase):
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
         canLink._state = CanLink.State.Permitted
 
-        canPhysicalLayer.fireFrameReceived(CanFrame(ControlFrame.RID.value,
-                                                ourAlias))
+        canPhysicalLayer.fireFrameReceived(
+            CanFrame(ControlFrame.RID.value, ourAlias))
         # ^ collision
         canLink.waitForReady()
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 8)
@@ -228,8 +229,8 @@ class TestCanLinkClass(unittest.TestCase):
 
         canLink = CanLinkLayerSimulation(PhyMockLayer(), getLocalNodeID())
         self.assertEqual(
-            canLink.canHeaderToFullFormat(CanFrame(0x19490247,
-                                                   bytearray())),
+            canLink.canHeaderToFullFormat(
+                CanFrame(0x19490247, bytearray())),
             MTI.Verify_NodeID_Number_Global
         )
 
@@ -313,8 +314,8 @@ class TestCanLinkClass(unittest.TestCase):
 
         # Don't map an alias with an AMD for this test
 
-        canPhysicalLayer.fireFrameReceived(CanFrame(0x19170, 0x247,
-                                                bytearray([8, 7, 6, 5, 4, 3])))
+        canPhysicalLayer.fireFrameReceived(
+            CanFrame(0x19170, 0x247, bytearray([8, 7, 6, 5, 4, 3])))
         # ^ VerifiedNodeID from unique alias
 
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)

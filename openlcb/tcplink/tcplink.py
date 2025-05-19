@@ -11,6 +11,7 @@ Assembles messages parts, but does not break messages into parts.
 
 '''
 
+from typing import Union
 from openlcb.linklayer import LinkLayer
 from openlcb.message import Message
 from openlcb.mti import MTI
@@ -39,7 +40,7 @@ class TcpLink(LinkLayer):
 
     DisconnectedState = State.Disconnected
 
-    def __init__(self, physicalLayer: PhysicalLayer, localNodeID):
+    def __init__(self, physicalLayer: PhysicalLayer, localNodeID: NodeID):
         LinkLayer.__init__(self, physicalLayer, localNodeID)
         # See class docstring for argument(s) and attributes.
         self.physicalLayer = physicalLayer
@@ -104,7 +105,7 @@ class TcpLink(LinkLayer):
             self.accumulatedData = self.accumulatedData[5+length:]
             # and repeat
 
-    def receivedPart(self, messagePart, flags, length):
+    def receivedPart(self, messagePart: bytearray, flags: int, length: int):
         """Receives message parts from handleFrameReceived
         and groups them into single OpenLCB messages as needed
 
@@ -146,13 +147,13 @@ class TcpLink(LinkLayer):
         # wait for next part
         return
 
-    def forwardMessage(self, messageBytes, gatewayNodeID) :  # not sure why gatewayNodeID useful here...  # noqa: E501
+    def forwardMessage(self, messageBytes: Union[bytearray, list[int]], gatewayNodeID: NodeID) :  # TODO: not sure why gatewayNodeID useful here...  # noqa: E501
         """
         Receives single message from receivedPart, converts it in a
         Message object, and forwards to Message received listeners.
 
         Args:
-            messageBytes ([int]) : the bytes making up a
+            messageBytes (Union[bytearray, list[int]]) : the bytes making up a
                 single OpenLCB message, starting with the MTI
         """
         # extract MTI
@@ -191,7 +192,7 @@ class TcpLink(LinkLayer):
         msg = Message(MTI.Link_Layer_Down, NodeID(0), None, bytearray())
         self.fireMessageReceived(msg)
 
-    def sendMessage(self, message):
+    def sendMessage(self, message: Message):
         """
         The message level calls this with an OpenLCB
         message.  That is then converted to a byte
