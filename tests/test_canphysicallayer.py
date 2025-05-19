@@ -27,7 +27,7 @@ class TestCanPhysicalLayerClass(unittest.TestCase):
         layer.onSentFrame = self.handleSentFrame
         layer.registerFrameReceivedListener(receiver)
 
-        layer.fireListeners(frame)
+        layer.fireFrameReceived(frame)
 
         self.assertTrue(self.received)
 

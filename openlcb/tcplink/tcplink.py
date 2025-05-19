@@ -149,7 +149,8 @@ class TcpLink(LinkLayer):
     def forwardMessage(self, messageBytes, gatewayNodeID) :  # not sure why gatewayNodeID useful here...  # noqa: E501
         """
         Receives single message from receivedPart, converts
-        it in a Message object, and forwards to listeners
+        it in a Message object, and forwards to Message received
+        listeners.
 
         Args:
             messageBytes ([int]) : the bytes making up a
@@ -168,28 +169,28 @@ class TcpLink(LinkLayer):
         # and finally create the message
         message = Message(mti, sourceNodeID, destNodeID, data)
         # forward to listeners
-        self.fireListeners(message)
+        self.fireMessageReceived(message)
 
     def linkUp(self):
         """
         Link started,  notify upper layers
         """
         msg = Message(MTI.Link_Layer_Up, NodeID(0), None, bytearray())
-        self.fireListeners(msg)
+        self.fireMessageReceived(msg)
 
     def linkRestarted(self):
         """
         Send a LinkRestarted message upstream.
         """
         msg = Message(MTI.Link_Layer_Restarted, NodeID(0), None, bytearray())
-        self.fireListeners(msg)
+        self.fireMessageReceived(msg)
 
     def linkDown(self):
         """
         Link dropped,  notify upper layers
         """
         msg = Message(MTI.Link_Layer_Down, NodeID(0), None, bytearray())
-        self.fireListeners(msg)
+        self.fireMessageReceived(msg)
 
     def sendMessage(self, message):
         """

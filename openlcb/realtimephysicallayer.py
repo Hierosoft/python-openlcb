@@ -38,19 +38,21 @@ class RealtimePhysicalLayer(PhysicalLayer):
         #         .format(type(data).__name__, data)
         #     )
         print("      SR: {}".format(frame.encode()))
-        # send and fireListeners would usually occur after
+        # send and onSentFrame would usually occur after
         #   frame from _send_frames.popleft is sent,
         #   but we do all this here in the Realtime subclass:
         self.sock.send(frame.encode())
         # TODO: finish onSentFrame
         if frame.afterSendState:
-            self.fireListeners(frame)  # also calls self.onSentFrame(frame)
+            self.fireFrameReceived(frame)  # also calls self.onSentFrame(frame)
 
     def registerFrameReceivedListener(self, listener):
-        """_summary_
+        """Register a method that will be called
 
         Args:
             listener (callable): A method that accepts decoded frame
                 objects from the network.
         """
-        logger.warning("registerFrameReceivedListener skipped (That is a link-layer issue, but you are using a Raw physical layer subclass).")
+        logger.warning(
+            "registerFrameReceivedListener skipped (That is a link-layer"
+            " issue, but you are using a Raw physical layer subclass).")

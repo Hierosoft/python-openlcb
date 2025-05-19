@@ -362,7 +362,7 @@ class CanLink(LinkLayer):
         """
         msg = Message(MTI.Link_Layer_Restarted, NodeID(0), None,
                       bytearray())
-        self.fireListeners(msg)
+        self.fireMessageReceived(msg)
 
     def _notifyReservation(self):
         """Send Alias Map Definition (AMD)
@@ -444,7 +444,7 @@ class CanLink(LinkLayer):
         else:
             raise TypeError(
                 "The other layers don't need to know the intermediate steps.")
-        self.fireListeners(msg)
+        self.fireMessageReceived(msg)
 
     def handleReceivedCID(self, frame):  # CanFrame
         """Handle a Check ID (CID) frame only if addressed to us
@@ -620,7 +620,7 @@ class CanLink(LinkLayer):
                 if dgCode == 0x0_0A_00_00_00 or dgCode == 0x0_0D_00_00_00:
                     #    is end, ship and remove accumulation
                     msg = Message(mti, sourceID, destID, self.accumulator[key])
-                    self.fireListeners(msg)
+                    self.fireMessageReceived(msg)
 
                     #    remove accumulation
                     self.accumulator[key] = None
@@ -680,7 +680,7 @@ class CanLink(LinkLayer):
                     #   which needs to carry its original MTI value
                     if mti is MTI.Unknown :
                         msg.originalMTI = ((frame.header >> 12) & 0xFFF)
-                    self.fireListeners(msg)
+                    self.fireMessageReceived(msg)
 
                     # remove accumulation
                     self.accumulator[key] = None
@@ -694,7 +694,7 @@ class CanLink(LinkLayer):
             # to carry its original MTI value
             if mti is MTI.Unknown :
                 msg.originalMTI = ((frame.header >> 12) & 0xFFF)
-            self.fireListeners(msg)
+            self.fireMessageReceived(msg)
 
     def sendMessage(self, msg):
         #    special case for datagram

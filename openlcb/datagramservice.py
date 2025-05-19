@@ -25,6 +25,7 @@ Handles link quiesce/restart so that higher level services don't have to.
 from enum import Enum
 import logging
 
+from openlcb.linklayer import LinkLayer
 from openlcb.message import Message
 from openlcb.mti import MTI
 
@@ -93,11 +94,11 @@ class DatagramService:
         Unrecognized    = 0xFF  # Not formally assigned
 
     def __init__(self, linkLayer):
-        self.linkLayer = linkLayer
+        self.linkLayer: LinkLayer = linkLayer
         self.quiesced = False
         self.currentOutstandingMemo = None
         self.pendingWriteMemos = []
-        self.listeners = []
+        self._datagramReceivedListeners = []
 
     def datagramType(self, data):
         """Determine the protocol type of the content of the datagram.
@@ -160,12 +161,12 @@ class DatagramService:
             listener (Callable): A function that accepts a DatagramReadMemo
                 as an argument.
         '''
-        self.listeners.append(listener)
+        self._datagramReceivedListeners.append(listener)
 
-    def fireListeners(self, dg: DatagramReadMemo):  # internal for testing
+    def fireDatagramReceived(self, dg: DatagramReadMemo):  # internal for tests
         """Fire *datagram received* listeners."""
         replied = False
-        for listener in self.listeners:
+        for listener in self._datagramReceivedListeners:
             replied = listener(dg) or replied
             # ^ order matters on that: Need to always make the call
         # If none of the listeners replied by now, send a negative reply
@@ -200,7 +201,7 @@ class DatagramService:
     def handleDatagram(self, message):
         '''create a read memo and pass to listeners'''
         memo = DatagramReadMemo(message.source, message.data)
-        self.fireListeners(memo)
+        self.fireDatagramReceived(memo)
         # ^ destination listener calls back to
         #   positiveReplyToDatagram/negativeReplyToDatagram before returning
 

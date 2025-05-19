@@ -50,13 +50,13 @@ class DatagramServiceTest(unittest.TestCase):
         self.readMemos.append(msg)
         return True
 
-    def testFireListeners(self):
+    def testFireDatagramReceived(self):
         msg = DatagramReadMemo(NodeID(12), bytearray())
         receiver = self.receiveListener
 
         self.service.registerDatagramReceivedListener(receiver)
 
-        self.service.fireListeners(msg)
+        self.service.fireDatagramReceived(msg)
 
         self.assertTrue(self.received)
 

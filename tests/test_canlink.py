@@ -134,7 +134,7 @@ class TestCanLinkClass(unittest.TestCase):
         canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         canLink._state = CanLink.State.Permitted
 
-        canPhysicalLayer.fireListeners(CanFrame(ControlFrame.EIR2.value, 0))
+        canPhysicalLayer.fireFrameReceived(CanFrame(ControlFrame.EIR2.value, 0))
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
         canLink.onDisconnect()
 
@@ -145,7 +145,7 @@ class TestCanLinkClass(unittest.TestCase):
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
         canLink._state = CanLink.State.Permitted
 
-        canPhysicalLayer.fireListeners(CanFrame(ControlFrame.AME.value, 0))
+        canPhysicalLayer.fireFrameReceived(CanFrame(ControlFrame.AME.value, 0))
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 1)
         self.assertEqual(
             canPhysicalLayer.receivedFrames[0],
@@ -159,7 +159,7 @@ class TestCanLinkClass(unittest.TestCase):
         canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         canLink._state = CanLink.State.Inhibited
 
-        canPhysicalLayer.fireListeners(CanFrame(ControlFrame.AME.value, 0))
+        canPhysicalLayer.fireFrameReceived(CanFrame(ControlFrame.AME.value, 0))
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
         canLink.onDisconnect()
 
@@ -171,7 +171,7 @@ class TestCanLinkClass(unittest.TestCase):
 
         frame = CanFrame(ControlFrame.AME.value, 0)
         frame.data = bytearray([5, 1, 1, 1, 3, 1])
-        canPhysicalLayer.fireListeners(frame)
+        canPhysicalLayer.fireFrameReceived(frame)
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 1)
         self.assertEqual(canPhysicalLayer.receivedFrames[0],
                          CanFrame(ControlFrame.AMD.value, ourAlias,
@@ -185,7 +185,7 @@ class TestCanLinkClass(unittest.TestCase):
 
         frame = CanFrame(ControlFrame.AME.value, 0)
         frame.data = bytearray([0, 0, 0, 0, 0, 0])
-        canPhysicalLayer.fireListeners(frame)
+        canPhysicalLayer.fireFrameReceived(frame)
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
         canLink.onDisconnect()
 
@@ -196,7 +196,7 @@ class TestCanLinkClass(unittest.TestCase):
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
         canLink._state = CanLink.State.Permitted
 
-        canPhysicalLayer.fireListeners(CanFrame(7, canLink.localNodeID,
+        canPhysicalLayer.fireFrameReceived(CanFrame(7, canLink.localNodeID,
                                                 ourAlias))
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 1)
         self.assertEqual(canPhysicalLayer.receivedFrames[0],
@@ -209,7 +209,7 @@ class TestCanLinkClass(unittest.TestCase):
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
         canLink._state = CanLink.State.Permitted
 
-        canPhysicalLayer.fireListeners(CanFrame(ControlFrame.RID.value,
+        canPhysicalLayer.fireFrameReceived(CanFrame(ControlFrame.RID.value,
                                                 ourAlias))
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 8)
         # ^ includes recovery of new alias 4 CID, RID, AMR, AME
@@ -283,9 +283,9 @@ class TestCanLinkClass(unittest.TestCase):
         # map an alias we'll use
         amd = CanFrame(0x0701, 0x247)
         amd.data = bytearray([1, 2, 3, 4, 5, 6])
-        canPhysicalLayer.fireListeners(amd)
+        canPhysicalLayer.fireFrameReceived(amd)
 
-        canPhysicalLayer.fireListeners(CanFrame(0x19490, 0x247))
+        canPhysicalLayer.fireFrameReceived(CanFrame(0x19490, 0x247))
         # ^ from previously seen alias
 
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
@@ -311,7 +311,7 @@ class TestCanLinkClass(unittest.TestCase):
 
         # Don't map an alias with an AMD for this test
 
-        canPhysicalLayer.fireListeners(CanFrame(0x19170, 0x247,
+        canPhysicalLayer.fireFrameReceived(CanFrame(0x19170, 0x247,
                                                 bytearray([8, 7, 6, 5, 4, 3])))
         # ^ VerifiedNodeID from unique alias
 
@@ -339,7 +339,7 @@ class TestCanLinkClass(unittest.TestCase):
 
         # Don't map an alias with an AMD for this test
 
-        canPhysicalLayer.fireListeners(
+        canPhysicalLayer.fireFrameReceived(
             CanFrame(0x19968, 0x247, bytearray([8, 7, 6, 5, 4, 3])))
         # ^ Identify Events Addressed from unique alias
 
@@ -367,14 +367,14 @@ class TestCanLinkClass(unittest.TestCase):
         # map an alias we'll use
         amd = CanFrame(0x0701, 0x247)
         amd.data = bytearray([1, 2, 3, 4, 5, 6])
-        canPhysicalLayer.fireListeners(amd)
+        canPhysicalLayer.fireFrameReceived(amd)
 
         ourAlias = canLink.getLocalAlias()
         # ^ 576 with NodeID(0x05_01_01_01_03_01)
         frame = CanFrame(0x19488, 0x247)  # Verify Node ID Addressed
         frame.data = bytearray([((ourAlias & 0x700) >> 8), (ourAlias & 0xFF),
                                 12, 13])
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.fireFrameReceived(frame)  # from previously seen alias
 
         self.assertEqual(len(messageLayer.receivedMessages), 2)
         # ^ startup plus one message forwarded
@@ -409,7 +409,7 @@ class TestCanLinkClass(unittest.TestCase):
         frame.data = bytearray(
             [((ourAlias & 0x700) >> 8), (ourAlias & 0xFF), 12, 13]
         )
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.fireFrameReceived(frame)  # from previously seen alias
 
         self.assertEqual(len(messageLayer.receivedMessages), 2)
         # ^ startup plus one message forwarded
@@ -442,14 +442,14 @@ class TestCanLinkClass(unittest.TestCase):
         # map an alias we'll use
         amd = CanFrame(0x0701, 0x247)
         amd.data = bytearray([1, 2, 3, 4, 5, 6])
-        canPhysicalLayer.fireListeners(amd)
+        canPhysicalLayer.fireFrameReceived(amd)
 
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
         frame = CanFrame(0x19488, 0x247)  # Verify Node ID Addressed
         frame.data = bytearray([(((ourAlias & 0x700) >> 8) | 0x10),
                                 (ourAlias & 0xFF), 1, 2])
         # ^ start not end
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.fireFrameReceived(frame)  # from previously seen alias
 
         self.assertEqual(len(messageLayer.receivedMessages), 1)
         # ^ startup only, no message forwarded yet
@@ -458,7 +458,7 @@ class TestCanLinkClass(unittest.TestCase):
         frame.data = bytearray([(((ourAlias & 0x700) >> 8) | 0x20),
                                 (ourAlias & 0xFF), 3, 4])
         # ^ end, not start
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.fireFrameReceived(frame)  # from previously seen alias
 
         self.assertEqual(len(messageLayer.receivedMessages), 2)
         # ^ startup plus one message forwarded
@@ -485,14 +485,14 @@ class TestCanLinkClass(unittest.TestCase):
         # map two aliases we'll use
         amd = CanFrame(0x0701, 0x247)
         amd.data = bytearray([1, 2, 3, 4, 5, 6])
-        canPhysicalLayer.fireListeners(amd)
+        canPhysicalLayer.fireFrameReceived(amd)
         amd = CanFrame(0x0701, 0x123)
         amd.data = bytearray([6, 5, 4, 3, 2, 1])
-        canPhysicalLayer.fireListeners(amd)
+        canPhysicalLayer.fireFrameReceived(amd)
 
         frame = CanFrame(0x1A123, 0x247)  # single frame datagram
         frame.data = bytearray([10, 11, 12, 13])
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.fireFrameReceived(frame)  # from previously seen alias
 
         self.assertEqual(len(messageLayer.receivedMessages), 2)
         # ^ startup plus one message forwarded
@@ -524,20 +524,20 @@ class TestCanLinkClass(unittest.TestCase):
         # map two aliases we'll use
         amd = CanFrame(0x0701, 0x247)
         amd.data = bytearray([1, 2, 3, 4, 5, 6])
-        canPhysicalLayer.fireListeners(amd)
+        canPhysicalLayer.fireFrameReceived(amd)
         amd = CanFrame(0x0701, 0x123)
         amd.data = bytearray([6, 5, 4, 3, 2, 1])
-        canPhysicalLayer.fireListeners(amd)
+        canPhysicalLayer.fireFrameReceived(amd)
 
         frame = CanFrame(0x1B123, 0x247)  # single frame datagram
         frame.data = bytearray([10, 11, 12, 13])
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.fireFrameReceived(frame)  # from previously seen alias
         frame = CanFrame(0x1C123, 0x247)  # single frame datagram
         frame.data = bytearray([20, 21, 22, 23])
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.fireFrameReceived(frame)  # from previously seen alias
         frame = CanFrame(0x1D123, 0x247)  # single frame datagram
         frame.data = bytearray([30, 31, 32, 33])
-        canPhysicalLayer.fireListeners(frame)  # from previously seen alias
+        canPhysicalLayer.fireFrameReceived(frame)  # from previously seen alias
 
         while True:
             frame = canPhysicalLayer.pollFrame()
@@ -657,7 +657,7 @@ class TestCanLinkClass(unittest.TestCase):
         canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
 
-        canPhysicalLayer.fireListeners(CanFrame(0x0701, ourAlias+1))
+        canPhysicalLayer.fireFrameReceived(CanFrame(0x0701, ourAlias+1))
         # ^ AMD from some other alias
 
         self.assertEqual(len(canLink.aliasToNodeID), 1)
@@ -666,7 +666,7 @@ class TestCanLinkClass(unittest.TestCase):
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
         # ^ nothing back down to CAN
 
-        canPhysicalLayer.fireListeners(CanFrame(0x0703, ourAlias+1))
+        canPhysicalLayer.fireFrameReceived(CanFrame(0x0703, ourAlias+1))
         # ^ AMR from some other alias
 
         self.assertEqual(len(canLink.aliasToNodeID), 0)

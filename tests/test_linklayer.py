@@ -30,7 +30,7 @@ class TestLinkLayerClass(unittest.TestCase):
         )
         layer.registerMessageReceivedListener(receiver)
 
-        layer.fireListeners(msg)
+        layer.fireMessageReceived(msg)
 
         self.assertTrue(self.received)
 
