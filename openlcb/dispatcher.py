@@ -200,23 +200,13 @@ class Dispatcher(xml.sax.handler.ContentHandler):
 
         self._callback_status("listen...")
 
-        self.listen()  # Must listen for alias reservation responses
-        #   (sendAliasConnectionSequence will occur for another 200ms
-        #   once, then another 200ms on each alias collision if any)
-        #   - must also keep doing frame = pollFrame() and sending
-        #     if not None.
+        self.listen()  # listen for responses to defineAndReserveAlias
 
         self._callback_status("physicalLayerUp...")
         self._physicalLayer.physicalLayerUp()
         self._callback_status("Waiting for alias reservation...")
         while self._canLink.pollState() != CanLink.State.Permitted:
             precise_sleep(.02)
-        # ^ triggers fireListeners which calls CanLink's default
-        #   receiveListener by default since added on CanPhysicalLayer
-        #   arg of linkPhysicalLayer.
-        #   - Must happen *after* listen thread starts, since
-        #     generates ControlFrame.LinkUp and calls fireListeners
-        #     which calls sendAliasConnectionSequence on this thread!
         self._callback_status("Alias reservation complete.")
 
     def listen(self):
@@ -258,7 +248,8 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                     #   which is expected and used on purpose)
                     # print("Waiting for _receive")
                     received = self._receive()  # requires setblocking(False)
-                    print("[_listen] received {} byte(s)".format(len(received)),
+                    print("[_listen] received {} byte(s)"
+                          .format(len(received)),
                           file=sys.stderr)
                     # print("      RR: {}".format(received.strip()))
                     # pass to link processor
@@ -304,7 +295,7 @@ class Dispatcher(xml.sax.handler.ContentHandler):
                             assert isinstance(packet, str)
                             print("Sending {}".format(packet))
                             self._port.sendString(packet)
-                            physicalLayer.onSentFrame(frame)
+                            self._physicalLayer.onSentFrame(frame)
                         else:
                             raise NotImplementedError(
                                 "Event type {} is not handled."
