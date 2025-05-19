@@ -22,7 +22,7 @@ class CanPhysicalLayer(PhysicalLayer):
 
     def __init__(self,):
         PhysicalLayer.__init__(self)
-        self.listeners = []
+        self._frameReceivedListeners = []
 
     def onReceivedFrame(self, frame):
         raise NotImplementedError(
@@ -71,9 +71,9 @@ class CanPhysicalLayer(PhysicalLayer):
             " packets into frames (this layer communicates to upper layers"
             " using physicalLayer.onReceivedFrame set by LinkLayer/subclass"
             " constructor).")
-        self.listeners.append(listener)
+        self._frameReceivedListeners.append(listener)
 
-    def fireListeners(self, frame: CanFrame):
+    def fireFrameReceived(self, frame: CanFrame):
         """Fire *CanFrame received* listeners.
         Monitor each frame that is constructed
         as the application provides handleData raw data from the port.
@@ -87,7 +87,7 @@ class CanPhysicalLayer(PhysicalLayer):
         #   operate--See
         #   <https://github.com/bobjacobsen/python-openlcb/issues/62#issuecomment-2775668681>
         self.onReceivedFrame(frame)
-        for listener in self.listeners:
+        for listener in self._frameReceivedListeners:
             listener(frame)
 
     def physicalLayerUp(self):
@@ -95,7 +95,7 @@ class CanPhysicalLayer(PhysicalLayer):
         '''
         # notify link layer
         cf = CanFrame(ControlFrame.LinkUp.value, 0)
-        self.fireListeners(cf)
+        self.fireFrameReceived(cf)
 
     def physicalLayerRestart(self):
         '''Invoked from OpenlcbNetwork when the physical link implementation
@@ -103,7 +103,7 @@ class CanPhysicalLayer(PhysicalLayer):
         '''
         # notify link layer
         cf = CanFrame(ControlFrame.LinkRestarted.value, 0)
-        self.fireListeners(cf)
+        self.fireFrameReceived(cf)
 
     def physicalLayerDown(self):
         '''Invoked from OpenlcbNetwork when the physical link implementation
@@ -111,4 +111,4 @@ class CanPhysicalLayer(PhysicalLayer):
         '''
         # notify link layer
         cf = CanFrame(ControlFrame.LinkDown.value, 0)
-        self.fireListeners(cf)
+        self.fireFrameReceived(cf)

@@ -31,9 +31,9 @@ class LinkLayer:
     """Abstract Link Layer interface
 
     Attributes:
-        listeners (list[Callback]): local list of listener callbacks.
-            See subclass for default listener and more specific
-            callbacks called from there.
+        _messageReceivedListeners (list[Callback]): local list of
+            listener callbacks. See subclass for default listener and
+            more specific callbacks called from there.
         _state: The state (a.k.a. "runlevel" in linux terms)
             of the network link. This may be moved to an overall
             stack handler such as OpenLCBNetwork.
@@ -52,7 +52,7 @@ class LinkLayer:
         assert isinstance(physicalLayer, PhysicalLayer)  # allows any subclass
         # subclass should check type of localNodeID technically
         self.localNodeID = localNodeID
-        self.listeners = []
+        self._messageReceivedListeners = []
         self._state = None  # LinkLayer.State.Undefined
         # region moved from CanLink linkPhysicalLayer
         self.physicalLayer = physicalLayer  # formerly self.link = cpl
@@ -137,9 +137,9 @@ class LinkLayer:
         '''
 
     def registerMessageReceivedListener(self, listener):
-        self.listeners.append(listener)
+        self._messageReceivedListeners.append(listener)
 
-    def fireListeners(self, msg: Message):
+    def fireMessageReceived(self, msg: Message):
         """Fire *Message received* listeners."""
-        for listener in self.listeners:
+        for listener in self._messageReceivedListeners:
             listener(msg)

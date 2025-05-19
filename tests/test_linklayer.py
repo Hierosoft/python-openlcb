@@ -30,7 +30,7 @@ class TestLinkLayerClass(unittest.TestCase):
         )
         layer.registerMessageReceivedListener(receiver)
 
-        layer.fireListeners(msg)
+        layer.fireMessageReceived(msg)
 
         self.assertTrue(self.received)
 
@@ -41,6 +41,7 @@ class TestLinkLayerClass(unittest.TestCase):
             self.assertNotIn(entry.value, usedValues)
             usedValues.add(entry.value)
             # print('{} = {}'.format(entry.name, entry.value))
+
 
 if __name__ == '__main__':
     unittest.main()

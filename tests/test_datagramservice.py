@@ -56,7 +56,7 @@ class DatagramServiceTest(unittest.TestCase):
 
         self.service.registerDatagramReceivedListener(receiver)
 
-        self.service.fireListeners(msg)
+        self.service.fireDatagramReceived(msg)
 
         self.assertTrue(self.received)
 

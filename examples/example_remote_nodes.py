@@ -108,8 +108,8 @@ readQueue = Queue()
 
 observer = GridConnectObserver()
 
-assert len(physicalLayer.listeners) == 1, \
-    "{} listener(s) unexpectedly".format(len(physicalLayer.listeners))
+assert len(physicalLayer._frameReceivedListeners) == 1, \
+    "{} listener(s) unexpectedly".format(len(physicalLayer._frameReceivedListeners))
 
 
 def pumpEvents():

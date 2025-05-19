@@ -121,7 +121,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
                     # lastByte is index of ; in this message
 
                     cf = CanFrame(header, outData)
-                    self.fireListeners(cf)
+                    self.fireFrameReceived(cf)
 
             # shorten buffer by removing the processed message
             self.inboundBuffer = self.inboundBuffer[processedCount:]
