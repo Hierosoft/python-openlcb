@@ -18,8 +18,8 @@ from openlcb.canbus.controlframe import ControlFrame
 
 class PhyMockLayer(CanPhysicalLayer):
     def __init__(self):
-        # onSentFrame will not work until this instance is passed to the
-        #   LinkLayer subclass' constructor (See onSentFrame
+        # onFrameSent will not work until this instance is passed to the
+        #   LinkLayer subclass' constructor (See onFrameSent
         #   docstring in PhysicalLayer)
         self.receivedFrames = []
         CanPhysicalLayer.__init__(self)
@@ -549,7 +549,7 @@ class TestCanLinkClass(unittest.TestCase):
             # FIXME: Pretending sent is not effective if dest is mock node
             #   (if its state will be checked in the test!) but if we are
             #   using pure CAN (not packed with LCC alias) it is P2P.
-            canPhysicalLayer.onSentFrame(frame)
+            canPhysicalLayer.onFrameSent(frame)
 
         self.assertEqual(len(messageLayer.receivedMessages), 2)
         # ^ startup plus one message forwarded

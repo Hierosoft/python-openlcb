@@ -94,7 +94,7 @@ while True:
     if received is not None:
         print("      RR: {}".format(received))
         # pass to link processor
-        tcpLinkLayer.receiveListener(received)
+        tcpLinkLayer.handleFrameReceived(received)
     # Normally we would do (Probably N/A here):
     # canLink.pollState()
     #
@@ -103,5 +103,5 @@ while True:
     #     if frame is None:
     #         break
     #     sock.sendString(frame.encodeAsString())
-    #     physicalLayer.onSentFrame(frame)
+    #     physicalLayer.onFrameSent(frame)
     precise_sleep(.01)

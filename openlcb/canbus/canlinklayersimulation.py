@@ -42,7 +42,7 @@ class CanLinkLayerSimulation(CanLink):
             # ^ This is too verbose for this example (each is a
             #   request to read a 64 byte chunks of the CDI XML)
             # sock.sendString(string)
-            self.physicalLayer.onSentFrame(frame)
+            self.physicalLayer.onFrameSent(frame)
 
     def waitForReady(self, run_physical_link_up_test=False):
         """
@@ -54,7 +54,7 @@ class CanLinkLayerSimulation(CanLink):
             AssertionError: run_physical_link_up_test is True
                 but the state is not initially WaitingForSendCIDSequence
                 or successive states were not triggered by pollState
-                and onSentFrame.
+                and onFrameSent.
         """
         self = self
         first = True
@@ -82,20 +82,20 @@ class CanLinkLayerSimulation(CanLink):
                 print("  * state: {}".format(state))
             state = self.getState()
             if first_state == CanLink.State.WaitingForSendCIDSequence:
-                # State should be set by onSentFrame (called by
+                # State should be set by onFrameSent (called by
                 # pumpEvents, or in non-simulation cases, the socket loop
                 #   after dequeued and sent, as the next state is )
                 if second_state is None:
                     assert state == CanLink.State.WaitForAliases, \
-                        ("expected onSentFrame (if properly set to"
-                         " handleSentFrame or overridden for simulation) sent"
+                        ("expected onFrameSent (if properly set to"
+                         " handleFrameSent or overridden for simulation) sent"
                          " frame's EnqueueAliasAllocationRequest state (CID"
                          " 4's afterSendState), but state is {}"
                          .format(state))
                     second_state = state
                 # If pumpEvents blocks for at least 200ms after send
                 #   then receives, responses may have already been send
-                #   to handleReceivedFrame, in which case we may be in a
+                #   to handleFrameReceived, in which case we may be in a
                 #   later state. That isn't recommended except for
                 #   realtime applications (or testing). However, if that
                 #   is programmed, add

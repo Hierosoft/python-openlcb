@@ -18,7 +18,6 @@ making multiple copies of a single object.
 
 from enum import Enum
 from logging import getLogger
-import warnings
 
 from openlcb import emit_cast
 from openlcb.message import Message
@@ -57,15 +56,15 @@ class LinkLayer:
         # region moved from CanLink linkPhysicalLayer
         self.physicalLayer = physicalLayer  # formerly self.link = cpl
         # if physicalLayer is not None:
-        # listener = self.receiveListener  # try to prevent
+        # listener = self.handleFrameReceived  # try to prevent
         # "new bound method" Python behavior in subclass from making "is"
         #   operator not work as expected in registerFrameReceivedListener.
-        physicalLayer.onReceivedFrame = self.receiveListener
-        physicalLayer.onSentFrame = self.handleSentFrame
+        physicalLayer.onFrameReceived = self.handleFrameReceived
+        physicalLayer.onFrameSent = self.handleFrameSent
         # # ^ enforce queue paradigm (See use in PhysicalLayer subclass)
         # physicalLayer.registerFrameReceivedListener(listener)
         # ^ Doesn't work with "is" operator still! So just use
-        #   physicalLayer.onReceivedFrame in fireListeners in PhysicalLayer.
+        #   physicalLayer.onFrameReceived in fireFrameReceived in PhysicalLayer.
         # else:
         #     print("Using {} without"
         #           " registerFrameReceivedListener(self.receiveListener)"
@@ -79,16 +78,17 @@ class LinkLayer:
                     " LinkLayer.State and LinkLayer.DisconnectedState"
                     " are only for testing. Redefine them in each subclass"
                     " (got LinkLayer.State({}) for {}.DisconnectedState)"
-                    .format(emit_cast(type(self).DisconnectedState), type(self).__name__))
+                    .format(emit_cast(type(self).DisconnectedState),
+                            type(self).__name__))
 
-    def receiveListener(self, frame):
+    def handleFrameReceived(self, frame):
         logger.warning(
             "{} abstract receiveListener called (expected implementation)"
             .format(type(self).__name__))
 
-    def handleSentFrame(self, frame):
+    def handleFrameSent(self, frame):
         """Update state based on the frame having been sent."""
-        if frame.afterSendState:
+        if frame.afterSendState is not None:
             self.setState(frame.afterSendState)
 
     def onDisconnect(self):

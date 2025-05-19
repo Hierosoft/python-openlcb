@@ -45,7 +45,7 @@ def sendToSocket(frame: CanFrame):
     string = frame.encodeAsString()
     print("   SR: {}".format(string.strip()))
     sock.sendString(string)
-    physicalLayer.onSentFrame(frame)
+    physicalLayer.onFrameSent(frame)
 
 
 def pumpEvents():
@@ -67,21 +67,22 @@ def pumpEvents():
         string = frame.encodeAsString()
         print("   SR: {}".format(string.strip()))
         sock.sendString(string)
-        physicalLayer.onSentFrame(frame)
+        physicalLayer.onFrameSent(frame)
         if frame.afterSendState:
             print("Next state (unexpected, no link layer): {}"
                   .format(frame.afterSendState))
             # canLink.setState(frame.afterSendState)
-            # ^ setState is done by onSentFrame now
-            #   (physicalLayer.onSentFrame = self.handleSentFrame
+            # ^ setState is done by onFrameSent now
+            #   (physicalLayer.onFrameSent = self.handleFrameSent
             #   in LinkLayer constructor)
 
 
-def handleSentFrame(frame):
+def handleFrameSent(frame):
     # No state to manage since no link layer
     pass
 
-def handleReceivedFrame(frame):
+
+def handleFrameReceived(frame):
     # No state to manage since no link layer
     pass
 
@@ -91,8 +92,8 @@ def printFrame(frame):
 
 
 physicalLayer = CanPhysicalLayerGridConnect()
-physicalLayer.onSentFrame = handleSentFrame
-physicalLayer.onReceivedFrame = handleReceivedFrame
+physicalLayer.onFrameSent = handleFrameSent
+physicalLayer.onFrameReceived = handleFrameReceived
 physicalLayer.registerFrameReceivedListener(printFrame)
 
 # send an AME frame with arbitrary alias to provoke response

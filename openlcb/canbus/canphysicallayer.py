@@ -24,12 +24,6 @@ class CanPhysicalLayer(PhysicalLayer):
         PhysicalLayer.__init__(self)
         self._frameReceivedListeners = []
 
-    def onReceivedFrame(self, frame):
-        raise NotImplementedError(
-            "Your LinkLayer/subclass must patch the instance:"
-            " Set this method manually to the CanLink instance's"
-            " receiveListener method.")
-
     def sendFrameAfter(self, frame: CanFrame):
         """Enqueue: *IMPORTANT* Main/other thread may have
         called this. Any other thread sending other than the _listen
@@ -69,7 +63,7 @@ class CanPhysicalLayer(PhysicalLayer):
             " You don't really need to listen to packets."
             " Use pollFrame instead, which will collect and decode"
             " packets into frames (this layer communicates to upper layers"
-            " using physicalLayer.onReceivedFrame set by LinkLayer/subclass"
+            " using physicalLayer.onFrameReceived set by LinkLayer/subclass"
             " constructor).")
         self._frameReceivedListeners.append(listener)
 
@@ -77,16 +71,16 @@ class CanPhysicalLayer(PhysicalLayer):
         """Fire *CanFrame received* listeners.
         Monitor each frame that is constructed
         as the application provides handleData raw data from the port.
-        - LinkLayer (CanLink in this case) must set onReceivedFrame,
+        - LinkLayer (CanLink in this case) must set onFrameReceived,
           so registerFrameReceivedListener is now optional, and
           a Message handler should usually be used instead.
         """
-        # (onReceivedFrame was implemented to make it clear by way of
+        # (onFrameReceived was implemented to make it clear by way of
         #   constructor code that the handler is required in order for
         #   the openlcb network stack (This Python module) to
         #   operate--See
         #   <https://github.com/bobjacobsen/python-openlcb/issues/62#issuecomment-2775668681>
-        self.onReceivedFrame(frame)
+        self.onFrameReceived(frame)
         for listener in self._frameReceivedListeners:
             listener(frame)
 

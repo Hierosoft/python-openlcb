@@ -29,14 +29,14 @@ class PhysicalLayerMock(CanPhysicalLayerGridConnect):
         self.capturedFrame.encoder = self
         self.capturedString = frame.encodeAsString()
 
-    def onSentFrame(self, frame):
+    def onFrameSent(self, frame):
         pass
-        # NOTE: not patching this method to be canLink.handleSentFrame
+        # NOTE: not patching this method to be canLink.handleFrameSent
         #   since testing only physical layer not link layer.
 
-    def onReceivedFrame(self, frame):
+    def onFrameReceived(self, frame):
         pass
-        # NOTE: not patching this method to be canLink.handleReceivedFrame
+        # NOTE: not patching self.onFrameReceived = canLink.handleFrameReceived
         #   since testing only physical layer not link layer.
 
 

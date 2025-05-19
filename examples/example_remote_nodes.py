@@ -64,7 +64,7 @@ if settings['trace'] :
     # string = frame.encodeAsString()
     # if settings['trace'] : print("   SR: "+string.strip())
     # sock.sendString(string)
-    # physicalLayer.onSentFrame(frame)
+    # physicalLayer.onFrameSent(frame)
 
 
 def receiveFrame(frame) :
@@ -133,7 +133,7 @@ def pumpEvents():
         if True:  # if settings['trace']:
             print("- SENT Remote: "+string.strip())
         sock.sendString(string)
-        physicalLayer.onSentFrame(frame)
+        physicalLayer.onFrameSent(frame)
 
 
 # bring the CAN level up

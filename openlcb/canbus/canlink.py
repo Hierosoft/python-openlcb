@@ -264,7 +264,7 @@ class CanLink(LinkLayer):
         #   necessary (formerly only states other than Initial were
         #   Inhibited & Permitted).
 
-    def receiveListener(self, frame):
+    def handleFrameReceived(self, frame: CanFrame):
         """Call the correct handler if any for a received frame.
         Typically this is called by CanPhysicalLayer since the
         linkPhysicalLayer method in this class registers this method as
@@ -310,6 +310,8 @@ class CanLink(LinkLayer):
                                ControlFrame.EIR3):
             self._errorCount += 1
             if self.isRunningAliasReservation():
+                print("Restarting alias reservation due to error ({})."
+                      .format(control_frame))
                 # Restart alias reservation process if an
                 #   error occurs during it, as per section
                 #   6.2.1 of CAN Frame Transfer - Standard.
@@ -342,7 +344,7 @@ class CanLink(LinkLayer):
             CanLink.State.WaitingForSendReserveID
         )
 
-    def handleReceivedLinkUp(self, frame):
+    def handleReceivedLinkUp(self, frame: CanFrame):
         """Link started, update state, start process to create alias.
         LinkUp message will be sent when alias process completes.
 
@@ -354,7 +356,7 @@ class CanLink(LinkLayer):
         self.defineAndReserveAlias()
         print("[CanLink] done calling defineAndReserveAlias.")
 
-    def handleReceivedLinkRestarted(self, frame):
+    def handleReceivedLinkRestarted(self, frame: CanFrame):
         """Send a LinkRestarted message upstream.
 
         Args:
@@ -413,7 +415,7 @@ class CanLink(LinkLayer):
     #    called on restart
     #    TODO: (restart) This is not called; there's no callback for it in
     #    Telnet library
-    def handleReceivedLinkDown(self, frame):
+    def handleReceivedLinkDown(self, frame: CanFrame):
         """return to Inhibited state until link back up
 
         Args:
@@ -446,7 +448,7 @@ class CanLink(LinkLayer):
                 "The other layers don't need to know the intermediate steps.")
         self.fireMessageReceived(msg)
 
-    def handleReceivedCID(self, frame):  # CanFrame
+    def handleReceivedCID(self, frame: CanFrame):
         """Handle a Check ID (CID) frame only if addressed to us
         (used to verify node uniqueness). Additional arguments may be
         encoded in lower bits of frame.header (below ControlFrame.CID).
@@ -458,13 +460,13 @@ class CanLink(LinkLayer):
         self.physicalLayer.sendFrameAfter(CanFrame(ControlFrame.RID.value,
                                           self._localAlias))
 
-    def handleReceivedRID(self, frame):  # CanFrame
+    def handleReceivedRID(self, frame: CanFrame):
         """Handle a Reserve ID (RID) frame
         (used for alias reservation)."""
         if self.checkAndHandleAliasCollision(frame):
             return
 
-    def handleReceivedAMD(self, frame):  # CanFrame
+    def handleReceivedAMD(self, frame: CanFrame):
         """Handle an Alias Map Definition (AMD) frame
         (Defines a mapping between an alias and a full Node ID).
         """
@@ -485,7 +487,7 @@ class CanLink(LinkLayer):
             .format(nodeID))
         self.nodeIdToAlias[nodeID] = alias
 
-    def handleReceivedAME(self, frame):  # CanFrame
+    def handleReceivedAME(self, frame: CanFrame):
         """Handle an Alias Mapping Enquiry (AME) frame
         (a node requested alias information from other nodes).
         """
@@ -504,7 +506,7 @@ class CanLink(LinkLayer):
                                    self.localNodeID.toArray())
             self.physicalLayer.sendFrameAfter(returnFrame)
 
-    def handleReceivedAMR(self, frame):  # CanFrame
+    def handleReceivedAMR(self, frame: CanFrame):
         """Handle an Alias Map Reset (AMR) frame
         (A node is asking to remove an alias from mappings).
         """
@@ -521,7 +523,7 @@ class CanLink(LinkLayer):
         except:
             pass
 
-    def handleReceivedData(self, frame):  # CanFrame
+    def handleReceivedData(self, frame: CanFrame):
         """Handle a data frame.
         Additional arguments may be encoded in lower bits (below
         ControlFrame.Data) in frame.header.
@@ -696,7 +698,7 @@ class CanLink(LinkLayer):
                 msg.originalMTI = ((frame.header >> 12) & 0xFFF)
             self.fireMessageReceived(msg)
 
-    def sendMessage(self, msg):
+    def sendMessage(self, msg: Message):
         #    special case for datagram
         if msg.mti == MTI.Datagram:
             header = 0x10_00_00_00
@@ -865,7 +867,7 @@ class CanLink(LinkLayer):
         return segments
 
     #    MARK: common code
-    def checkAndHandleAliasCollision(self, frame):
+    def checkAndHandleAliasCollision(self, frame: CanFrame):
         if self._state != CanLink.State.Permitted:
             return False
         receivedAlias = frame.header & 0x0_00_0F_FF
@@ -884,7 +886,7 @@ class CanLink(LinkLayer):
                 .format(emit_cast(alias)))
         self.duplicateAliases.append(alias)
 
-    def processCollision(self, frame) :
+    def processCollision(self, frame: CanFrame) :
         ''' Collision! '''
         self._aliasCollisionCount += 1
         logger.warning(
@@ -1071,7 +1073,7 @@ class CanLink(LinkLayer):
             return ((part1+part2+part3+part4) & 0xFF)
         return 0xAEF  # Why'd you say Burma?
 
-    def decodeControlFrameFormat(self, frame):
+    def decodeControlFrameFormat(self, frame: CanFrame):
         if (frame.header & 0x0800_0000) == 0x0800_0000:
             # data case; not checking leading 1 bit
             # NOTE: handleReceivedData can get all header bits via frame
@@ -1091,7 +1093,7 @@ class CanLink(LinkLayer):
                 .format(frame.header))
             return ControlFrame.UnknownFormat
 
-    def canHeaderToFullFormat(self, frame):
+    def canHeaderToFullFormat(self, frame: CanFrame):
         '''Returns a full 16-bit MTI from the full 29 bits of a CAN header'''
         frameType = (frame.header >> 24) & 0x7
         canMTI = ((frame.header >> 12) & 0xFFF)

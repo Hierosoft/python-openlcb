@@ -59,7 +59,7 @@ sock.connect(settings['host'], settings['port'])
 #     string = frame.encodeAsString()
 #     # print("      SR: {}".format(string.strip()))
 #     sock.sendString(string)
-#     physicalLayer.onSentFrame(frame)
+#     physicalLayer.onFrameSent(frame)
 
 
 def printFrame(frame):
@@ -267,7 +267,7 @@ def pumpEvents():
         # ^ This is too verbose for this example (each is a
         #   request to read a 64 byte chunks of the CDI XML)
         sock.sendString(string)
-        physicalLayer.onSentFrame(frame)
+        physicalLayer.onFrameSent(frame)
 
 
 # have the socket layer report up to bring the link layer up and get an alias
@@ -299,7 +299,7 @@ def memoryRead():
     #   (*only if it has the same alias*) must reply to ensure our alias
     #   is ok according to the LCC CAN Frame Transfer Standard.
     #   - The countdown does not start until after the socket loop
-    #     calls onSentFrame. This ensures that nodes had a chance to
+    #     calls onFrameSent. This ensures that nodes had a chance to
     #     respond (the Standard only states to wait after sending, so
     #     any latency after send is the responsibility of the Standard).
     #   - Then wait longer below if there was a failure/retry:

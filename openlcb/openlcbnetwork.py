@@ -168,15 +168,10 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         self._callback_status("CanPhysicalLayerGridConnect...")
         self._physicalLayer = CanPhysicalLayerGridConnect()
 
-        # self._physicalLayer.registerFrameReceivedListener(
-        #     self._printFrame
-        # )
-        # ^ Commented since CanLink constructor now registers its default
-        #   receiveListener to CanLinkPhysicalLayer & that's all we need
-        #   for this application.
-
         self._callback_status("CanLink...")
         self._canLink = CanLink(self._physicalLayer, NodeID(localNodeID))
+        # ^ CanLink constructor sets _physicalLayer's onFrameReceived
+        #   and onFrameSent to handlers in _canLink.
         self._callback_status("CanLink..."
                               "registerMessageReceivedListener...")
         self._canLink.registerMessageReceivedListener(self._handleMessage)
@@ -211,12 +206,12 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         self._callback_status("Waiting for alias reservation...")
         while self._canLink.pollState() != CanLink.State.Permitted:
             precise_sleep(.02)
-        # ^ triggers fireListeners which calls CanLink's default
+        # ^ triggers fireFrameReceived which calls CanLink's default
         #   receiveListener by default since added on CanPhysicalLayer
         #   arg of linkPhysicalLayer.
         #   - Must happen *after* listen thread starts, since
-        #     generates ControlFrame.LinkUp and calls fireListeners
-        #     which calls sendAliasConnectionSequence on this thread!
+        #     fireFrameReceived (ControlFrame.LinkUp)
+        #     calls sendAliasConnectionSequence on this thread!
         self._callback_status("Alias reservation complete.")
 
     def listen(self):
@@ -305,7 +300,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
                             assert isinstance(packet, str)
                             print("Sending {}".format(packet))
                             self._port.sendString(packet)
-                            self._physicalLayer.onSentFrame(frame)
+                            self._physicalLayer.onFrameSent(frame)
                         else:
                             raise NotImplementedError(
                                 "Event type {} is not handled."

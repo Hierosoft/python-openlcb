@@ -65,7 +65,7 @@ class TcpLink(LinkLayer):
         print(f"[TcpLink] _onStateChanged from {oldState} to {newState}"
               " (nothing to do since TcpLink)")
 
-    def receiveListener(self, inputData):  # [] input
+    def handleFrameReceived(self, inputData: bytearray):  # [] input
         """Receives bytes from lower level
         and accumulates them into individual message parts.
 

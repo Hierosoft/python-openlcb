@@ -50,7 +50,7 @@ print("RR, SR are raw socket interface receive and send; RL,"
 #     string = frame.encodeAsString()
 #     print("      SR: {}".format(string.strip()))
 #     sock.sendString(string)
-#     physicalLayer.onSentFrame(frame)
+#     physicalLayer.onFrameSent(frame)
 
 
 def printFrame(frame):
@@ -90,7 +90,7 @@ def pumpEvents():
         string = frame.encodeAsString()
         print("      SR: {}".format(string.strip()))
         sock.sendString(string)
-        physicalLayer.onSentFrame(frame)
+        physicalLayer.onFrameSent(frame)
 
 # have the socket layer report up to bring the link layer up and get an alias
 

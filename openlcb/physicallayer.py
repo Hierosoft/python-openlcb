@@ -112,10 +112,23 @@ class PhysicalLayer:
         if self.onQueuedFrame:
             self.onQueuedFrame(frame)
 
-    def onSentFrame(self, frame):
-        """Stub patched at runtime:
-        LinkLayer subclass's constructor must set instance's onSentFrame
-        to LinkLayer subclass' handleSentFrame (The application must
+    def onFrameReceived(self, frame):
+        """Stub method, patched at runtime:
+        LinkLayer subclass's constructor must set instance's
+        onFrameReceived to LinkLayer subclass' handleFrameReceived (The
+        application must pass this instance to LinkLayer subclass's
+        constructor so it will do that).
+        """
+        raise NotImplementedError(
+            "Your LinkLayer/subclass must patch"
+            " the PhysicalLayer/subclass instance:"
+            " Set this method manually to LinkLayer/subclass instance's"
+            " handleFrameReceived method.")
+
+    def onFrameSent(self, frame):
+        """Stub method, patched at runtime:
+        LinkLayer subclass's constructor must set instance's onFrameSent
+        to LinkLayer subclass' handleFrameSent (The application must
         pass this instance to LinkLayer subclass's constructor so it
         will do that).
 
@@ -134,8 +147,8 @@ class PhysicalLayer:
         """
         raise NotImplementedError(
             "The subclass must patch the instance:"
-            " PhysicalLayer instance's onSentFrame must be manually set"
-            " to the LinkLayer subclass instance' handleSentFrame"
+            " PhysicalLayer instance's onFrameSent must be manually set"
+            " to the LinkLayer subclass instance' handleFrameSent"
             " so state can be updated if necessary.")
 
     def registerFrameReceivedListener(self, listener):

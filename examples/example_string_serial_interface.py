@@ -56,5 +56,5 @@ while True:  # have to kill this manually
     #     if frame is None:
     #         break
     #     sock.sendString(frame.encodeAsString())
-    #     physicalLayer.onSentFrame(frame)
+    #     physicalLayer.onFrameSent(frame)
     precise_sleep(.01)
