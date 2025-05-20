@@ -7,7 +7,12 @@ provides a routine for converting a numeric value to a set of enum constants.
 '''
 
 from enum import Enum
-from typing import Iterable, Union
+from typing import (
+    Iterable,
+    List,
+    Set,  # in case list doesn't support `[` in this Python version
+    Union,  # in case `|` doesn't support 'type' in this Python version
+)
 
 
 class PIP(Enum):
@@ -36,10 +41,10 @@ class PIP(Enum):
     FIRMWARE_ACTIVE                        = 0x00_00_10_00
 
     # get a list of all enum entries
-    def list() -> list:
+    def list() -> List:
         return list(map(lambda c: c, PIP))
 
-    def contentsNamesFromInt(bitmask: int) -> list[str]:
+    def contentsNamesFromInt(bitmask: int) -> List[str]:
         """Convert protocol bits to strings.
 
         Args:
@@ -58,7 +63,7 @@ class PIP(Enum):
                 retval.append(val)
         return retval
 
-    def contentsNamesFromList(pipList: Iterable) -> list[str]:
+    def contentsNamesFromList(pipList: Iterable) -> List[str]:
         """Convert a list of PIP values to strings.
 
         Args:
@@ -76,7 +81,7 @@ class PIP(Enum):
             retval.append(val)
         return retval
 
-    def setContentsFromInt(bitmask: int) -> set:
+    def setContentsFromInt(bitmask: int) -> Set:
         """Get a set of contents from a single numeric bitmask
 
         Args:
@@ -94,22 +99,22 @@ class PIP(Enum):
         return set(retVal)
 
     def setContentsFromList(
-            values: Union[bytearray, bytes, Iterable[int]]) -> set:
+            values: Union[bytearray, bytes, Iterable[int]]) -> Set:
         """set contents from a list of numeric inputs
 
         Args:
-            raw (Union[bytes,list[int]]): a list of 1-byte values
+            values (Union[bytes,list[int]]): a list of 1-byte values
 
         Returns:
             set (PIP): The set of protocol bits derived from the raw data.
         """
         bitmask = 0
-        if (len(raw) > 0):
-            bitmask |= ((raw[0]) << 24)
-        if (len(raw) > 1):
-            bitmask |= ((raw[1]) << 16)
-        if (len(raw) > 2):
-            bitmask |= ((raw[2]) << 8)
-        if (len(raw) > 3):
-            bitmask |= ((raw[3]))
+        if (len(values) > 0):
+            bitmask |= ((values[0]) << 24)
+        if (len(values) > 1):
+            bitmask |= ((values[1]) << 16)
+        if (len(values) > 2):
+            bitmask |= ((values[2]) << 8)
+        if (len(values) > 3):
+            bitmask |= ((values[3]))
         return PIP.setContentsFromInt(bitmask)

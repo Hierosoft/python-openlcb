@@ -2,6 +2,7 @@
 Simulated CanPhysicalLayer to record frames requested to be sent.
 '''
 
+from typing import List
 from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.canphysicallayer import CanPhysicalLayer
 from openlcb.frameencoder import FrameEncoder
@@ -10,7 +11,7 @@ from openlcb.frameencoder import FrameEncoder
 class CanPhysicalLayerSimulation(CanPhysicalLayer, FrameEncoder):
 
     def __init__(self):
-        self.receivedFrames: list[CanFrame] = []
+        self.receivedFrames: List[CanFrame] = []
         CanPhysicalLayer.__init__(self)
         self.onQueuedFrame = self._onQueuedFrame
 

@@ -12,6 +12,7 @@ host|host:port            (optional) Set the address (or using a colon,
 '''
 # region same code as other examples
 import copy
+from xml.sax.expatreader import AttributesImpl
 from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb import precise_sleep
 from openlcb.canbus.gridconnectobserver import GridConnectObserver
@@ -184,13 +185,13 @@ class MyHandler(xml.sax.handler.ContentHandler):
     def __init__(self):
         self._chunks = []
 
-    def startElement(self, name, attrs):
+    def startElement(self, name: str, attrs):
         """See xml.sax.handler.ContentHandler documentation."""
         print("Start: ", name)
         if attrs is not None and attrs :
             print("  Attributes: ", attrs.getNames())
 
-    def endElement(self, name):
+    def endElement(self, name: str):
         """See xml.sax.handler.ContentHandler documentation."""
         print(name, "content:", self._flushCharBuffer())
         print("End: ", name)
@@ -207,7 +208,7 @@ class MyHandler(xml.sax.handler.ContentHandler):
         self._chunks.clear()
         return s
 
-    def characters(self, data):
+    def characters(self, data: str):
         """Received characters handler.
         See xml.sax.handler.ContentHandler documentation.
 
@@ -223,7 +224,7 @@ class MyHandler(xml.sax.handler.ContentHandler):
 handler = MyHandler()
 
 
-def processXML(content) :
+def processXML(content: str) :
     """process the XML and invoke callbacks
 
     Args:

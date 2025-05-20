@@ -10,16 +10,18 @@ Usually connected to a TCP socket connection.
 Assembles messages parts, but does not break messages into parts.
 
 '''
+import logging
+import time
 
-from typing import Union
+from typing import (
+    List,  # in case list doesn't support `[` in this Python version
+    Union,  # in case `|` doesn't support 'type' in this Python version
+)
+
 from openlcb.linklayer import LinkLayer
 from openlcb.message import Message
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
-
-import logging
-import time
-
 from openlcb.physicallayer import PhysicalLayer
 
 
@@ -147,7 +149,7 @@ class TcpLink(LinkLayer):
         # wait for next part
         return
 
-    def forwardMessage(self, messageBytes: Union[bytearray, list[int]], gatewayNodeID: NodeID) :  # TODO: not sure why gatewayNodeID useful here...  # noqa: E501
+    def forwardMessage(self, messageBytes: Union[bytearray, List[int]], gatewayNodeID: NodeID) :  # TODO: not sure why gatewayNodeID useful here...  # noqa: E501
         """
         Receives single message from receivedPart, converts it in a
         Message object, and forwards to Message received listeners.

@@ -1,4 +1,8 @@
-from typing import Union
+from typing import (
+    List,  # in case list doesn't support `[` in this Python version
+    Union,  # in case `|` doesn't support 'type' in this Python version
+)
+
 from openlcb.message import Message
 from openlcb.node import Node
 from openlcb.nodeid import NodeID
@@ -15,8 +19,8 @@ class NodeStore :
 
     def __init__(self) :
         self.byIdMap: dict = {}
-        self.nodes: list[Node] = []
-        self.processors: list[Processor] = []
+        self.nodes: List[Node] = []
+        self.processors: List[Processor] = []
 
     # Store a new node or replace an existing stored node
     # - Parameter node: new Node content

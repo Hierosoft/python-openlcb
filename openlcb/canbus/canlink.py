@@ -22,6 +22,11 @@ from enum import Enum
 
 from logging import getLogger
 from timeit import default_timer
+from typing import (
+    # Iterable,
+    List,  # in case list doesn't support `[` in this Python version
+    # Union,  # in case `|` doesn't support 'type' in this Python version
+)
 
 from openlcb import emit_cast, formatted_ex
 from openlcb.canbus.canframe import CanFrame
@@ -798,7 +803,7 @@ class CanLink(LinkLayer):
                 frame = CanFrame(header, msg.data)
                 self.physicalLayer.sendFrameAfter(frame)
 
-    def segmentDatagramDataArray(self, data: bytearray) -> list[bytearray]:
+    def segmentDatagramDataArray(self, data: bytearray) -> List[bytearray]:
         """Segment data into zero or more arrays
         of no more than 8 bytes for datagram.
 
@@ -830,7 +835,7 @@ class CanLink(LinkLayer):
         return segments
 
     def segmentAddressedDataArray(self, alias: int,
-                                  data: bytearray) -> list[bytearray]:
+                                  data: bytearray) -> List[bytearray]:
         '''Segment data into zero or more arrays
         of no more than 8 bytes, with the alias at the start of each,
         for addressed non-datagram messages.

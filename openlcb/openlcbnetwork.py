@@ -66,6 +66,7 @@ def attrs_to_dict(attrs) -> dict:
         attrs (AttributesImpl): attrs from xml parser startElement event
             (Not the same as element.attrib which is already dict).
     """
+    # AttributesImpl[str] type hint fails on Python 3.8. For autocomplete:
     # attrs = AttributesImpl(attrs)
     # attrs_dict = attrs.__dict__  # may have private members, so:
     return {key: attrs.getValue(key) for key in attrs.getNames()}
@@ -583,8 +584,10 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         else:
             logger.error(error)
 
-    def startElement(self, name: str, attrs: AttributesImpl[str]):
+    def startElement(self, name: str, attrs):
         """See xml.sax.handler.ContentHandler documentation."""
+        # AttributesImpl[str] type hint fails on Python 3.8. For autocomplete:
+        # attrs = AttributesImpl(attrs)
         tab = "  " * len(self._tag_stack)
         print(tab, "Start: ", name)
         if attrs is not None and attrs :
@@ -678,7 +681,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
     #     self._chunks.clear()
     #     return s
 
-    # def characters(self, data: Union[bytearray, bytes, list[int]]):
+    # def characters(self, data: Union[bytearray, bytes, List[int]]):
     #     """Received characters handler.
     #     See xml.sax.handler.ContentHandler documentation.
 

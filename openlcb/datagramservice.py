@@ -24,7 +24,11 @@ Handles link quiesce/restart so that higher level services don't have to.
 
 from enum import Enum
 import logging
-from typing import Callable, Union
+from typing import (
+    Callable,
+    List,  # in case list doesn't support `[` in this Python version
+    Union,  # in case `|` doesn't support 'type' in this Python version
+)
 
 from openlcb.linklayer import LinkLayer
 from openlcb.message import Message
@@ -103,7 +107,7 @@ class DatagramService:
         self.pendingWriteMemos = []
         self._datagramReceivedListeners = []
 
-    def datagramType(self, data: Union[bytearray, list[int]]):
+    def datagramType(self, data: Union[bytearray, List[int]]):
         """Determine the protocol type of the content of the datagram.
 
         Args:

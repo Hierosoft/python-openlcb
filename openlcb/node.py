@@ -14,6 +14,7 @@ node elsewhere" a.k.a an image node.
 '''
 
 from enum import Enum
+from typing import Set
 from openlcb.pip import PIP
 from openlcb.snip import SNIP
 from openlcb.localeventstore import LocalEventStore
@@ -39,7 +40,7 @@ class Node:
         events (LocalEventStore): The store for local events associated
             with the node.
     """
-    def __init__(self, nodeID, snip: SNIP = None, pipSet: set[PIP] = None):
+    def __init__(self, nodeID, snip: SNIP = None, pipSet: Set[PIP] = None):
         self.id = nodeID
         self.snip = snip
         if snip is None : self.snip = SNIP()

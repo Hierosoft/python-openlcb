@@ -22,7 +22,12 @@ To do memory read:
 '''
 
 import logging
-from typing import Union
+
+from typing import (
+    List,  # in case list doesn't support `[` in this Python version
+    Union,  # in case `|` doesn't support 'type' in this Python version
+)
+
 from openlcb.datagramservice import (
     # DatagramReadMemo,
     DatagramReadMemo,
@@ -339,7 +344,7 @@ class MemoryService:
         )
         self.service.sendDatagram(dgReqMemo)
 
-    def arrayToInt(self, data: Union[bytes, bytearray, list[int]]) -> int:
+    def arrayToInt(self, data: Union[bytes, bytearray, List[int]]) -> int:
         """Convert an array in MSB-first order to an integer
 
         Args:
