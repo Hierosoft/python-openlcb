@@ -21,26 +21,26 @@ if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-from openlcb.canbus.canphysicallayergridconnect import (
+from openlcb.canbus.canphysicallayergridconnect import (  # noqa:E402
     CanPhysicalLayerGridConnect,
 )
-# from openlcb.canbus.canframe import CanFrame
-from openlcb.canbus.canlink import CanLink
-# from openlcb.canbus.controlframe import ControlFrame
-from openlcb.tcplink.tcpsocket import TcpSocket
+# from openlcb.canbus.canframe import CanFrame  # noqa:E402
+from openlcb.canbus.canlink import CanLink  # noqa:E402
+# from openlcb.canbus.controlframe import ControlFrame  # noqa:E402
+from openlcb.tcplink.tcpsocket import TcpSocket  # noqa:E402
 
-from openlcb.node import Node
-from openlcb.nodeid import NodeID
-from openlcb.message import Message
-from openlcb.mti import MTI
-from openlcb.localnodeprocessor import LocalNodeProcessor
-from openlcb.pip import PIP
-from openlcb.remotenodeprocessor import RemoteNodeProcessor
-from openlcb.remotenodestore import RemoteNodeStore
-from openlcb.snip import SNIP
+from openlcb.node import Node  # noqa:E402
+from openlcb.nodeid import NodeID  # noqa:E402
+from openlcb.message import Message  # noqa:E402
+from openlcb.mti import MTI  # noqa:E402
+from openlcb.localnodeprocessor import LocalNodeProcessor  # noqa:E402
+from openlcb.pip import PIP  # noqa:E402
+from openlcb.remotenodeprocessor import RemoteNodeProcessor  # noqa:E402
+from openlcb.remotenodestore import RemoteNodeStore  # noqa:E402
+from openlcb.snip import SNIP  # noqa:E402
 
-from queue import Queue
-from queue import Empty
+from queue import Queue  # noqa:E402
+from queue import Empty  # noqa:E402
 
 # specify default connection information
 # region replaced by settings

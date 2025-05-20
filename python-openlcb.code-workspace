@@ -84,6 +84,7 @@
 			"realtimephysicallayer",
 			"remotenodeprocessor",
 			"remotenodestore",
+			"repr",
 			"runlevel",
 			"seriallink",
 			"servicetype",
