@@ -9,13 +9,14 @@ This file is part of the python-openlcb project
 
 Contributors: Poikilos
 """
-from collections import deque
 import os
 import sys
 import tkinter as tk
 from tkinter import ttk
 
+from collections import deque
 from logging import getLogger
+from typing import Callable
 # from xml.etree import ElementTree as ET
 
 from openlcb.openlcbnetwork import element_to_dict
@@ -67,7 +68,7 @@ class CDIForm(ttk.Frame, OpenLCBNetwork):
         self._treeview = None
         self._gui(self._container)
 
-    def _gui(self, container):
+    def _gui(self, container: tk.Widget):
         if self._top_widgets:
             raise RuntimeError("gui can only be called once unless reset")
         self._status_var = tk.StringVar(self)
@@ -96,16 +97,17 @@ class CDIForm(ttk.Frame, OpenLCBNetwork):
     #     return OpenLCBNetwork.connect(self, new_socket, localNodeID,
     #                                   callback=callback)
 
-    def downloadCDI(self, farNodeID, callback=None):
+    def downloadCDI(self, farNodeID: str,
+                    callback: Callable[[dict], None] = None):
         self.set_status("Downloading CDI...")
         self.ignore_non_gui_tags = deque()
         self._populating_stack = deque()
         super().downloadCDI(farNodeID, callback=callback)
 
-    def set_status(self, message):
+    def set_status(self, message: str):
         self._status_var.set(message)
 
-    def on_cdi_element(self, event_d):
+    def on_cdi_element(self, event_d: dict):
         """Handler for incoming CDI tag
         (Use this for callback in downloadCDI, which sets parser's
         _onElement)
@@ -147,7 +149,7 @@ class CDIForm(ttk.Frame, OpenLCBNetwork):
         else:
             self.root.after(0, self._on_cdi_element_start, event_d)
 
-    def _on_cdi_element_end(self, event_d):
+    def _on_cdi_element_end(self, event_d: dict):
         name = event_d['name']
         nameLower = name.lower()
         if (self.ignore_non_gui_tags
@@ -179,7 +181,7 @@ class CDIForm(ttk.Frame, OpenLCBNetwork):
             return ""  # "" (empty str) is magic value for top of ttk.Treeview
         return self._populating_stack.pop()
 
-    def _on_cdi_element_start(self, event_d):
+    def _on_cdi_element_start(self, event_d: dict):
         element = event_d.get('element')
         segment = event_d.get('segment')
         groups = event_d.get('groups')
