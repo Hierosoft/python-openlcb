@@ -17,22 +17,22 @@ if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-from openlcb import precise_sleep
-from openlcb.canbus.gridconnectobserver import GridConnectObserver
-from openlcb.tcplink.tcpsocket import TcpSocket
+from openlcb import precise_sleep  # noqa: E402
+from openlcb.canbus.gridconnectobserver import GridConnectObserver  # noqa:E402
+from openlcb.tcplink.tcpsocket import TcpSocket  # noqa: E402
 
-from openlcb.canbus.canphysicallayergridconnect import (
+from openlcb.canbus.canphysicallayergridconnect import (  # noqa: E402
     CanPhysicalLayerGridConnect,
 )
-from openlcb.canbus.canlink import CanLink
-from openlcb.nodeid import NodeID
-from openlcb.datagramservice import (
+from openlcb.canbus.canlink import CanLink  # noqa: E402
+from openlcb.nodeid import NodeID  # noqa: E402
+from openlcb.datagramservice import (  # noqa: E402
     # DatagramWriteMemo,
     # DatagramReadMemo,
     DatagramService,
 )
-from openlcb.memoryservice import (
-    MemoryReadMemo,
+from openlcb.memoryservice import (  # noqa: E402
+    # MemoryReadMemo,
     # MemoryWriteMemo,
     MemoryService,
 )
@@ -113,7 +113,7 @@ memoryService = MemoryService(datagramService)
 
 
 def memoryLengthReply(address) :
-    print ("memory length reply: "+str(address))
+    print("memory length reply: "+str(address))
 
 
 #######################
@@ -140,6 +140,7 @@ def pumpEvents():
         sock.sendString(string)
         physicalLayer.onFrameSent(frame)
 
+
 # have the socket layer report up to bring the link layer up and get an alias
 
 print("      SL : link up...")
@@ -152,6 +153,7 @@ while canLink.pollState() != CanLink.State.Permitted:
     pumpEvents()
     precise_sleep(.02)
 print("      SL : link up")
+
 
 def memoryRequest():
     """Create and send a read datagram.
@@ -166,7 +168,8 @@ def memoryRequest():
 #     memMemo = MemoryReadMemo(NodeID(settings['farNodeID']),
 #                              64, 0xFF, 0, memoryReadFail,
 #                              memoryReadSuccess)
-    memoryService.requestSpaceLength(0xFF, NodeID(settings['farNodeID']), memoryLengthReply)
+    memoryService.requestSpaceLength(0xFF, NodeID(settings['farNodeID']),
+                                     memoryLengthReply)
 
 
 import threading  # noqa E402
