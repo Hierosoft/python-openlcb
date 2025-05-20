@@ -317,7 +317,7 @@ def memoryRead():
         print("Waiting for connection sequence to complete...")
         # This delay could be .2, but longer to reduce console messages:
         time.sleep(.5)
-
+    print("Requesting memory read. Please wait...")
     # read 64 bytes from the CDI space starting at address zero
     memMemo = MemoryReadMemo(NodeID(settings['farNodeID']), 64, 0xFF, 0,
                              memoryReadFail, memoryReadSuccess)
