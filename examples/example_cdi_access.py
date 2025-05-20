@@ -252,13 +252,13 @@ def pumpEvents():
                     _ = observer.next()
                     # packet_str = _
                     # print("   RR: "+packet_str.strip())
-                    # ^ commented since MyHandler shows parsed XML
-                    #   fields instead
+                    # ^ commented since very verbose (MyHandler shows
+                    #   parsed XML fields later anyway)
             # pass to link processor
             physicalLayer.handleData(received)
     except BlockingIOError:
         pass
-    canLink.pollState()
+    canLink.pollState()  # Advance delayed state(s) if necessary
     while True:
         frame = physicalLayer.pollFrame()
         if not frame:
@@ -296,26 +296,13 @@ def memoryRead():
     """
     import time
     time.sleep(.21)
-    # ^ 200ms is the time span in which a node with the same alias
-    #   (*only if it has the same alias*) must reply to ensure our alias
-    #   is ok according to the LCC CAN Frame Transfer Standard.
-    #   - The countdown does not start until after the socket loop
-    #     calls onFrameSent. This ensures that nodes had a chance to
-    #     respond (the Standard only states to wait after sending, so
-    #     any latency after send is the responsibility of the Standard).
-    #   - Then wait longer below if there was a failure/retry:
-    #     According to the Standard any error or collision (See
-    #     processCollision in this implementation) must restart the
-    #     sequence and prevent CanLink.State.Permitted until the
-    #     sequence completes without error), before trying to use the
-    #     LCC network:
-    while canLink._state != CanLink.State.Permitted:
-        # Would only take more than ~200ms (possibly a few nanoseconds
-        #   more for latency on the part of this program itself)
-        #   if multiple alias collisions
-        #   (alias is incremented to find a unique one)
+    # ^ 200ms: See section 6.2.1 of CAN Frame Transfer Standard
+    #   (CanLink.State.Permitted will only occur after that, but waiting
+    #   now will reduce output & delays below in this example).
+    while canLink.getState() != CanLink.State.Permitted:
         print("Waiting for connection sequence to complete...")
-        # This delay could be .2, but longer to reduce console messages:
+        # This delay could be .2 (per alias collision), but longer to
+        #   reduce console messages:
         time.sleep(.5)
     print("Requesting memory read. Please wait...")
     # read 64 bytes from the CDI space starting at address zero

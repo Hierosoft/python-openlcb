@@ -269,6 +269,10 @@ class CanLink(LinkLayer):
         # TODO: Make sure upper layers handle any states
         #   necessary (formerly only states other than Initial were
         #   Inhibited & Permitted).
+        self.pollState()  # May enqueue frame(s) and/or change state
+        #  (Calling it here may speed up certain state changes, but will
+        #  not cause infinite recursion since it only should call this
+        #  when state actually changed)
 
     def handleFrameReceived(self, frame: CanFrame):
         """Call the correct handler if any for a received frame.
@@ -280,6 +284,7 @@ class CanLink(LinkLayer):
             frame (CanFrame): Any CanFrame, OpenLCB/LCC or not (if
                 not then ignored).
         """
+        handled = True  # True if state may change, otherwise set False
         control_frame = self.decodeControlFrameFormat(frame)
         if not ControlFrame.isInternal(control_frame):
             self._frameCount += 1
@@ -296,6 +301,14 @@ class CanLink(LinkLayer):
             logger.warning(
                 "Unexpected error report {:08X}"
                 .format(frame.header))
+            self._errorCount += 1
+            if self.isRunningAliasReservation():
+                print("Restarting alias reservation due to error ({})."
+                      .format(control_frame))
+                # Restart alias reservation process if an
+                #   error occurs during it, as per section
+                #   6.2.1 of CAN Frame Transfer - Standard.
+                self.defineAndReserveAlias()
         elif control_frame == ControlFrame.LinkDown:
             self.handleReceivedLinkDown(frame)
         elif control_frame == ControlFrame.CID:
@@ -330,7 +343,9 @@ class CanLink(LinkLayer):
             logger.warning(
                 "Unexpected CAN header 0x{:08X}"
                 .format(frame.header))
+            handled = False
         else:
+            handled = False
             # This should never happen due to how
             #   decodeControlFrameFormat works, but this is a "not
             #   implemented" output for ensuring completeness (If this
@@ -338,6 +353,8 @@ class CanLink(LinkLayer):
             logger.warning(
                 "Invalid control frame format 0x{:08X}"
                 .format(control_frame))
+        if handled:
+            self.pollState()  # May enqueue frame(s) and/or change state.
 
     def isRunningAliasReservation(self) -> bool:
         return self._state in (
@@ -954,6 +971,12 @@ class CanLink(LinkLayer):
                     #   reservation:
                     self._waitingForAliasStart = None
                     self.setState(CanLink.State.EnqueueAliasReservation)
+        # NOTE: *All* other state processing is done in _onStateChange
+        #   which is always called by setState, so avoid infinite
+        #   recursion by only calling setState from here if state is
+        #   sure to have changed, and won't change to a state this
+        #   handles since it calls this (and do all non-delayed state
+        #   changes in _onStateChange not here).
 
         return self.getState()
 

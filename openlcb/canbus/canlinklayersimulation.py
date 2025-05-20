@@ -29,7 +29,7 @@ class CanLinkLayerSimulation(CanLink):
         #         physicalLayer.handleData(received)
         # except BlockingIOError:
         #     pass
-        self.pollState()
+        self.pollState()  # run first since may enqueue frame(s)
         while True:
             # self.physicalLayer must be set by canLink constructor by
             #   passing a physicalLayer to it.
@@ -66,6 +66,7 @@ class CanLinkLayerSimulation(CanLink):
         debug_count = 0
         second_state = None
         while True:
+            # NOTE: Must call handleData each read regardless of pollState().
             debug_count += 1
             # print("{}. state: {}".format(debug_count, state))
             if state == CanLink.State.Permitted:
@@ -93,7 +94,7 @@ class CanLinkLayerSimulation(CanLink):
                          .format(state))
                     second_state = state
                 # If pumpEvents blocks for at least 200ms after send
-                #   then receives, responses may have already been send
+                #   then receives, responses may have already been sent
                 #   to handleFrameReceived, in which case we may be in a
                 #   later state. That isn't recommended except for
                 #   realtime applications (or testing). However, if that
@@ -120,6 +121,8 @@ class CanLinkLayerSimulation(CanLink):
                     raise TimeoutError(
                         "In Standard require_remote_nodes=False mode,"
                         " but failed to proceed to Permitted state.")
-            precise_sleep(.02)
+            precise_sleep(.02)  # must be *less than* 200ms (.2) to process
+            #   collisions (via handleData) if any during
+            #   CanLink.State.WaitForAliases.
             state = self.pollState()
         print("[CanLinkLayerSimulation] waitForReady...done")

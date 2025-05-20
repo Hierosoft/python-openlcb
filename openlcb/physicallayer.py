@@ -62,9 +62,14 @@ class PhysicalLayer:
         raise NotImplementedError(
             "This method is only for Realtime subclass(es)"
             " (which should only be used when not using GridConnect"
-            " subclass, such for testing)")
+            " subclass, such for testing). Otherwise use"
+            " sendFrameAfter.")
         # assert isinstance(data, (bytes, bytearray))
         # self._send_chunks.append(data)
+
+    def hasFrame(self) -> bool:
+        """Check if there is a frame queued to send."""
+        return bool(self._send_frames)
 
     def pollFrame(self):
         """Check if there is another frame queued and get it.
@@ -81,6 +86,7 @@ class PhysicalLayer:
             data = self._send_frames.popleft()
             return data
         except IndexError:  # "popleft from an empty deque"
+            # (no problem, just fall through and return None)
             pass
         return None
 

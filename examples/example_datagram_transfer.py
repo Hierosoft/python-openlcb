@@ -110,7 +110,7 @@ def pumpEvents():
                 print("   RR: "+packet_str.strip())
         # pass to link processor
         physicalLayer.handleData(received)
-    canLink.pollState()
+    canLink.pollState()  # Advance delayed state(s) if necessary
     while True:
         frame = physicalLayer.pollFrame()
         if frame is None:

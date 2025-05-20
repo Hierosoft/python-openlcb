@@ -85,10 +85,15 @@ class LinkLayer:
             "{} abstract handleFrameReceived called (expected implementation)"
             .format(type(self).__name__))
 
+    def pollState(self):
+        print("Abstract pollState ran (implement in subclass)."
+              "  Continuing anyway (assuming non-CAN or test subclass).")
+
     def handleFrameSent(self, frame):
         """Update state based on the frame having been sent."""
         if frame.afterSendState is not None:
-            self.setState(frame.afterSendState)
+            self.setState(frame.afterSendState)  # may change again
+            #   since setState calls pollState via _onStateChanged.
 
     def onDisconnect(self):
         """Run this whenever the socket connection is lost
@@ -114,7 +119,11 @@ class LinkLayer:
         """Reusable LinkLayer setState
         (enforce type of state in _onStateChanged implementation in subclass)
         """
+        # Run _onStateChange *even if state is same* as old state, to
+        #   processes state as soon as possible (Let it catch up in case
+        #   _state was set manually etc).
         oldState = self._state
+
         newState = state  # keep a copy for _onStateChanged, for thread safety
         #   (ensure value doesn't change between two lines below)
         self._state = newState
