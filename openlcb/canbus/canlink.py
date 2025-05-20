@@ -269,10 +269,12 @@ class CanLink(LinkLayer):
         # TODO: Make sure upper layers handle any states
         #   necessary (formerly only states other than Initial were
         #   Inhibited & Permitted).
-        self.pollState()  # May enqueue frame(s) and/or change state
-        #  (Calling it here may speed up certain state changes, but will
-        #  not cause infinite recursion since it only should call this
-        #  when state actually changed)
+        self.pollState()  # May enqueue frame(s) via eventual recursion
+        #  back to here, and/or change state. Calling it here may speed
+        #  up certain state changes (prevent useless pollState loop
+        #  iterations), but will not cause infinite recursion since
+        #  pollState only should call this (via setState) when state
+        #  actually changed.
 
     def handleFrameReceived(self, frame: CanFrame):
         """Call the correct handler if any for a received frame.
