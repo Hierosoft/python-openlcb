@@ -184,3 +184,4 @@ cython_debug/
 /doc/_autosummary
 /examples/settings.json
 /.venv-3.12/
+/cached-cdi.xml

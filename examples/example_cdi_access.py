@@ -235,6 +235,9 @@ def processXML(content: str) :
     #   last packet was reached for the requested read.
     #   - See memoryReadSuccess comments for details.
     with open("cached-cdi.xml", 'w') as stream:
+        # NOTE: Actual caching should key by all SNIP info that could
+        #   affect CDI/FDI: manufacturer, model, and version. Without
+        #   all 3 being present in SNIP, the cache may be incorrect.
         stream.write(content)
     xml.sax.parseString(content, handler)
     print("\nParser done")
