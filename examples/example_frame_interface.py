@@ -62,7 +62,7 @@ def pumpEvents():
         # pass to link processor
         physicalLayer.handleData(received)
 
-    # Normally the lop below can be replaced by canLink.sendAll(sock),
+    # Normally the loop below can be replaced by canLink.sendAll(sock),
     #   but in this example we have no link layer.
     # canLink.pollState()
     while True:
