@@ -10,13 +10,22 @@ from openlcb.frameencoder import FrameEncoder
 
 class CanPhysicalLayerSimulation(CanPhysicalLayer, FrameEncoder):
 
+    """Simulation CanPhysicalLayer and FrameEncoder implementation
+    Attributes:
+        received_chunks (list[bytearray]): Reserved for future use.
+    """
     def __init__(self):
         self.receivedFrames: List[CanFrame] = []
         CanPhysicalLayer.__init__(self)
         self.onQueuedFrame = self._onQueuedFrame
+        self.received_chunks = []
 
     def _onQueuedFrame(self, frame: CanFrame):
         raise AttributeError("Not implemented for simulation")
+
+    def handleData(self, data: bytearray, verbose=False):
+        # Do not parse, since simulation. Just collect for later analysis
+        self.received_chunks.append(data)
 
     def captureFrame(self, frame: CanFrame):
         self.receivedFrames.append(frame)

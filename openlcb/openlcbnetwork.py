@@ -22,7 +22,6 @@ import xml.etree.ElementTree as ET
 
 from logging import getLogger
 import xml.sax.handler
-from xml.sax.xmlreader import AttributesImpl
 # from xml.sax.xmlreader import AttributesImpl  # for autocomplete only
 
 from openlcb import formatted_ex, precise_sleep

@@ -44,6 +44,8 @@ observer = GridConnectObserver()
 
 # display response - should be RID from node(s)
 while True:  # have to kill this manually
+    # Normally the receive call and case can be replaced by
+    #   canLink.receiveAll, but we have no canLink in this example.
     received = sock.receive()
     if received is not None:
         observer.push(received)

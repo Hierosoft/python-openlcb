@@ -15,6 +15,7 @@ from typing import Union
 from openlcb.canbus.canphysicallayer import CanPhysicalLayer
 from openlcb.canbus.canframe import CanFrame
 from openlcb.frameencoder import FrameEncoder
+from openlcb.portinterface import PortInterface
 
 GC_START_BYTE = 0x3a  # :
 GC_END_BYTE = 0x3b  # ;
@@ -66,6 +67,49 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         #   bytes/bytearray has no attribute 'format')
         return self.encodeFrameAsString(frame).encode("utf-8")
 
+    def sendAll(self, device: PortInterface, mode="binary", verbose=False):
+        """Send all queued frames using the given socket.
+        Use your CanLink instance's sendAll instead for normal use
+        (high-level features).
+
+        Args:
+            device (PortInterface): A Serial or Socket device
+                implementation of PortInterface so as to provide a send
+                method (Since usually Socket has send & sendString but
+                Serial has write).
+            mode (str, optional): "binary" (use device.send) or "text"
+                (use device.sendString). Defaults to "binary".
+            verbose (bool, optional): Print each packet sent (not
+                recommend for numerous read requests such as CDI/FDI).
+
+        Returns:
+            int: The count of frames sent. If 0, None were queued by
+                sendFrameAfter (or internal python-openlcb methods which
+                call it) since the queue was created or since the last
+                time all frames were polled.
+        """
+        assert mode in ("binary", "text")
+        count = 0
+        try:
+            while True:
+                frame: CanFrame = self._send_frames.popleft()
+                # ^ exits loop with IndexError when done.
+                if mode == "binary":
+                    data = self.encodeFrameAsData(frame)
+                    device.send(data)
+                else:
+                    data = self.encodeFrameAsString(frame)
+                    device.sendString(data)
+                self.onFrameSent(frame)  # Calls setState if necessary
+                #   (if frame.afterSendState is not None).
+                if verbose:
+                    print("SENT: {}".format(data))
+                count += 1
+        except IndexError:
+            # nothing more to do (queue is empty)
+            pass
+        return count
+
     def handleDataString(self, string: str):
         '''Provide string from the outside link to be parsed
 
@@ -75,14 +119,16 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         # formerly pushString formerly receiveString
         self.handleData(string.encode("utf-8"))
 
-    def handleData(self, data: Union[bytes, bytearray]):
+    def handleData(self, data: Union[bytes, bytearray], verbose=False):
         """Provide characters from the outside link to be parsed
 
         Args:
             data (Union[bytes,bytearray]): new data from outside link
+            verbose (bool, optional): If True, print each frame
+                detected.
         """
         self.inboundBuffer += data
-        processedCount = 0
+        lastByte = 0  # last index is at ';'
         if GC_END_BYTE in self.inboundBuffer:
             #  ^ ';' ends message so we have at least one (CR/LF not required)
             # found end, now find start of that same message, earlier in buffer
@@ -99,7 +145,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
                         header = (header << 4)+nextByte
                     # offset 10 is N
                     # offset 11 might be data, might be ;
-                    processedCount = index+11
+                    lastByte = index+11
                     for dataItem in range(0, 8):
                         if self.inboundBuffer[index+11+2*dataItem] == GC_END_BYTE:  # noqa: E501
                             break
@@ -117,11 +163,14 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
                         #         "Got {} for high nibble (part1 << 4 == {})."
                         #         .format(part1, high_nibble))
                         outData += bytearray([high_nibble | part2])
-                        processedCount += 2
+                        lastByte += 2
                     # lastByte is index of ; in this message
 
                     cf = CanFrame(header, outData)
                     self.fireFrameReceived(cf)
+                    if verbose:
+                        print("- RECV {}".format(
+                            self.inboundBuffer[index:lastByte+1].strip()))
 
             # shorten buffer by removing the processed message
-            self.inboundBuffer = self.inboundBuffer[processedCount:]
+            self.inboundBuffer = self.inboundBuffer[lastByte:]

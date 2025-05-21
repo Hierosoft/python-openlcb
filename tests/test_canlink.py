@@ -13,6 +13,7 @@ from openlcb.message import Message
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
 from openlcb.canbus.controlframe import ControlFrame
+from openlcb.portinterface import PortInterface
 
 
 class PhyMockLayer(CanPhysicalLayer):
@@ -37,6 +38,17 @@ class MessageMockLayer:
         self.receivedMessages.append(msg)
 
 
+class MockPort(PortInterface):
+    def send(self, data):
+        pass
+
+    def sendString(self, data):
+        pass
+
+    def receive(self):
+        return None
+
+
 def getLocalNodeIDStr():
     return "05.01.01.01.03.01"
 
@@ -46,6 +58,9 @@ def getLocalNodeID():
 
 
 class TestCanLinkClass(unittest.TestCase):
+    def __init__(self, *args, **kwargs):
+        self.device = MockPort()
+        super(TestCanLinkClass, self).__init__(*args, **kwargs)
 
     # MARK: - Alias calculations
     def testIncrementAlias48(self):
@@ -107,7 +122,7 @@ class TestCanLinkClass(unittest.TestCase):
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
         canPhysicalLayer.physicalLayerUp()
-        canLink.waitForReady()
+        canLink.waitForReady(self.device)
 
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 7)
         self.assertEqual(canLink._state, CanLink.State.Permitted)
@@ -213,7 +228,7 @@ class TestCanLinkClass(unittest.TestCase):
         canPhysicalLayer.fireFrameReceived(
             CanFrame(ControlFrame.RID.value, ourAlias))
         # ^ collision
-        canLink.waitForReady()
+        canLink.waitForReady(self.device)
         self.assertEqual(len(canPhysicalLayer.receivedFrames), 8)
         # ^ includes recovery of new alias 4 CID, RID, AMR, AME
         self.assertEqual(canPhysicalLayer.receivedFrames[0],
@@ -365,7 +380,7 @@ class TestCanLinkClass(unittest.TestCase):
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
         canPhysicalLayer.physicalLayerUp()
-        canLink.waitForReady()
+        canLink.waitForReady(self.device)
 
         # map an alias we'll use
         amd = CanFrame(0x0701, 0x247)
@@ -402,7 +417,7 @@ class TestCanLinkClass(unittest.TestCase):
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
         canPhysicalLayer.physicalLayerUp()
-        canLink.waitForReady()
+        canLink.waitForReady(self.device)
 
         # don't map alias with AMD
 
@@ -440,7 +455,7 @@ class TestCanLinkClass(unittest.TestCase):
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
         canPhysicalLayer.physicalLayerUp()
-        canLink.waitForReady()
+        canLink.waitForReady(self.device)
 
         # map an alias we'll use
         amd = CanFrame(0x0701, 0x247)
@@ -483,7 +498,7 @@ class TestCanLinkClass(unittest.TestCase):
         canLink.registerMessageReceivedListener(messageLayer.receiveMessage)
 
         canPhysicalLayer.physicalLayerUp()
-        canLink.waitForReady()
+        canLink.waitForReady(self.device)
 
         # map two aliases we'll use
         amd = CanFrame(0x0701, 0x247)
@@ -522,7 +537,7 @@ class TestCanLinkClass(unittest.TestCase):
         print("[testMultiFrameDatagram] state={}"
               .format(canLink.getState()))
         canPhysicalLayer.physicalLayerUp()
-        canLink.waitForReady()
+        canLink.waitForReady(self.device)
 
         # map two aliases we'll use
         amd = CanFrame(0x0701, 0x247)

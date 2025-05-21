@@ -12,7 +12,6 @@ host|host:port            (optional) Set the address (or using a colon,
 # region same code as other examples
 from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb import precise_sleep
-from openlcb.canbus.gridconnectobserver import GridConnectObserver
 settings = Settings()
 
 if __name__ == "__main__":
@@ -97,28 +96,6 @@ datagramService.registerDatagramReceivedListener(datagramReceiver)
 
 #######################
 
-observer = GridConnectObserver()
-
-
-def pumpEvents():
-    received = sock.receive()
-    if received is not None:
-        if settings['trace']:
-            observer.push(received)
-            if observer.hasNext():
-                packet_str = observer.next()
-                print("   RR: "+packet_str.strip())
-        # pass to link processor
-        physicalLayer.handleData(received)
-    canLink.pollState()  # Advance delayed state(s) if necessary
-    while True:
-        frame = physicalLayer.pollFrame()
-        if frame is None:
-            break
-        sock.sendString(frame.encodeAsString())
-        physicalLayer.onFrameSent(frame)
-
-
 # have the socket layer report up to bring the link layer up and get an alias
 print("      SL : link up...")
 physicalLayer.physicalLayerUp()
@@ -127,7 +104,8 @@ physicalLayer.physicalLayerUp()
 print("      SL : link up")
 
 while canLink.pollState() != CanLink.State.Permitted:
-    pumpEvents()
+    canLink.receiveAll(sock, verbose=settings['trace'])
+    canLink.sendAll(sock)
     precise_sleep(.02)
 
 
@@ -153,7 +131,7 @@ thread.start()
 
 # process resulting activity
 while True:
-    pumpEvents()
-
+    canLink.receiveAll(sock, verbose=settings['trace'])
+    canLink.sendAll(sock)
 
 canLink.onDisconnect()

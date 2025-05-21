@@ -18,7 +18,6 @@ if __name__ == "__main__":
 # endregion same code as other examples
 
 from openlcb import precise_sleep  # noqa: E402
-from openlcb.canbus.gridconnectobserver import GridConnectObserver  # noqa:E402
 from openlcb.tcplink.tcpsocket import TcpSocket  # noqa: E402
 
 from openlcb.canbus.canphysicallayergridconnect import (  # noqa: E402
@@ -118,29 +117,6 @@ def memoryLengthReply(address) :
 
 #######################
 
-
-def pumpEvents():
-    received = sock.receive()
-    if received is not None:
-        if settings['trace']:
-            observer.push(received)
-            if observer.hasNext():
-                packet_str = observer.next()
-                print("   RR: "+packet_str.strip())
-        # pass to link processor
-        physicalLayer.handleData(received)
-    canLink.pollState()
-
-    while True:
-        frame = physicalLayer.pollFrame()
-        if frame is None:
-            break
-        string = frame.encodeAsString()
-        print("      SR: {}".format(string.strip()))
-        sock.sendString(string)
-        physicalLayer.onFrameSent(frame)
-
-
 # have the socket layer report up to bring the link layer up and get an alias
 
 print("      SL : link up...")
@@ -150,7 +126,8 @@ physicalLayer.physicalLayerUp()
 
 
 while canLink.pollState() != CanLink.State.Permitted:
-    pumpEvents()
+    canLink.receiveAll(sock, verbose=settings['trace'])
+    canLink.sendAll(sock, verbose=True)
     precise_sleep(.02)
 print("      SL : link up")
 
@@ -176,12 +153,10 @@ import threading  # noqa E402
 thread = threading.Thread(target=memoryRequest)
 thread.start()
 
-observer = GridConnectObserver()
-
-
 # process resulting activity
 while True:
-    pumpEvents()
+    canLink.receiveAll(sock, verbose=settings['trace'])
+    canLink.sendAll(sock, verbose=True)
     precise_sleep(.01)
 
 canLink.onDisconnect()

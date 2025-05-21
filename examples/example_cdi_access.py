@@ -12,10 +12,9 @@ host|host:port            (optional) Set the address (or using a colon,
 '''
 # region same code as other examples
 import copy
-from xml.sax.expatreader import AttributesImpl
+# from xml.sax.expatreader import AttributesImpl  # only for IDE autocomplete
 from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb import precise_sleep
-from openlcb.canbus.gridconnectobserver import GridConnectObserver
 from openlcb.tcplink.tcpsocket import TcpSocket
 settings = Settings()
 
@@ -103,8 +102,6 @@ memoryService = MemoryService(datagramService)
 resultingCDI = bytearray()
 
 # callbacks to get results of memory read
-
-observer = GridConnectObserver()
 
 complete_data = False
 read_failed = False
@@ -245,43 +242,19 @@ def processXML(content: str) :
 
 #######################
 
-def pumpEvents():
-    try:
-        received = sock.receive()
-        if received is not None:
-            if settings['trace']:
-                observer.push(received)
-                if observer.hasNext():
-                    _ = observer.next()
-                    # packet_str = _
-                    # print("   RR: "+packet_str.strip())
-                    # ^ commented since very verbose (MyHandler shows
-                    #   parsed XML fields later anyway)
-            # pass to link processor
-            physicalLayer.handleData(received)
-    except BlockingIOError:
-        pass
-    canLink.pollState()  # Advance delayed state(s) if necessary
-    while True:
-        frame = physicalLayer.pollFrame()
-        if not frame:
-            break
-        string = frame.encodeAsString()
-        # print("      SENT packet: "+string.strip())
-        # ^ This is too verbose for this example (each is a
-        #   request to read a 64 byte chunks of the CDI XML)
-        sock.sendString(string)
-        physicalLayer.onFrameSent(frame)
-
-
 # have the socket layer report up to bring the link layer up and get an alias
 print("      QUEUE frames : link up...")
 physicalLayer.physicalLayerUp()
 print("      QUEUED frames : link up...waiting...")
 while canLink.pollState() != CanLink.State.Permitted:
-    pumpEvents()  # provides incoming data to physicalLayer & sends queued
+    # provides incoming data to physicalLayer & sends queued:
+    canLink.receiveAll(sock, verbose=True)
+    canLink.sendAll(sock)
+
     if canLink.getState() == CanLink.State.WaitForAliases:
-        pumpEvents()  # prevent assertion error below, proceed to send.
+        # canLink.receiveAll(sock, verbose=True)
+        canLink.sendAll(sock)
+        # ^ prevent assertion error below, proceed to send.
     if canLink.pollState() == CanLink.State.Permitted:
         break
     assert canLink.getWaitForAliasResponseStart() is not None, \
@@ -323,11 +296,12 @@ print()
 print("This example will exit on failure or complete data.")
 while not complete_data and not read_failed:
     # In this example, requests are initiate by the
-    #   memoryRead thread, and pumpEvents actually
+    #   memoryRead thread, and receiveAll actually
     #   receives the data from the requested memory space (CDI in this
     #   case) and offset (incremental position in the file/data,
     #   incremented by this example's memoryReadSuccess handler).
-    pumpEvents()
+    canLink.receiveAll(sock)
+    canLink.sendAll(sock)
     if canLink.nodeIdToAlias != previous_nodes:
         print("nodeIdToAlias updated: {}".format(canLink.nodeIdToAlias))
     precise_sleep(.01)

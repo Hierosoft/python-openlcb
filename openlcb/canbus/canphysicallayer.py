@@ -83,7 +83,7 @@ class CanPhysicalLayer(PhysicalLayer):
         #   the openlcb network stack (This Python module) to
         #   operate--See
         #   <https://github.com/bobjacobsen/python-openlcb/issues/62#issuecomment-2775668681>
-        self.onFrameReceived(frame)
+        self.onFrameReceived(frame)  # canLink.handleFrameReceived reference
         for listener in self._frameReceivedListeners:
             listener(frame)
 

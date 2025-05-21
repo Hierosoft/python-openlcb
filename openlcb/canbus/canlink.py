@@ -19,7 +19,6 @@ Multi-frame addressed messages are accumulated in parallel
 '''
 
 from enum import Enum
-
 from logging import getLogger
 from timeit import default_timer
 from typing import (
@@ -28,16 +27,20 @@ from typing import (
     # Union,  # in case `|` doesn't support 'type' in this Python version
 )
 
-from openlcb import emit_cast, formatted_ex
+from openlcb import (
+    precise_sleep,
+    emit_cast,
+    formatted_ex,
+)
 from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.canphysicallayer import CanPhysicalLayer
 from openlcb.canbus.controlframe import ControlFrame
-
 from openlcb.linklayer import LinkLayer
 from openlcb.message import Message
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
 from openlcb.physicallayer import PhysicalLayer
+from openlcb.portinterface import PortInterface
 
 logger = getLogger(__name__)
 
@@ -1149,6 +1152,154 @@ class CanLink(LinkLayer):
             "unhandled canMTI: {}, marked Unknown"
             .format(frame))
         return MTI.Unknown
+
+    def receiveAll(self, device: PortInterface, verbose=False):
+        """Receive all data on the given device.
+        Args:
+            device (PortInterface): Device which *must* be in
+                non-blocking mode (otherwise necessary two-way
+                communication such as alias reservation cannot occur).
+            verbose (bool, optional): If True, print each full packet.
+        """
+        try:
+            data = device.receive()  # If timeout, set non-blocking
+            if data is None:
+                return
+            self.physicalLayer.handleData(data, verbose=verbose)
+        except BlockingIOError:
+            # raised by receive if no data (non-blocking is
+            #   what we want, so fall through).
+            pass
+
+    def sendAll(self, device: PortInterface, mode="binary", verbose=False):
+        """Send all queued frames using the given device.
+
+        Args:
+            device (PortInterface): A Serial or Socket device
+                implementation of PortInterface so as to provide a send
+                method (Since usually Socket has send & sendString but
+                Serial has write).
+            mode (str, optional): "binary" (use device.send) or "text"
+                (use device.sendString). Defaults to "binary".
+            verbose (bool, optional): Print the sent packet (not
+                recommended for numerous memory reads such as CDI/FDI).
+                Defaults to False.
+
+        Returns:
+            int: The count of frames sent. If 0, None were queued by
+                sendFrameAfter (or internal python-openlcb methods which
+                call it) since the queue was created or since the last
+                time all frames were polled.
+        """
+        self.pollState()  # Advance delayed state(s) if necessary
+        #  (done first since may enqueue frames).
+        return self.physicalLayer.sendAll(device, mode=mode, verbose=verbose)
+
+    def waitForReady(self, device: PortInterface, mode="binary",
+                     run_physical_link_up_test=False, verbose=True):
+        """Send and receive frames until.
+        Other thread(s) *must not* use the device during this (that
+        would cause "undefined behavior" at OS level).
+
+        Args:
+            device (PortInterface): *Must* be in non-blocking
+                mode (or send & receive dialog will fail and time out):
+                A Serial or Socket wrapped in the PortInterface to
+                provide send and sendString (since Serial itself has
+                write not send).
+            mode (str, optional): "binary" to use device.send, or "text"
+                to attempt device.sendString.
+            run_physical_link_up_test (bool, optional): Set to True only
+                if the last command that ran was "physicalLayerUp".
+            verbose (bool, optional): If True, print status to
+                console. Defaults to False.
+        Raises:
+            AssertionError: run_physical_link_up_test is True
+                but the state is not initially WaitingForSendCIDSequence
+                or successive states were not triggered by pollState
+                and onFrameSent.
+        """
+        assert device is not None
+        prefix = "[{}] ".format(type(self).__name__)  # show subclass on print
+        first = True
+        state = self.pollState()
+        if verbose:
+            print(prefix+"waitForReady...state={}..."
+                  .format(state))
+        first_state = state
+        if run_physical_link_up_test:
+            assert state == CanLink.State.WaitingForSendCIDSequence
+        debug_count = 0
+        second_state = None
+        while True:
+            # NOTE: Must call handleData each read regardless of pollState().
+            debug_count += 1
+            # if verbose:
+            #     print("{}. state: {}".format(debug_count, state))
+            if state == CanLink.State.Permitted:
+                # This could be the while condition, but
+                #   is here so we can monitor it for testing.
+                break
+            if first is True:
+                first = False
+            if verbose and debug_count < 3:
+                print("  * sendAll")
+            self.sendAll(device, mode=mode, verbose=verbose)
+            if verbose and debug_count < 3:
+                print("  * state: {}".format(state))
+            state = self.getState()
+            if first_state == CanLink.State.WaitingForSendCIDSequence:
+                # State should be set by onFrameSent (called by
+                # sendAll, or in non-simulation cases, the socket loop
+                #   after dequeued and sent, as the next state is )
+                if second_state is None:
+                    assert state == CanLink.State.WaitForAliases, \
+                        ("expected onFrameSent (if properly set to"
+                         " handleFrameSent or overridden for simulation) sent"
+                         " frame's EnqueueAliasAllocationRequest state (CID"
+                         " 4's afterSendState), but state is {}"
+                         .format(state))
+                    second_state = state
+                # If sendAll blocks for at least 200ms after send
+                #   then receives, responses may have already been sent
+                #   to handleFrameReceived, in which case we may be in a
+                #   later state. That isn't recommended except for
+                #   realtime applications (or testing). However, if that
+                #   is programmed, add
+                #   `or state == CanLink.State.EnqueueAliasAllocationRequest`
+                #   to the assertion.
+            if state == CanLink.State.WaitForAliases:
+                if verbose and debug_count < 3:
+                    print("    * sendAll")
+                state = self.pollState()  # set _waitingForAliasStart if None
+                # (prevent getWaitForAliasResponseStart() None in assert below)
+                if device is not None:
+                    try:
+                        data = device.receive()  # If timeout, set non-blocking
+                        self.physicalLayer.handleData(data)
+                    except BlockingIOError:
+                        # raised by receive if no data (non-blocking is
+                        #   what we want, so fall through).
+                        pass
+            state = self.pollState()
+            if state == CanLink.State.Permitted:
+                if verbose:
+                    print("    * state: {}".format(state))
+                break
+            # if verbose:
+            #     print("  * state: {}".format(state))
+            assert self.getWaitForAliasResponseStart() is not None, \
+                "openlcb didn't send 7,6,5,4 CIDs (state={})".format(state)
+            if ((default_timer() - self.getWaitForAliasResponseStart())
+                    > CanLink.ALIAS_RESPONSE_DELAY):
+                # 200ms = standard wait time for responses
+                pass  # no collisions (fail collision test if doing that)
+            precise_sleep(.02)  # must be *less than* 200ms (.2) to process
+            #   collisions (via handleData) if any during
+            #   CanLink.State.WaitForAliases.
+            state = self.pollState()
+        if verbose:
+            print(prefix+"waitForReady...done")
 
     class AccumKey:
         '''Class that holds the ID for accumulating a multi-part message:

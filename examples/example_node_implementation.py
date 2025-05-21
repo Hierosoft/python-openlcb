@@ -145,35 +145,14 @@ canLink.registerMessageReceivedListener(displayOtherNodeIds)
 
 #######################
 
-def pumpEvents():
-    received = sock.receive()
-    if received is not None:
-        if settings['trace']:
-            observer.push(received)
-            if observer.hasNext():
-                packet_str = observer.next()
-                print("   RR: "+packet_str.strip())
-        # pass to link processor
-        physicalLayer.handleData(received)
-    canLink.pollState()
-
-    while True:
-        frame = physicalLayer.pollFrame()
-        if frame is None:
-            break
-        string = frame.encodeAsString()
-        print("      SR: {}".format(string.strip()))
-        sock.sendString(string)
-        physicalLayer.onFrameSent(frame)
-
-
 # have the socket layer report up to bring the link layer up and get an alias
 
 print("      SL : link up...")
 physicalLayer.physicalLayerUp()
 print("      SL : link up...waiting...")
 while canLink.pollState() != CanLink.State.Permitted:
-    pumpEvents()
+    canLink.receiveAll(sock, verbose=settings['trace'])
+    canLink.sendAll(sock, verbose=True)
     precise_sleep(.02)
 print("      SL : link up")
 # request that nodes identify themselves so that we can print their node IDs
@@ -185,7 +164,8 @@ observer = GridConnectObserver()
 
 # process resulting activity
 while True:
-    pumpEvents()
+    canLink.receiveAll(sock, verbose=settings['trace'])
+    canLink.sendAll(sock, verbose=True)
     precise_sleep(.01)
 
 canLink.onDisconnect()

@@ -49,6 +49,9 @@ def sendToSocket(frame: CanFrame):
 
 
 def pumpEvents():
+    # Normally receive call & case below can be replaced by
+    #   canLink.receiveAll(sock), but in this example we have no link
+    #   layer.
     received = sock.receive()
     if received is not None:
         if settings['trace']:
@@ -58,8 +61,10 @@ def pumpEvents():
                 print("   RR: "+packet_str.strip())
         # pass to link processor
         physicalLayer.handleData(received)
-    # canLink.pollState()
 
+    # Normally the lop below can be replaced by canLink.sendAll(sock),
+    #   but in this example we have no link layer.
+    # canLink.pollState()
     while True:
         frame = physicalLayer.pollFrame()
         if frame is None:

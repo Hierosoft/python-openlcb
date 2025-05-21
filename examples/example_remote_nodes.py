@@ -111,31 +111,6 @@ _frameReceivedListeners = physicalLayer._frameReceivedListeners
 assert len(_frameReceivedListeners) == 1, \
     "{} listener(s) unexpectedly".format(len(_frameReceivedListeners))
 
-
-def pumpEvents():
-    received = sock.receive()
-    if received is not None:
-        # may be None if socket.setblocking(False) mode
-        if settings['trace']:
-            observer.push(received)
-            if observer.hasNext():
-                packet_str = observer.next()
-                print("+ RECEIVED Remote: "+packet_str.strip())
-        # pass to link processor
-        physicalLayer.handleData(received)
-    canLink.pollState()
-
-    while True:
-        frame = physicalLayer.pollFrame()
-        if frame is None:
-            break
-        string = frame.encodeAsString()
-        if True:  # if settings['trace']:
-            print("- SENT Remote: "+string.strip())
-        sock.sendString(string)
-        physicalLayer.onFrameSent(frame)
-
-
 # bring the CAN level up
 
 print("* QUEUE Message: link up...")
@@ -147,30 +122,13 @@ cidSequenceStart = default_timer()
 previousState = canLink.getState()
 print("[main] CanLink previousState={}".format(previousState))
 while True:
-    # This is a pollState loop as our custom pumpEvents function
-    #   calls pollState.
+    # Wait for ready (See also waitForReady)
     state = canLink.getState()
-    if state != previousState:
-        print("[main] CanLink state changed from {} to {}"
-              .format(previousState, state))
-        previousState = state
     if state == CanLink.State.Permitted:
         break
-    pumpEvents()
-    state = canLink.getState()
-    if state != previousState:
-        print("[main] CanLink state changed from {} to {}"
-              .format(previousState, state))
-        previousState = state
+    canLink.receiveAll(sock, verbose=settings['trace'])
+    canLink.sendAll(sock, verbose=True)
 
-    precise_sleep(.02)
-    if default_timer() - cidSequenceStart > 2:  # measured in seconds
-        print("[main] Warning, no response received, assuming no remote nodes"
-              " continuing alias reservation"
-              " (ok to do so after 200ms"
-              " according to CAN Frame Transfer - Standard)")
-        break
-    state = canLink.getState()
 
 if state != previousState:
     print("[main] CanLink state changed from {} to {}"
@@ -187,7 +145,7 @@ print("nodeIdToAlias: {}".format(canLink.nodeIdToAlias))
 def receiveLoop():
     """put the read on a separate thread"""
     while True:
-        pumpEvents()
+        canLink.receiveAll(sock, verbose=settings['trace'])
         precise_sleep(.01)
 
 

@@ -25,6 +25,8 @@ from collections import deque
 from logging import getLogger
 from typing import Union
 
+from openlcb.portinterface import PortInterface
+
 logger = getLogger(__name__)
 
 
@@ -70,6 +72,24 @@ class PhysicalLayer:
     def hasFrame(self) -> bool:
         """Check if there is a frame queued to send."""
         return bool(self._send_frames)
+
+    def sendAll(self, device: PortInterface, mode="binary", verbose=False):
+        """Abstract method for sending queued frames"""
+        raise NotImplementedError(
+            "This must be implemented in a subclass"
+            " which implements FrameEncoder"
+            " (any real physical layer has an encoding).")
+        count = 0
+        try:
+            while True:
+                data = self._send_chunks.popleft()
+                # ^ exits loop with IndexError when done.
+                device.send(data)
+                count += 1
+        except IndexError:
+            # nothing more to do (queue is empty)
+            pass
+        return count
 
     def pollFrame(self):
         """Check if there is another frame queued and get it.
