@@ -126,8 +126,8 @@ physicalLayer.physicalLayerUp()
 
 
 while canLink.pollState() != CanLink.State.Permitted:
-    canLink.receiveAll(sock, verbose=settings['trace'])
-    canLink.sendAll(sock, verbose=True)
+    physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    physicalLayer.sendAll(sock, verbose=True)
     precise_sleep(.02)
 print("      SL : link up")
 
@@ -155,8 +155,8 @@ thread.start()
 
 # process resulting activity
 while True:
-    canLink.receiveAll(sock, verbose=settings['trace'])
-    canLink.sendAll(sock, verbose=True)
+    physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    physicalLayer.sendAll(sock, verbose=True)
     precise_sleep(.01)
 
 canLink.onDisconnect()

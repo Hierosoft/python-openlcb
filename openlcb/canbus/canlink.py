@@ -1153,53 +1153,12 @@ class CanLink(LinkLayer):
             .format(frame))
         return MTI.Unknown
 
-    def receiveAll(self, device: PortInterface, verbose=False):
-        """Receive all data on the given device.
-        Args:
-            device (PortInterface): Device which *must* be in
-                non-blocking mode (otherwise necessary two-way
-                communication such as alias reservation cannot occur).
-            verbose (bool, optional): If True, print each full packet.
-        """
-        try:
-            data = device.receive()  # If timeout, set non-blocking
-            if data is None:
-                return
-            self.physicalLayer.handleData(data, verbose=verbose)
-        except BlockingIOError:
-            # raised by receive if no data (non-blocking is
-            #   what we want, so fall through).
-            pass
-
-    def sendAll(self, device: PortInterface, mode="binary", verbose=False):
-        """Send all queued frames using the given device.
-
-        Args:
-            device (PortInterface): A Serial or Socket device
-                implementation of PortInterface so as to provide a send
-                method (Since usually Socket has send & sendString but
-                Serial has write).
-            mode (str, optional): "binary" (use device.send) or "text"
-                (use device.sendString). Defaults to "binary".
-            verbose (bool, optional): Print the sent packet (not
-                recommended for numerous memory reads such as CDI/FDI).
-                Defaults to False.
-
-        Returns:
-            int: The count of frames sent. If 0, None were queued by
-                sendFrameAfter (or internal python-openlcb methods which
-                call it) since the queue was created or since the last
-                time all frames were polled.
-        """
-        self.pollState()  # Advance delayed state(s) if necessary
-        #  (done first since may enqueue frames).
-        return self.physicalLayer.sendAll(device, mode=mode, verbose=verbose)
-
     def waitForReady(self, device: PortInterface, mode="binary",
                      run_physical_link_up_test=False, verbose=True):
         """Send and receive frames until.
-        Other thread(s) *must not* use the device during this (that
-        would cause "undefined behavior" at OS level).
+        Other thread(s) *must not* use the device during this
+        (overlapping read or write would cause "undefined behavior" at
+        OS level).
 
         Args:
             device (PortInterface): *Must* be in non-blocking
@@ -1224,8 +1183,7 @@ class CanLink(LinkLayer):
         first = True
         state = self.pollState()
         if verbose:
-            print(prefix+"waitForReady...state={}..."
-                  .format(state))
+            print(prefix+"waitForReady...state={}...".format(state))
         first_state = state
         if run_physical_link_up_test:
             assert state == CanLink.State.WaitingForSendCIDSequence
@@ -1244,7 +1202,7 @@ class CanLink(LinkLayer):
                 first = False
             if verbose and debug_count < 3:
                 print("  * sendAll")
-            self.sendAll(device, mode=mode, verbose=verbose)
+            self.physicalLayer.sendAll(device, mode=mode, verbose=verbose)
             if verbose and debug_count < 3:
                 print("  * state: {}".format(state))
             state = self.getState()
@@ -1274,6 +1232,7 @@ class CanLink(LinkLayer):
                 state = self.pollState()  # set _waitingForAliasStart if None
                 # (prevent getWaitForAliasResponseStart() None in assert below)
                 if device is not None:
+                    # self.physicalLayer.receiveAll(device)
                     try:
                         data = device.receive()  # If timeout, set non-blocking
                         self.physicalLayer.handleData(data)

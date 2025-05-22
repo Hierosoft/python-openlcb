@@ -198,3 +198,12 @@ class CanFrame:
         if self.data != other.data:
             return False
         return True
+
+    def difference(self, other):
+        if other is None:
+            return "other is None"
+        if self.header != other.header:
+            return "header {} != {}".format(self.header, other.header)
+        if self.data != other.data:
+            return "data {} != {}".format(self.data, other.data)
+        return None

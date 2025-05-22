@@ -248,12 +248,12 @@ physicalLayer.physicalLayerUp()
 print("      QUEUED frames : link up...waiting...")
 while canLink.pollState() != CanLink.State.Permitted:
     # provides incoming data to physicalLayer & sends queued:
-    canLink.receiveAll(sock, verbose=True)
-    canLink.sendAll(sock)
+    physicalLayer.receiveAll(sock, verbose=True)
+    physicalLayer.sendAll(sock)
 
     if canLink.getState() == CanLink.State.WaitForAliases:
-        # canLink.receiveAll(sock, verbose=True)
-        canLink.sendAll(sock)
+        # physicalLayer.receiveAll(sock, verbose=True)
+        physicalLayer.sendAll(sock)
         # ^ prevent assertion error below, proceed to send.
     if canLink.pollState() == CanLink.State.Permitted:
         break
@@ -300,8 +300,8 @@ while not complete_data and not read_failed:
     #   receives the data from the requested memory space (CDI in this
     #   case) and offset (incremental position in the file/data,
     #   incremented by this example's memoryReadSuccess handler).
-    canLink.receiveAll(sock)
-    canLink.sendAll(sock)
+    physicalLayer.receiveAll(sock)
+    physicalLayer.sendAll(sock)
     if canLink.nodeIdToAlias != previous_nodes:
         print("nodeIdToAlias updated: {}".format(canLink.nodeIdToAlias))
     precise_sleep(.01)

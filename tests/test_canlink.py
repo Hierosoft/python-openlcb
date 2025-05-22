@@ -29,6 +29,31 @@ class PhyMockLayer(CanPhysicalLayer):
         self.receivedFrames.append(data)
 
 
+    def sendAll(self, _, mode="binary", verbose=True):
+        """Simulated sendAll
+        The simulation has no real communication, so no device argument
+        is necessary. See CanLink for a real implementation.
+
+        Args:
+            verbose (bool, optional): If True, print the packet (not
+                recommended in the case of numerous sequential memory
+                read requests such as when reading CDI/FDI).
+        """
+        if self.canLink:
+            self.canLink.pollState()  # run first since may enqueue frame(s)
+        while True:
+            # self.physicalLayer must be set by canLink constructor by
+            #   passing a physicalLayer to it.
+            frame = self.physicalLayer.pollFrame()
+            if not frame:
+                break
+            string = frame.encodeAsString()
+            # device.sendString(string)  # commented since simulation
+            if verbose:
+                print("      SENT (simulated socket) packet: "+string.strip())
+            self.physicalLayer.onFrameSent(frame)
+
+
 class MessageMockLayer:
     '''Mock Message to record messages requested to be sent'''
     def __init__(self):
@@ -61,6 +86,9 @@ class TestCanLinkClass(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         self.device = MockPort()
         super(TestCanLinkClass, self).__init__(*args, **kwargs)
+
+    def assertFrameEqual(self, frame: CanFrame, other: CanFrame):
+        self.assertEqual(frame, other, msg=frame.difference(other))
 
     # MARK: - Alias calculations
     def testIncrementAlias48(self):
@@ -124,7 +152,7 @@ class TestCanLinkClass(unittest.TestCase):
         canPhysicalLayer.physicalLayerUp()
         canLink.waitForReady(self.device)
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 7)
+        self.assertEqual(len(canPhysicalLayer.sentFrames), 7)
         self.assertEqual(canLink._state, CanLink.State.Permitted)
 
         self.assertEqual(len(messageLayer.receivedMessages), 1)
@@ -151,7 +179,7 @@ class TestCanLinkClass(unittest.TestCase):
 
         canPhysicalLayer.fireFrameReceived(
             CanFrame(ControlFrame.EIR2.value, 0))
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.sentFrames), 0)
         canLink.onDisconnect()
 
     # MARK: - Test AME (Local Node)
@@ -162,9 +190,11 @@ class TestCanLinkClass(unittest.TestCase):
         canLink._state = CanLink.State.Permitted
 
         canPhysicalLayer.fireFrameReceived(CanFrame(ControlFrame.AME.value, 0))
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 1)
-        self.assertEqual(
-            canPhysicalLayer.receivedFrames[0],
+        canLink.pollState()  # add response to queue
+        canPhysicalLayer.sendAll(None)  # add response to sentFrames
+        self.assertEqual(len(canPhysicalLayer.sentFrames), 1)
+        self.assertFrameEqual(
+            canPhysicalLayer.sentFrames[0],
             CanFrame(ControlFrame.AMD.value, ourAlias,
                      canLink.localNodeID.toArray())
         )
@@ -176,7 +206,7 @@ class TestCanLinkClass(unittest.TestCase):
         canLink._state = CanLink.State.Inhibited
 
         canPhysicalLayer.fireFrameReceived(CanFrame(ControlFrame.AME.value, 0))
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.sentFrames), 0)
         canLink.onDisconnect()
 
     def testAMEMatchEvent(self):
@@ -188,10 +218,13 @@ class TestCanLinkClass(unittest.TestCase):
         frame = CanFrame(ControlFrame.AME.value, 0)
         frame.data = bytearray([5, 1, 1, 1, 3, 1])
         canPhysicalLayer.fireFrameReceived(frame)
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 1)
-        self.assertEqual(canPhysicalLayer.receivedFrames[0],
-                         CanFrame(ControlFrame.AMD.value, ourAlias,
-                                  canLink.localNodeID.toArray()))
+        canLink.pollState()  # add response to queue
+        canPhysicalLayer.sendAll(None)  # add response to sentFrames
+        self.assertEqual(len(canPhysicalLayer.sentFrames), 1)
+        self.assertFrameEqual(
+            canPhysicalLayer.sentFrames[0],
+            CanFrame(ControlFrame.AMD.value, ourAlias,
+                     canLink.localNodeID.toArray()))
         canLink.onDisconnect()
 
     def testAMENotMatchEvent(self):
@@ -202,7 +235,7 @@ class TestCanLinkClass(unittest.TestCase):
         frame = CanFrame(ControlFrame.AME.value, 0)
         frame.data = bytearray([0, 0, 0, 0, 0, 0])
         canPhysicalLayer.fireFrameReceived(frame)
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.sentFrames), 0)
         canLink.onDisconnect()
 
     # MARK: - Test Alias Collisions (Local Node)
@@ -214,9 +247,11 @@ class TestCanLinkClass(unittest.TestCase):
 
         canPhysicalLayer.fireFrameReceived(
             CanFrame(7, canLink.localNodeID, ourAlias))
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 1)
-        self.assertEqual(canPhysicalLayer.receivedFrames[0],
-                         CanFrame(ControlFrame.RID.value, ourAlias))
+        canLink.pollState()  # add response to queue
+        canPhysicalLayer.sendAll(None)  # add response to sentFrames
+        self.assertEqual(len(canPhysicalLayer.sentFrames), 1)
+        self.assertFrameEqual(canPhysicalLayer.sentFrames[0],
+                              CanFrame(ControlFrame.RID.value, ourAlias))
         canLink.onDisconnect()
 
     def testRIDreceivedMatch(self):
@@ -229,14 +264,16 @@ class TestCanLinkClass(unittest.TestCase):
             CanFrame(ControlFrame.RID.value, ourAlias))
         # ^ collision
         canLink.waitForReady(self.device)
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 8)
+        self.assertEqual(len(canPhysicalLayer.sentFrames), 8)
         # ^ includes recovery of new alias 4 CID, RID, AMR, AME
-        self.assertEqual(canPhysicalLayer.receivedFrames[0],
-                         CanFrame(ControlFrame.AMR.value, ourAlias,
-                                  bytearray([5, 1, 1, 1, 3, 1])))
-        self.assertEqual(canPhysicalLayer.receivedFrames[6],
-                         CanFrame(ControlFrame.AMD.value, 0x539,
-                                  bytearray([5, 1, 1, 1, 3, 1])))  # new alias
+        self.assertFrameEqual(
+            canPhysicalLayer.sentFrames[0],
+            CanFrame(ControlFrame.AMR.value, ourAlias,
+                     bytearray([5, 1, 1, 1, 3, 1])))
+        self.assertEqual(
+            canPhysicalLayer.sentFrames[6],
+            CanFrame(ControlFrame.AMD.value, 0x539,
+                     bytearray([5, 1, 1, 1, 3, 1])))  # new alias
         self.assertEqual(canLink._state, CanLink.State.Permitted)
         canLink.onDisconnect()
 
@@ -306,7 +343,7 @@ class TestCanLinkClass(unittest.TestCase):
         canPhysicalLayer.fireFrameReceived(CanFrame(0x19490, 0x247))
         # ^ from previously seen alias
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.sentFrames), 0)
         # ^ nothing back down to CAN
         self.assertEqual(len(messageLayer.receivedMessages), 1)
         # ^ one message forwarded
@@ -333,7 +370,7 @@ class TestCanLinkClass(unittest.TestCase):
             CanFrame(0x19170, 0x247, bytearray([8, 7, 6, 5, 4, 3])))
         # ^ VerifiedNodeID from unique alias
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.sentFrames), 0)
         # ^ nothing back down to CAN
         self.assertEqual(len(messageLayer.receivedMessages), 1)
         # ^ one message forwarded
@@ -361,7 +398,7 @@ class TestCanLinkClass(unittest.TestCase):
             CanFrame(0x19968, 0x247, bytearray([8, 7, 6, 5, 4, 3])))
         # ^ Identify Events Addressed from unique alias
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.sentFrames), 0)
         # ^ nothing back down to CAN
         self.assertEqual(len(messageLayer.receivedMessages), 1)
         # ^ one message forwarded
@@ -681,7 +718,7 @@ class TestCanLinkClass(unittest.TestCase):
         self.assertEqual(len(canLink.aliasToNodeID), 1)
         self.assertEqual(len(canLink.nodeIdToAlias), 1)
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.sentFrames), 0)
         # ^ nothing back down to CAN
 
         canPhysicalLayer.fireFrameReceived(CanFrame(0x0703, ourAlias+1))
@@ -690,7 +727,7 @@ class TestCanLinkClass(unittest.TestCase):
         self.assertEqual(len(canLink.aliasToNodeID), 0)
         self.assertEqual(len(canLink.nodeIdToAlias), 0)
 
-        self.assertEqual(len(canPhysicalLayer.receivedFrames), 0)
+        self.assertEqual(len(canPhysicalLayer.sentFrames), 0)
         # ^ nothing back down to CAN
         canLink.onDisconnect()
 
@@ -800,28 +837,30 @@ class TestCanLinkClass(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    # unittest.main()
+    unittest.main()
     # For debugging a test that was hanging:
-    testCase = TestCanLinkClass()
-    count = 0
-    failedCount = 0
-    exceptions = []
-    errors = []
-    for name in dir(testCase):
-        if name.startswith("test"):
-            fn = getattr(testCase, name)
-            try:
-                fn()  # Look at def test_* below if tracebacks start here
-                count += 1
-            except AssertionError as ex:
-                # raise ex
-                error = name + ": " + formatted_ex(ex)
-                # print(error)
-                failedCount += 1
-                exceptions.append(ex)
-                errors.append(error)
-    # for ex in exceptions:
-    #     print(formatted_ex(ex))
-    for error in errors:
-        print(error)
-    print("{} test(s) passed.".format(count))
+    # testCase = TestCanLinkClass()
+    # count = 0
+    # failedCount = 0
+    # exceptions = []
+    # errors = []
+    # for name in dir(testCase):
+    #     if name.startswith("test"):
+    #         fn = getattr(testCase, name)
+    #         try:
+    #             fn()  # Look at def test_* below if tracebacks start here
+    #             count += 1
+    #         except AssertionError as ex:
+    #             # raise ex
+    #             error = name + ": " + formatted_ex(ex)
+    #             # print(error)
+    #             failedCount += 1
+    #             exceptions.append(ex)
+    #             errors.append(error)
+    # # for ex in exceptions:
+    # #     print(formatted_ex(ex))
+    # for error in errors:
+    #     print(error)
+    # print("{} test(s) passed.".format(count))
+    # if errors:
+    #     print("{} test(s) failed.".format(len(errors)))

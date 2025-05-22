@@ -15,7 +15,9 @@ class CanPhysicalLayerSimulation(CanPhysicalLayer, FrameEncoder):
         received_chunks (list[bytearray]): Reserved for future use.
     """
     def __init__(self):
-        self.receivedFrames: List[CanFrame] = []
+        self.sentFrames: List[CanFrame] = []
+        # ^ formerly receivedFrames but was appended in self.sendCanFrame!
+
         CanPhysicalLayer.__init__(self)
         self.onQueuedFrame = self._onQueuedFrame
         self.received_chunks = []
@@ -27,9 +29,6 @@ class CanPhysicalLayerSimulation(CanPhysicalLayer, FrameEncoder):
         # Do not parse, since simulation. Just collect for later analysis
         self.received_chunks.append(data)
 
-    def captureFrame(self, frame: CanFrame):
-        self.receivedFrames.append(frame)
-
     def encodeFrameAsString(self, frame: CanFrame):
         return "(no encoding, only simulating CanPhysicalLayer superclass)"
 
@@ -38,10 +37,22 @@ class CanPhysicalLayerSimulation(CanPhysicalLayer, FrameEncoder):
 
     def sendFrameAfter(self, frame: CanFrame):
         frame.encoder = self
-        self.captureFrame(frame)
         # NOTE: Can't actually do afterSendState here, because
         #   _enqueueCIDSequence sets state to
         #   CanLink.State.WaitingForSendCIDSequence
         #   *after* calling this (so we must use afterSendState
         #   later!)
         self._send_frames.append(frame)
+
+    def sendAll(self, device, mode="binary", verbose=False):
+        try:
+            while True:
+                frame = self._send_frames.popleft()
+                # ^ exits loop with IndexError when done.
+                # data = self.encodeFrameAsData(frame)
+                # device.send(data)  # commented since simulation
+                self.onFrameSent(frame)
+                self.sentFrames.append(frame)
+        except IndexError:
+            # no more frames (no problem)
+            pass

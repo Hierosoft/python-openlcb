@@ -67,10 +67,26 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         #   bytes/bytearray has no attribute 'format')
         return self.encodeFrameAsString(frame).encode("utf-8")
 
+    def receiveAll(self, device: PortInterface, verbose=False):
+        """Receive all data on the given device.
+        Args:
+            device (PortInterface): Device which *must* be in
+                non-blocking mode (otherwise necessary two-way
+                communication such as alias reservation cannot occur).
+            verbose (bool, optional): If True, print each full packet.
+        """
+        try:
+            data = device.receive()  # If timeout, set non-blocking
+            if data is None:
+                return
+            self.handleData(data, verbose=verbose)
+        except BlockingIOError:
+            # raised by receive if no data (non-blocking is
+            #   what we want, so fall through).
+            pass
+
     def sendAll(self, device: PortInterface, mode="binary", verbose=False):
-        """Send all queued frames using the given socket.
-        Use your CanLink instance's sendAll instead for normal use
-        (high-level features).
+        """Send all queued frames using the given device.
 
         Args:
             device (PortInterface): A Serial or Socket device
@@ -81,6 +97,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
                 (use device.sendString). Defaults to "binary".
             verbose (bool, optional): Print each packet sent (not
                 recommend for numerous read requests such as CDI/FDI).
+                Defaults to False.
 
         Returns:
             int: The count of frames sent. If 0, None were queued by
@@ -89,6 +106,9 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
                 time all frames were polled.
         """
         assert mode in ("binary", "text")
+        if self.linkLayer:
+            self.linkLayer.pollState()  # Advance delayed state(s) if necessary
+            #  (done first since may enqueue frames).
         count = 0
         try:
             while True:

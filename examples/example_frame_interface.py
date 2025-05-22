@@ -48,40 +48,6 @@ def sendToSocket(frame: CanFrame):
     physicalLayer.onFrameSent(frame)
 
 
-def pumpEvents():
-    # Normally receive call & case below can be replaced by
-    #   canLink.receiveAll(sock), but in this example we have no link
-    #   layer.
-    received = sock.receive()
-    if received is not None:
-        if settings['trace']:
-            observer.push(received)
-            if observer.hasNext():
-                packet_str = observer.next()
-                print("   RR: "+packet_str.strip())
-        # pass to link processor
-        physicalLayer.handleData(received)
-
-    # Normally the loop below can be replaced by canLink.sendAll(sock),
-    #   but in this example we have no link layer.
-    # canLink.pollState()
-    while True:
-        frame = physicalLayer.pollFrame()
-        if frame is None:
-            break
-        string = frame.encodeAsString()
-        print("   SR: {}".format(string.strip()))
-        sock.sendString(string)
-        physicalLayer.onFrameSent(frame)
-        if frame.afterSendState:
-            print("Next state (unexpected, no link layer): {}"
-                  .format(frame.afterSendState))
-            # canLink.setState(frame.afterSendState)
-            # ^ setState is done by onFrameSent now
-            #   (physicalLayer.onFrameSent = self.handleFrameSent
-            #   in LinkLayer constructor)
-
-
 def handleFrameSent(frame):
     # No state to manage since no link layer
     pass
@@ -105,16 +71,11 @@ physicalLayer.registerFrameReceivedListener(printFrame)
 frame = CanFrame(ControlFrame.AME.value, 1, bytearray())
 print("SL: {}".format(frame))
 physicalLayer.sendFrameAfter(frame)
-
-while True:
-    frame = physicalLayer.pollFrame()
-    if not frame:
-        break
-    sendToSocket(frame)
+physicalLayer.sendAll(sock, verbose=True)
 
 observer = GridConnectObserver()
 
 # display response - should be RID from nodes
 while True:
-    pumpEvents()
+    physicalLayer.receiveAll(sock, verbose=True)
     precise_sleep(.01)

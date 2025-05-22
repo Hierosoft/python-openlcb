@@ -126,8 +126,8 @@ while True:
     state = canLink.getState()
     if state == CanLink.State.Permitted:
         break
-    canLink.receiveAll(sock, verbose=settings['trace'])
-    canLink.sendAll(sock, verbose=True)
+    physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    physicalLayer.sendAll(sock, verbose=True)
 
 
 if state != previousState:
@@ -145,7 +145,7 @@ print("nodeIdToAlias: {}".format(canLink.nodeIdToAlias))
 def receiveLoop():
     """put the read on a separate thread"""
     while True:
-        canLink.receiveAll(sock, verbose=settings['trace'])
+        physicalLayer.receiveAll(sock, verbose=settings['trace'])
         precise_sleep(.01)
 
 

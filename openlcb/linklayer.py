@@ -60,6 +60,7 @@ class LinkLayer:
         #   operator not work as expected in registerFrameReceivedListener.
         physicalLayer.onFrameReceived = self.handleFrameReceived
         physicalLayer.onFrameSent = self.handleFrameSent
+        physicalLayer.linkLayer = self
         # # ^ enforce queue paradigm (See use in PhysicalLayer subclass)
         # physicalLayer.registerFrameReceivedListener(listener)
         # ^ Doesn't work with "is" operator still! So just use
