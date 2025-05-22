@@ -65,9 +65,13 @@ def handleDisconnect():
     print("Disconnected.")
 
 physicalLayer = CanPhysicalLayerGridConnect()
+
+# NOTE: Normally the required handlers are set by link layer
+#   constructor, but this example doesn't use a link layer:
 physicalLayer.onFrameSent = handleFrameSent
 physicalLayer.onFrameReceived = handleFrameReceived
 physicalLayer.onDisconnect = handleDisconnect
+
 physicalLayer.registerFrameReceivedListener(printFrame)
 
 # send an AME frame with arbitrary alias to provoke response
@@ -80,5 +84,7 @@ observer = GridConnectObserver()
 
 # display response - should be RID from nodes
 while True:
-    physicalLayer.receiveAll(sock, verbose=True)
-    precise_sleep(.01)
+    count = physicalLayer.receiveAll(sock, verbose=True)
+    if count < 1:
+        precise_sleep(.01)
+    # else skip sleep to avoid latency (port already delayed)

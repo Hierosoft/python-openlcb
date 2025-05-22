@@ -198,7 +198,7 @@ class CanLink(LinkLayer):
     #     assert isinstance(self._state, CanLink.State)
     #     return self._state == CanLink.State.Permitted
 
-    def isBadReservation(self, frame: CanFrame) -> bool:
+    def isCanceled(self, frame: CanFrame) -> bool:
         if frame.reservation is None:
             return False
         return frame.reservation < self._reservation
@@ -212,7 +212,7 @@ class CanLink(LinkLayer):
     #             " (alias={})."
     #             .format(emit_cast(alias)))
     #     return alias in self.duplicateAliases
-    # ^ Commented since isBadReservation handles both collision and error.
+    # ^ Commented since isCanceled handles both collision and error.
 
     # Commented since instead, socket code should call linkLayerUp and
     #   linkLayerDown. Constructors should construct the openlcb stack:

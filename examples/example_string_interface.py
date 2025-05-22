@@ -47,10 +47,14 @@ while True:  # have to kill this manually
     # Normally the receive call and case can be replaced by
     #   physicalLayer.receiveAll, but we have no physicalLayer in this
     #   example.
+    count = 0
     received = sock.receive()
     if received is not None:
         observer.push(received)
         if observer.hasNext():
             packet_str = observer.next()
             print("   RR: "+packet_str.strip())
-    precise_sleep(.01)
+        count += 1
+    if count < 1:
+        precise_sleep(.01)
+    # else skip sleep to avoid latency (port already delayed)

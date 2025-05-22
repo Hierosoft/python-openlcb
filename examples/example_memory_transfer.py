@@ -150,8 +150,13 @@ thread.start()
 
 # process resulting activity
 while True:
-    physicalLayer.receiveAll(sock, verbose=settings['trace'])
-    physicalLayer.sendAll(sock)
-    precise_sleep(.01)
+    count = 0
+    count += physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    count += physicalLayer.sendAll(sock)  # queue via pollState & send request
+    # Sleep after send to allow nodes to respond (may respond on later
+    #   iteration, but sleep minimally to avoid latency).
+    if count < 1:
+        precise_sleep(.01)
+    # else skip sleep to avoid latency (port already delayed)
 
 physicalLayer.onDisconnect()

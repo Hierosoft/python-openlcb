@@ -294,7 +294,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
                             break  # allow receive to run!
                         if isinstance(frame, CanFrame):
                             # if self._canLink.isDuplicateAlias(frame.alias):
-                            if self._canLink.isBadReservation(frame):
+                            if self._canLink.isCanceled(frame):
                                 logger.warning(
                                     "Discarded frame from a previous"
                                     " alias reservation attempt"

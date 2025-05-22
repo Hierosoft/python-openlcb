@@ -206,7 +206,8 @@ canLink.sendMessage(message)
 while True :
     try :
         received = readQueue.get(True, settings['timeout'])
-        if settings['trace'] : print("received: ", received)
+        if settings['trace']:
+            print("received: ", received)
     except Empty:
         break
 

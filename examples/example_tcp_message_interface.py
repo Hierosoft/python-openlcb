@@ -88,18 +88,14 @@ tcpLinkLayer.sendMessage(message)
 
 # process resulting activity
 while True:
+    count = 0
     received = sock.receive()
     if received is not None:
         print("      RR: {}".format(received))
         # pass to link processor
         tcpLinkLayer.handleFrameReceived(received)
-    # Normally we would do (Probably N/A here):
-    # canLink.pollState()
-    #
-    # while True:
-    #     frame = physicalLayer.pollFrame()
-    #     if frame is None:
-    #         break
-    #     sock.sendString(frame.encodeAsString())
-    #     physicalLayer.onFrameSent(frame)
-    precise_sleep(.01)
+        count += 1
+    # count += physicalLayer.sendAll(sock)  # typical but N/A since realtime
+    if count < 1:
+        precise_sleep(.01)
+    # else skip sleep to avoid latency (port already delayed)

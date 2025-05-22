@@ -300,11 +300,14 @@ while not complete_data and not read_failed:
     #   receives the data from the requested memory space (CDI in this
     #   case) and offset (incremental position in the file/data,
     #   incremented by this example's memoryReadSuccess handler).
-    physicalLayer.receiveAll(sock)
-    physicalLayer.sendAll(sock)
+    count = 0
+    count += physicalLayer.receiveAll(sock)
+    count += physicalLayer.sendAll(sock)
     if canLink.nodeIdToAlias != previous_nodes:
         print("nodeIdToAlias updated: {}".format(canLink.nodeIdToAlias))
-    precise_sleep(.01)
+    if count < 1:
+        precise_sleep(.01)
+    # else skip sleep to avoid latency (port already delayed)
     if canLink.nodeIdToAlias != previous_nodes:
         previous_nodes = copy.deepcopy(canLink.nodeIdToAlias)
 

@@ -43,18 +43,19 @@ observer = GridConnectObserver()
 
 # display response - should be RID from node(s)
 while True:  # have to kill this manually
+    # Normally the receive call and case can be replaced by
+    #   physicalLayer.receiveAll, but we have no physicalLayer in this
+    #   example.
+    count = 0
     received = sock.receive()
     if received is not None:
         observer.push(received)
         if observer.hasNext():
             packet_str = observer.next()
             print("   RR: "+packet_str.strip())
-    # canLink.pollState()
+        count += 1
 
-    # while True:
-    #     frame = physicalLayer.pollFrame()
-    #     if frame is None:
-    #         break
-    #     sock.sendString(frame.encodeAsString())
-    #     physicalLayer.onFrameSent(frame)
-    precise_sleep(.01)
+    # count += physicalLayer.sendAll(sock)  # typical but no physicalLayer here
+    if count < 1:
+        precise_sleep(.01)
+    # else skip sleep to avoid latency (port already delayed)

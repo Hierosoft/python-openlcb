@@ -73,17 +73,26 @@ class PhysicalLayer:
         """Check if there is a frame queued to send."""
         return bool(self._send_frames)
 
-    def sendAll(self, device: PortInterface, mode="binary", verbose=False):
+    def sendAll(self, device: PortInterface, mode="binary", verbose=False) -> int:
         """Abstract method for sending queued frames"""
         raise NotImplementedError(
             "This must be implemented in a subclass"
             " which implements FrameEncoder"
             " (any real physical layer has an encoding).")
+        if self.linkLayer:
+            self.linkLayer.pollState()  # Advance delayed state(s) if necessary
+            #  (done first since may enqueue frames).
         count = 0
         try:
             while True:
                 data = self._send_chunks.popleft()
                 # ^ exits loop with IndexError when done.
+                # (otherwise use pollFrame() and break if None)
+                if self.linkLayer:
+                    if self.linkLayer.isCanceled(data):
+                        if verbose:
+                            print("- Skipped (canceled by link layer).")
+                        continue
                 device.send(data)
                 count += 1
         except IndexError:

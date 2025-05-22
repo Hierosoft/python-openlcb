@@ -29,7 +29,7 @@ class PhyMockLayer(CanPhysicalLayer):
         self.receivedFrames.append(data)
 
 
-    def sendAll(self, _, mode="binary", verbose=True):
+    def sendAll(self, _, mode="binary", verbose=True) -> int:
         """Simulated sendAll
         The simulation has no real communication, so no device argument
         is necessary. See CanLink for a real implementation.
@@ -39,19 +39,29 @@ class PhyMockLayer(CanPhysicalLayer):
                 recommended in the case of numerous sequential memory
                 read requests such as when reading CDI/FDI).
         """
-        if self.canLink:
-            self.canLink.pollState()  # run first since may enqueue frame(s)
+        count = 0
+        if self.linkLayer:
+            self.linkLayer.pollState()  # run first since may enqueue frame(s)
         while True:
             # self.physicalLayer must be set by canLink constructor by
             #   passing a physicalLayer to it.
             frame = self.physicalLayer.pollFrame()
             if not frame:
                 break
+            # ^ If using popleft, break on IndexError (empty) instead.
+            if self.linkLayer:
+                if self.linkLayer.isCanceled(frame):
+                    if verbose:
+                        print("- Skipped (probably dup alias CID frame).")
+                    continue
+
             string = frame.encodeAsString()
             # device.sendString(string)  # commented since simulation
             if verbose:
                 print("      SENT (simulated socket) packet: "+string.strip())
             self.physicalLayer.onFrameSent(frame)
+            count += 1
+        return count
 
 
 class MessageMockLayer:
@@ -193,7 +203,6 @@ class TestCanLinkClass(unittest.TestCase):
         canLink._state = CanLink.State.Permitted
 
         canPhysicalLayer.fireFrameReceived(CanFrame(ControlFrame.AME.value, 0))
-        canLink.pollState()  # add response to queue
         canPhysicalLayer.sendAll(None)  # add response to sentFrames
         self.assertEqual(len(canPhysicalLayer.sentFrames), 1)
         self.assertFrameEqual(
@@ -221,7 +230,6 @@ class TestCanLinkClass(unittest.TestCase):
         frame = CanFrame(ControlFrame.AME.value, 0)
         frame.data = bytearray([5, 1, 1, 1, 3, 1])
         canPhysicalLayer.fireFrameReceived(frame)
-        canLink.pollState()  # add response to queue
         canPhysicalLayer.sendAll(None)  # add response to sentFrames
         self.assertEqual(len(canPhysicalLayer.sentFrames), 1)
         self.assertFrameEqual(
@@ -250,7 +258,6 @@ class TestCanLinkClass(unittest.TestCase):
 
         canPhysicalLayer.fireFrameReceived(
             CanFrame(7, canLink.localNodeID, ourAlias))
-        canLink.pollState()  # add response to queue
         canPhysicalLayer.sendAll(None)  # add response to sentFrames
         self.assertEqual(len(canPhysicalLayer.sentFrames), 1)
         self.assertFrameEqual(canPhysicalLayer.sentFrames[0],

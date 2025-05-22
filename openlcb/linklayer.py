@@ -82,6 +82,14 @@ class LinkLayer:
                     .format(emit_cast(type(self).DisconnectedState),
                             type(self).__name__))
 
+    def isCanceled(self, frame) -> bool:
+        """Subclass should implement this
+        if there is a cancelling mechanism (In the case of CanLink,
+        cancel frames from a previous LCC alias allocation where an
+        alias collision reply was received).
+        """
+        return False
+
     def handleFrameReceived(self, frame):
         logger.warning(
             "{} abstract handleFrameReceived called (expected implementation)"

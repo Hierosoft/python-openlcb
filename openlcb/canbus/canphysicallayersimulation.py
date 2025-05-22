@@ -44,15 +44,27 @@ class CanPhysicalLayerSimulation(CanPhysicalLayer, FrameEncoder):
         #   later!)
         self._send_frames.append(frame)
 
-    def sendAll(self, device, mode="binary", verbose=False):
+    def sendAll(self, device, mode="binary", verbose=False) -> int:
+        if self.linkLayer:
+            self.linkLayer.pollState()  # Advance delayed state(s) if necessary
+            #  (done first since may enqueue frames).
+        count = 0
         try:
             while True:
                 frame = self._send_frames.popleft()
                 # ^ exits loop with IndexError when done.
+                # (otherwise use pollFrame() and break if None)
+                if self.linkLayer:
+                    if self.linkLayer.isCanceled(frame):
+                        if verbose:
+                            print("- Skipped (probably dup alias CID frame).")
+                        continue
                 # data = self.encodeFrameAsData(frame)
                 # device.send(data)  # commented since simulation
                 self.onFrameSent(frame)
                 self.sentFrames.append(frame)
+                count += 1
         except IndexError:
             # no more frames (no problem)
             pass
+        return count

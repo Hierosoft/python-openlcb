@@ -131,7 +131,11 @@ thread.start()
 
 # process resulting activity
 while True:
-    physicalLayer.receiveAll(sock, verbose=settings['trace'])
-    physicalLayer.sendAll(sock)
+    count = 0
+    count += physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    count += physicalLayer.sendAll(sock)
+    if count < 1:
+        precise_sleep(.01)
+    # else skip sleep to avoid latency (port already delayed)
 
 physicalLayer.onDisconnect()
