@@ -152,6 +152,19 @@ class PhysicalLayer:
             " Set this method manually to LinkLayer/subclass instance's"
             " handleFrameReceived method.")
 
+    def onDisconnect(self, frame):
+        """Stub method, patched at runtime:
+        LinkLayer subclass's constructor must set instance's
+        onDisconnect to LinkLayer subclass' handleDisconnect (The
+        application must pass this instance to LinkLayer subclass's
+        constructor so it will do that).
+        """
+        raise NotImplementedError(
+            "The subclass must patch the instance:"
+            " PhysicalLayer instance's onDisconnect must be manually"
+            " set to the LinkLayer subclass instance' handleDisconnect"
+            " so state can be updated if necessary.")
+
     def onFrameSent(self, frame):
         """Stub method, patched at runtime:
         LinkLayer subclass's constructor must set instance's onFrameSent

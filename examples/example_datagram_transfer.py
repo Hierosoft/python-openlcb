@@ -134,4 +134,4 @@ while True:
     physicalLayer.receiveAll(sock, verbose=settings['trace'])
     physicalLayer.sendAll(sock)
 
-canLink.onDisconnect()
+physicalLayer.onDisconnect()

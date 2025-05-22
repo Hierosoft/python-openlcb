@@ -61,10 +61,13 @@ def handleFrameReceived(frame):
 def printFrame(frame):
     print("RL: {}".format(frame))
 
+def handleDisconnect():
+    print("Disconnected.")
 
 physicalLayer = CanPhysicalLayerGridConnect()
 physicalLayer.onFrameSent = handleFrameSent
 physicalLayer.onFrameReceived = handleFrameReceived
+physicalLayer.onDisconnect = handleDisconnect
 physicalLayer.registerFrameReceivedListener(printFrame)
 
 # send an AME frame with arbitrary alias to provoke response

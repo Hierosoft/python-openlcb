@@ -337,7 +337,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
                 self._mode = OpenLCBNetwork.Mode.Disconnected
                 raise  # re-raise since incomplete (prevent done OK state)
         finally:
-            self._canLink.onDisconnect()
+            self._physicalLayer.onDisconnect()
         self._listenThread: threading.Thread = None
 
         self._mode = OpenLCBNetwork.Mode.Disconnected

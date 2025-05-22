@@ -219,4 +219,4 @@ for node in remoteNodeStore.asArray() :
 
 # this ends here, which takes the local node offline
 
-canLink.onDisconnect()
+physicalLayer.onDisconnect()

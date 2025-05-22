@@ -93,4 +93,4 @@ while True:
     physicalLayer.sendAll(sock, verbose=True)
     precise_sleep(.01)
 
-canLink.onDisconnect()
+physicalLayer.onDisconnect()

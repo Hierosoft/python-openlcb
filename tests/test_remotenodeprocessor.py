@@ -20,11 +20,12 @@ class TesRemoteNodeProcessorClass(unittest.TestCase):
 
     def setUp(self) :
         self.node21 = Node(NodeID(21))
-        self.canLink = CanLink(MockPhysicalLayer(), NodeID(100))
+        self.physicalLayer = MockPhysicalLayer()
+        self.canLink = CanLink(self.physicalLayer, NodeID(100))
         self.processor = RemoteNodeProcessor(self.canLink)
 
     def tearDown(self):
-        self.canLink.onDisconnect()
+        self.physicalLayer.onDisconnect()
 
     def testInitializationComplete(self) :
         # not related to node
