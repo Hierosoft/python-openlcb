@@ -79,8 +79,17 @@ print("      SL : link up")
 # send an VerifyNodes message to provoke response
 message = Message(MTI.Verify_NodeID_Number_Global,
                   NodeID(settings['localNodeID']), None)
-print("SM: {}".format(message))
+print("Sending Message: {}...".format(message))
+previousCount = physicalLayer._sentFramesCount
 tcpLinkLayer.sendMessage(message, verbose=True)
+thisSentCount = physicalLayer._sentFramesCount - previousCount
+messageCount = 1
+assert thisSentCount == messageCount, \
+    "Expected {} sent since realtime, got {}".format(messageCount,
+                                                     thisSentCount)
+# ^ Change the assertion if more than one message is required for some
+#   reason (expected one sent here instead of after sendAll *only* since
+#   using a Realtime subclass for physicalLayer in this example.)
 physicalLayer.sendAll(sock, verbose=True)  # only a formality since Realtime
 # N/A
 # while not tcpLinkLayer.getState() == TcpLink.State.Permitted:

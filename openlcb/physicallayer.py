@@ -56,11 +56,12 @@ class PhysicalLayer:
     """
 
     def __init__(self):
+        self._sentFramesCount = 0
         self._send_frames = deque()
         # self._send_chunks = deque()
         self.onQueuedFrame = None
 
-    def sendDataAfter(self, data: Union[bytes, bytearray]):
+    def sendDataAfter(self, data: Union[bytes, bytearray], verbose=False):
         raise NotImplementedError(
             "This method is only for Realtime subclass(es)"
             " (which should only be used when not using GridConnect"

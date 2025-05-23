@@ -25,7 +25,8 @@ class PhyMockLayer(CanPhysicalLayer):
         self.sentFrames = []
         CanPhysicalLayer.__init__(self)
 
-    def sendDataAfter(self, data):
+    def sendDataAfter(self, data, verbose=False):
+        # verbose: ignored since used in sendAll when not a Realtime subclass.
         assert isinstance(data, (bytes, bytearray))
         self.sentFrames.append(data)
 
@@ -58,7 +59,8 @@ class PhyMockLayer(CanPhysicalLayer):
             string = frame.encodeAsString()
             # device.sendString(string)  # commented since simulation
             if verbose:
-                print("      SENT (simulated socket) packet: "+string.strip())
+                print("- SENT frame (simulated socket) packet: {}"
+                      .format(string.strip()))
             self.physicalLayer.onFrameSent(frame)
             count += 1
         return count

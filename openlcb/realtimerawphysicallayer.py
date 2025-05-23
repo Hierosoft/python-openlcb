@@ -13,9 +13,14 @@ class RealtimeRawPhysicalLayer(RealtimePhysicalLayer, RawPhysicalLayer):
     See RealtimePhysicalLayer for more information.
     """
     def sendFrameAfter(self, frame, verbose=False):
-        self.sendDataAfter(frame, verbose=verbose)
+        self._sendDataAfter(frame, verbose=verbose)
+        self.onFrameSent(frame)
 
     def sendDataAfter(self, data: Union[bytearray, bytes], verbose=False):
+        self._sendDataAfter(data, verbose=verbose)
+        self.onFrameSent(data)
+
+    def _sendDataAfter(self, data: Union[bytearray, bytes], verbose=False):
         # ^ data for sendDataAfter,
         #   For frame see sendFrameAfter.
         # verbose is only for Realtime subclass (since data is sent
@@ -29,5 +34,5 @@ class RealtimeRawPhysicalLayer(RealtimePhysicalLayer, RawPhysicalLayer):
             data = data.encode("utf-8")
         assert isinstance(data, (bytes, bytearray))
         if verbose:
-            print("      SR: {}".format(data))
+            print("- SENT data (realtime raw): {}".format(data.strip()))
         self.sock.send(data)

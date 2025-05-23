@@ -30,6 +30,7 @@ class PhysicalLayerMock(CanPhysicalLayerGridConnect):
 
     def onFrameSent(self, frame: CanFrame):
         pass
+        self._sentFramesCount += 1
         # NOTE: not patching this method to be canLink.handleFrameSent
         #   since testing only physical layer not link layer.
 

@@ -49,7 +49,7 @@ def sendToSocket(frame: CanFrame):
 
 def handleFrameSent(frame):
     # No state to manage since no link layer
-    pass
+    physicalLayer._sentFramesCount += 1
 
 
 def handleFrameReceived(frame):
@@ -60,8 +60,10 @@ def handleFrameReceived(frame):
 def printFrame(frame):
     print("RL: {}".format(frame))
 
+
 def handleDisconnect():
     print("Disconnected.")
+
 
 physicalLayer = CanPhysicalLayerGridConnect()
 

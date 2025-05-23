@@ -46,8 +46,9 @@ class RealtimePhysicalLayer(PhysicalLayer):
         #     )
         assert isinstance(data, (bytes, bytearray))
         if verbose:
-            print("      SR: {}".format(data))
+            print("- SENT data (realtime): {}".format(data.strip()))
         self.sock.send(data)
+        self.onFrameSent(data)
 
     def sendFrameAfter(self, frame, verbose=False):
         """Send frame (immediately, since realtime subclass).
@@ -73,11 +74,12 @@ class RealtimePhysicalLayer(PhysicalLayer):
         #         .format(type(data).__name__, data)
         #     )
         if verbose:
-            print("      SR: {}".format(frame))
+            print("- SENT frame (realtime): {}".format(frame))
         # send and fireFrameReceived would usually occur after
         #   frame from _send_frames.popleft is sent,
         #   but we do all this here in the Realtime subclass:
         self.sock.send(data)
+        self.onFrameSent(data)
         if hasattr(frame, 'afterSendState') and frame.afterSendState:
             # Use hasattr since only applicable to subclasses that use
             #   CanFrame.

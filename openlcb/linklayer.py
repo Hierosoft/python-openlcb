@@ -101,7 +101,10 @@ class LinkLayer:
 
     def handleFrameSent(self, frame):
         """Update state based on the frame having been sent."""
-        if frame.afterSendState is not None:
+        if self.physicalLayer:
+            self.physicalLayer._sentFramesCount += 1
+        if (hasattr(frame, 'afterSendState')
+                and (frame.afterSendState is not None)):
             self.setState(frame.afterSendState)  # may change again
             #   since setState calls pollState via _onStateChanged.
 

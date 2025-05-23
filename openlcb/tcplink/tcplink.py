@@ -238,6 +238,6 @@ class TcpLink(LinkLayer):
 
         outputBytes.extend(message.data)
 
-        self.physicalLayer.sendDataAfter(outputBytes)
+        self.physicalLayer.sendDataAfter(outputBytes, verbose=verbose)
         # ^ The physical layer should be one with "Raw" in the name
         # since takes bytes. See example_tcp_message_interface.
