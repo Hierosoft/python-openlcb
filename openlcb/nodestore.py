@@ -1,4 +1,5 @@
 from typing import (
+    Dict,
     List,  # in case list doesn't support `[` in this Python version
     Union,  # in case `|` doesn't support 'type' in this Python version
 )
@@ -18,7 +19,7 @@ class NodeStore :
     '''
 
     def __init__(self) :
-        self.byIdMap: dict = {}
+        self.byIdMap: Dict[NodeID, Node] = {}
         self.nodes: List[Node] = []
         self.processors: List[Processor] = []
 
@@ -34,10 +35,10 @@ class NodeStore :
         self.nodes.sort(key=lambda x: x.snip.userProvidedNodeName,
                         reverse=True)
 
-    def isPresent(self, nodeID) :
+    def isPresent(self, nodeID: NodeID) -> bool:
         return self.byIdMap.get(nodeID) is not None
 
-    def asArray(self) :
+    def asArray(self) -> List[Node]:
         return [self.byIdMap[i] for i in self.byIdMap]
 
     # Retrieve a Node's content from the store
