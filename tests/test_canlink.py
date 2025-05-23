@@ -22,13 +22,12 @@ class PhyMockLayer(CanPhysicalLayer):
         # onFrameSent will not work until this instance is passed to the
         #   LinkLayer subclass' constructor (See onFrameSent
         #   docstring in PhysicalLayer)
-        self.receivedFrames = []
+        self.sentFrames = []
         CanPhysicalLayer.__init__(self)
 
     def sendDataAfter(self, data):
         assert isinstance(data, (bytes, bytearray))
-        self.receivedFrames.append(data)
-
+        self.sentFrames.append(data)
 
     def sendAll(self, _, mode="binary", verbose=True) -> int:
         """Simulated sendAll
