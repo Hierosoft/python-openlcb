@@ -82,7 +82,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         try:
             data = device.receive()  # If timeout, set non-blocking
             if data is None:
-                return
+                return count
             _ = self.handleData(data, verbose=verbose)
             count += len(data)
         except BlockingIOError:

@@ -171,7 +171,7 @@ class PortInterface:
     #     # Use receive (uses required semaphores) not _receive (not thread safe)
     #     return data.decode("utf-8")
 
-    def sendString(self, string):
+    def sendString(self, string: str):
         """Send a single string.
         """
         self.send(string.encode('utf-8'))

@@ -42,7 +42,9 @@ from openlcb.memoryservice import (
     MemoryReadMemo,
     MemoryService,
 )
+from openlcb.physicallayer import PhysicalLayer
 from openlcb.platformextras import SysDirs, clean_file_name
+from openlcb.portinterface import PortInterface
 
 if __name__ == "__main__":
     logger = getLogger(__file__)
@@ -133,12 +135,12 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         # endregion ContentHandler
 
         # region connect
-        self._port = None
-        self._physicalLayer = None
-        self._canLink = None
-        self._datagramService = None
-        self._memoryService = None
-        self._resultingCDI = None
+        self._port: PortInterface = None
+        self.physicalLayer: CanPhysicalLayerGridConnect = None
+        self.canLink: CanLink = None
+        self._datagramService: DatagramService = None
+        self._memoryService: MemoryService = None
+        self._resultingCDI: bytearray = None
         # endregion connect
 
         self._connectingStart: float = None
@@ -174,22 +176,22 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
                 "[startListening] A previous _port will be discarded.")
         self._port = connected_port
         self._fireStatus("CanPhysicalLayerGridConnect...")
-        self._physicalLayer = CanPhysicalLayerGridConnect()
+        self.physicalLayer = CanPhysicalLayerGridConnect()
 
         self._fireStatus("CanLink...")
-        self._canLink = CanLink(self._physicalLayer, NodeID(localNodeID))
+        self.canLink = CanLink(self.physicalLayer, NodeID(localNodeID))
         # ^ CanLink constructor sets _physicalLayer's onFrameReceived
         #   and onFrameSent to handlers in _canLink.
         self._fireStatus("CanLink...registerMessageReceivedListener...")
-        self._canLink.registerMessageReceivedListener(self._handleMessage)
+        self.canLink.registerMessageReceivedListener(self._handleMessage)
         # NOTE: Incoming data (Memo) is handled by _memoryReadSuccess
         #   and _memoryReadFail.
         #   - These are set when constructing the MemoryReadMemo which
         #     is provided to openlcb's requestMemoryRead method.
 
         self._fireStatus("DatagramService...")
-        self._datagramService = DatagramService(self._canLink)
-        self._canLink.registerMessageReceivedListener(
+        self._datagramService = DatagramService(self.canLink)
+        self.canLink.registerMessageReceivedListener(
             self._datagramService.process
         )
 
@@ -209,9 +211,9 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         #     if not None.
 
         self._fireStatus("physicalLayerUp...")
-        self._physicalLayer.physicalLayerUp()
+        self.physicalLayer.physicalLayerUp()
         self._fireStatus("Waiting for alias reservation...")
-        while self._canLink.pollState() != CanLink.State.Permitted:
+        while self.canLink.pollState() != CanLink.State.Permitted:
             precise_sleep(.02)
         # ^ triggers fireFrameReceived which calls CanLink's default
         #   receiveListener by default since added on CanPhysicalLayer
@@ -234,6 +236,10 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         Override this if serial/other subclass not using TCP
         (or better yet, make all ports including TcpSocket inherit from
         a standard port interface)
+        Returns:
+            bytearray: Data, or None if no data (BlockingIOError is
+                handled by PortInterface, *not* passed up the
+                callstack).
         """
         return self._port.receive()
 
@@ -258,19 +264,22 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
                 try:
                     # Receive mode (switches to write mode on BlockingIOError
                     #   which is expected and used on purpose)
-                    # print("Waiting for _receive")
-                    received = self._receive()  # requires setblocking(False)
-                    print("[_listen] received {} byte(s)"
-                          .format(len(received)),
-                          file=sys.stderr)
-                    # print("      RR: {}".format(received.strip()))
-                    # pass to link processor
-                    self._physicalLayer.handleData(received)
-                    # ^ will trigger self._printFrame if that was added
-                    #   via registerFrameReceivedListener during connect.
+                    count = self.physicalLayer.receiveAll(self._port)
+                    if count < 1:
+                        # BlockingIOError would be raised by
+                        #   self._port.receive via self._receive, but
+                        #   receiveAll handles the exception (in which
+                        #   case return is 0), so switch back to send
+                        #   mode manually by raising:
+                        raise BlockingIOError("No data yet")
+
+                    # ^ handleData will trigger self._printFrame if that
+                    #   was added via registerFrameReceivedListener
+                    #   during connect. But now you can use verbose=True
+                    #   for receiveAll instead if desired debugging.
                     precise_sleep(.01)  # let processor sleep before read
-                    if time.perf_counter() - self._connectingStart > .2:
-                        if self._canLink._state != CanLink.State.Permitted:
+                    if time.perf_counter() - self._connectingStart > .21:
+                        if self.canLink._state != CanLink.State.Permitted:
                             delta = time.perf_counter() - self._messageStart
                             if ((self._messageStart is None) or (delta > 1)):
                                 logger.warning(
@@ -283,34 +292,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
                 except BlockingIOError:
                     # Nothing to receive right now, so perform all sends
                     #   This *must* occur (require socket.setblocking(False))
-                    # sends = self._physicalLayer.popFrames()
-                    # while sends:
-                    while True:
-                        # *Always* do send in the receive thread to
-                        #   avoid overlapping calls to socket
-                        #   (causes undefined behavior)!
-                        frame = self._physicalLayer.pollFrame()
-                        if frame is None:
-                            break  # allow receive to run!
-                        if isinstance(frame, CanFrame):
-                            # if self._canLink.isDuplicateAlias(frame.alias):
-                            if self._canLink.isCanceled(frame):
-                                logger.warning(
-                                    "Discarded frame from a previous"
-                                    " alias reservation attempt"
-                                    " (duplicate alias={})"
-                                    .format(frame.alias))
-                                continue
-                            logger.debug("[_listen] _sendString...")
-                            packet = frame.encodeAsString()
-                            assert isinstance(packet, str)
-                            print("Sending {}".format(packet))
-                            self._port.sendString(packet)
-                            self._physicalLayer.onFrameSent(frame)
-                        else:
-                            raise NotImplementedError(
-                                "Event type {} is not handled."
-                                .format(type(frame).__name__))
+                    self.physicalLayer.sendAll(self._port)
                     #   so that it doesn't block (or occur during) recv
                     #   (overlapping calls would cause undefined behavior)!
                     # delay = random.uniform(.005,.02)
@@ -337,7 +319,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
                 self._mode = OpenLCBNetwork.Mode.Disconnected
                 raise  # re-raise since incomplete (prevent done OK state)
         finally:
-            self._physicalLayer.onDisconnect()
+            self.physicalLayer.onDisconnect()
         self._listenThread: threading.Thread = None
 
         self._mode = OpenLCBNetwork.Mode.Disconnected
@@ -383,7 +365,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         if not self._port:
             raise RuntimeError(
                 "No port connection. Call startListening first.")
-        if not self._physicalLayer:
+        if not self.physicalLayer:
             raise RuntimeError(
                 "No physicalLayer. Call startListening first.")
         self._cdi_offset = 0

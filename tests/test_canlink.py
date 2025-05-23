@@ -1,3 +1,4 @@
+from typing import Union
 import unittest
 
 from openlcb import formatted_ex
@@ -74,10 +75,10 @@ class MessageMockLayer:
 
 
 class MockPort(PortInterface):
-    def send(self, data):
+    def send(self, data: Union[bytearray, bytes]):
         pass
 
-    def sendString(self, data):
+    def sendString(self, data: str):
         pass
 
     def receive(self):
