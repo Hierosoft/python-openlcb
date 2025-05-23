@@ -73,7 +73,8 @@ class PhysicalLayer:
         """Check if there is a frame queued to send."""
         return bool(self._send_frames)
 
-    def sendAll(self, device: PortInterface, mode="binary", verbose=False) -> int:
+    def sendAll(self, device: PortInterface, mode="binary",
+                verbose=False) -> int:
         """Abstract method for sending queued frames"""
         raise NotImplementedError(
             "This must be implemented in a subclass"

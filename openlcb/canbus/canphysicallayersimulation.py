@@ -2,7 +2,7 @@
 Simulated CanPhysicalLayer to record frames requested to be sent.
 '''
 
-from typing import List
+from typing import List, Union
 from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.canphysicallayer import CanPhysicalLayer
 from openlcb.frameencoder import FrameEncoder
@@ -25,9 +25,11 @@ class CanPhysicalLayerSimulation(CanPhysicalLayer, FrameEncoder):
     def _onQueuedFrame(self, frame: CanFrame):
         raise AttributeError("Not implemented for simulation")
 
-    def handleData(self, data: bytearray, verbose=False):
+    def handleData(self, data: Union[bytes, bytearray], verbose=False) -> int:
         # Do not parse, since simulation. Just collect for later analysis
         self.received_chunks.append(data)
+        frameCount = 1  # assumed for simulation
+        return frameCount
 
     def encodeFrameAsString(self, frame: CanFrame):
         return "(no encoding, only simulating CanPhysicalLayer superclass)"

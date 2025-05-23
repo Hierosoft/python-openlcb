@@ -726,7 +726,7 @@ class CanLink(LinkLayer):
                 msg.originalMTI = ((frame.header >> 12) & 0xFFF)
             self.fireMessageReceived(msg)
 
-    def sendMessage(self, msg: Message):
+    def sendMessage(self, msg: Message, verbose=False):
         #    special case for datagram
         if msg.mti == MTI.Datagram:
             header = 0x10_00_00_00

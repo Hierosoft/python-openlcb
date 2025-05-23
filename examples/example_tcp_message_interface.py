@@ -15,7 +15,7 @@ from logging import getLogger
 # region same code as other examples
 from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb import precise_sleep
-from openlcb.realtimephysicallayer import RealtimePhysicalLayer
+from openlcb.realtimerawphysicallayer import RealtimeRawPhysicalLayer
 settings = Settings()
 
 if __name__ == "__main__":
@@ -55,14 +55,14 @@ print("RR, SR are raw socket interface receive and send; "
 #     assert isinstance(data, (bytes, bytearray))
 #     print("      SR: {}".format(data))
 #     sock.send(data)
-# ^ Moved to RealtimePhysicalLayer sendFrameAfter override
+# ^ Moved to RealtimeRawPhysicalLayer sendFrameAfter override
 
 
 def printMessage(msg):
     print("RM: {} from {}".format(msg, msg.source))
 
 
-physicalLayer = RealtimePhysicalLayer(sock)
+physicalLayer = RealtimeRawPhysicalLayer(sock)
 # ^ this was not in the example before
 # (just gave sendToSocket to TcpLink)
 
@@ -80,8 +80,8 @@ print("      SL : link up")
 message = Message(MTI.Verify_NodeID_Number_Global,
                   NodeID(settings['localNodeID']), None)
 print("SM: {}".format(message))
-tcpLinkLayer.sendMessage(message)
-
+tcpLinkLayer.sendMessage(message, verbose=True)
+physicalLayer.sendAll(sock, verbose=True)  # only a formality since Realtime
 # N/A
 # while not tcpLinkLayer.getState() == TcpLink.State.Permitted:
 #     time.sleep(.02)

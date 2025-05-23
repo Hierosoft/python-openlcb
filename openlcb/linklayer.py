@@ -151,7 +151,7 @@ class LinkLayer:
         raise NotImplementedError(
             "[LinkLayer] abstract _onStateChanged not implemented")
 
-    def sendMessage(self, msg: Message):
+    def sendMessage(self, msg: Message, verbose=False):
         '''This is the basic abstract interface
         '''
 

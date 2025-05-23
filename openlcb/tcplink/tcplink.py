@@ -68,14 +68,14 @@ class TcpLink(LinkLayer):
         print(f"[TcpLink] _onStateChanged from {oldState} to {newState}"
               " (nothing to do since TcpLink)")
 
-    def handleFrameReceived(self, inputData: bytearray):
+    def handleFrameReceived(self, inputData: Union[bytes, bytearray]):
         """Receives bytes from lower level
         and accumulates them into individual message parts.
 
         Args:
             inputData ([int]) : next chunk of the input stream
         """
-        assert isinstance(inputData, bytearray)
+        assert isinstance(inputData, (bytes, bytearray))
         self.accumulatedData.extend(inputData)
         # Now check it if has one or more complete message.
         while len(self.accumulatedData) > 0 :
@@ -194,11 +194,14 @@ class TcpLink(LinkLayer):
         msg = Message(MTI.Link_Layer_Down, NodeID(0), None, bytearray())
         self.fireMessageReceived(msg)
 
-    def sendMessage(self, message: Message):
+    def sendMessage(self, message: Message, verbose=False):
         """
         The message level calls this with an OpenLCB
         message.  That is then converted to a byte
         stream and forwarded to the TCP socket layer.
+        Args:
+            message (Message): A message.
+            verbose (bool, optional): Ignored (Reserved for subclass).
         """
 
         mti = message.mti

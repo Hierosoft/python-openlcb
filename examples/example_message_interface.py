@@ -91,7 +91,7 @@ canLink.sendMessage(message)
 while True:
     count = 0
     count += physicalLayer.sendAll(sock, verbose=True)
-    count += physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    count += physicalLayer.receiveAll(sock, verbose=True)
     if count < 1:
         precise_sleep(.01)
     # else skip sleep to avoid latency (port already delayed)

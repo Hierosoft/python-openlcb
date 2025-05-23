@@ -55,7 +55,7 @@ class LinkMockLayer(LinkLayer):
 
     sentMessages = []
 
-    def sendMessage(self, message):
+    def sendMessage(self, message, verbose=False):
         LinkMockLayer.sentMessages.append(message)
 
     def _onStateChanged(self, oldState, newState):

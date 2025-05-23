@@ -1,15 +1,23 @@
 
-from enum import Enum
 from logging import getLogger
 from typing import Union
 
 from openlcb.physicallayer import PhysicalLayer
+from openlcb.portinterface import PortInterface
 
 logger = getLogger(__name__)
 
 
 class RealtimePhysicalLayer(PhysicalLayer):
-
+    """A realtime physical layer is only for use when there is an
+    absence of a link layer (or link layer doesn't enqueue frames) *and*
+    the application is not multi-threaded or uses a lock and avoids
+    race conditions.
+    Otherwise, overlapping port calls (*undefined behavior* at OS level)
+    may occur!
+    TODO: Add a lock variable and do reads here so all port usage can
+    utilize the lock and prevent overlapping use of the port.
+    """
     class State:
         Initial = 0
         Disconnected = 1
@@ -18,33 +26,73 @@ class RealtimePhysicalLayer(PhysicalLayer):
     DisconnectedState = State.Disconnected
 
     def __init__(self, socket):
+        PhysicalLayer.__init__(self)
         # sock to distinguish from socket module or socket.socket class!
         self.sock = socket
 
-    def sendDataAfter(self, data: Union[bytearray, bytes]):
+    def sendDataAfter(self, data: Union[bytearray, bytes], verbose=True):
+        """Send data (immediately, since realtime subclass).
+
+        Args:
+            data (Union[bytearray, bytes, CanFrame]): data to send.
+            verbose (bool, optional): verbose is only for Realtime
+                subclass (since data is sent immediately), otherwise set
+                verbose on sendAll. Defaults to False.
+        """
         # if isinstance(data, list):
         #     raise TypeError(
         #         "Got {}({}) but expected str"
         #         .format(type(data).__name__, data)
         #     )
         assert isinstance(data, (bytes, bytearray))
-        print("      SR: {}".format(data))
+        if verbose:
+            print("      SR: {}".format(data))
         self.sock.send(data)
 
-    def sendFrameAfter(self, frame):
+    def sendFrameAfter(self, frame, verbose=False):
+        """Send frame (immediately, since realtime subclass).
+
+        Args:
+            data (Union[bytearray, bytes, CanFrame]): data to send.
+            verbose (bool, optional): verbose is only for Realtime
+                subclass (since data is sent immediately), otherwise set
+                verbose on sendAll. Defaults to False.
+        """
+        if hasattr(self, 'encodeFrameAsData'):
+            data = self.encodeFrameAsData(frame)
+        else:
+            assert isinstance(frame, (bytes, bytearray, str)), \
+                "Use a FrameEncoder implementation if not using bytes/str"
+            if isinstance(frame, str):
+                data = frame.encode("utf-8")
+            else:
+                data = frame
         # if isinstance(data, list):
         #     raise TypeError(
         #         "Got {}({}) but expected str"
         #         .format(type(data).__name__, data)
         #     )
-        print("      SR: {}".format(frame.encode()))
+        if verbose:
+            print("      SR: {}".format(frame))
         # send and fireFrameReceived would usually occur after
         #   frame from _send_frames.popleft is sent,
         #   but we do all this here in the Realtime subclass:
-        self.sock.send(frame.encode())
-        # TODO: finish onFrameSent
-        if frame.afterSendState:
+        self.sock.send(data)
+        if hasattr(frame, 'afterSendState') and frame.afterSendState:
+            # Use hasattr since only applicable to subclasses that use
+            #   CanFrame.
             self.fireFrameReceived(frame)  # also calls self.onFrameSent(frame)
+
+    def sendAll(self, device: PortInterface, mode="binary",
+                verbose=False) -> int:
+        """sendAll is only a stub in the case of realtime subclasses.
+        Instead of popping frames it performs a check to ensure the
+        queue is not used (since queue should only be used for typical
+        subclasses which are queued).
+        """
+        if len(self._send_frames) > 0:
+            raise AssertionError("Realtime subclasses should not use a queue!")
+        logger.debug("sendAll ran (realtime subclass, so nothing to do)")
 
     def registerFrameReceivedListener(self, listener):
         """Register a new frame received listener

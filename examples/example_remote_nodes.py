@@ -199,7 +199,7 @@ message = Message(MTI.Verify_NodeID_Number_Global,
                   NodeID(settings['localNodeID']), None)
 if settings['trace'] : print("SM: {}".format(message))
 canLink.sendMessage(message)
-
+physicalLayer.sendAll(sock)
 # pull the received messages
 while True :
     try :
@@ -218,4 +218,6 @@ for node in remoteNodeStore.asArray() :
 
 # this ends here, which takes the local node offline
 
+# For explicitness (to make this example match use in non-linear
+#   application), notify openlcb of disconnect:
 physicalLayer.onDisconnect()
