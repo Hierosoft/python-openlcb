@@ -19,7 +19,6 @@ if __name__ == "__main__":
 # endregion same code as other examples
 
 from openlcb import precise_sleep  # noqa: E402
-from openlcb.canbus.gridconnectobserver import GridConnectObserver  # noqa:E402
 from openlcb.tcplink.tcpsocket import TcpSocket  # noqa: E402
 from openlcb.canbus.canphysicallayergridconnect import (  # noqa: E402
     CanPhysicalLayerGridConnect,
@@ -79,8 +78,6 @@ frame = CanFrame(ControlFrame.AME.value, 1, bytearray())
 print("SL: {}".format(frame))
 physicalLayer.sendFrameAfter(frame)
 physicalLayer.sendAll(sock, verbose=True)
-
-observer = GridConnectObserver()
 
 # display response - should be RID from nodes
 while True:

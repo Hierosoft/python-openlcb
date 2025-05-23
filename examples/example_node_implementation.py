@@ -20,7 +20,6 @@ if __name__ == "__main__":
 # endregion same code as other examples
 
 from openlcb import precise_sleep  # noqa: E402
-from openlcb.canbus.gridconnectobserver import GridConnectObserver  # noqa:E402
 from openlcb.tcplink.tcpsocket import TcpSocket  # noqa: E402
 
 from openlcb.canbus.canphysicallayergridconnect import (  # noqa: E402
@@ -159,8 +158,6 @@ print("      SL : link up")
 message = Message(MTI.Verify_NodeID_Number_Global,
                   NodeID(settings['localNodeID']), None)
 canLink.sendMessage(message)
-
-observer = GridConnectObserver()
 
 # process resulting activity
 while True:
