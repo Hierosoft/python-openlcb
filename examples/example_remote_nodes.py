@@ -124,7 +124,7 @@ while True:
     state = canLink.getState()
     if state == CanLink.State.Permitted:
         break
-    physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    physicalLayer.receiveAll(sock, verbose=True)
     physicalLayer.sendAll(sock, verbose=True)
 
 
@@ -140,15 +140,20 @@ else:
 print("nodeIdToAlias: {}".format(canLink.nodeIdToAlias))
 
 
-def receiveLoop():
+def socketLoop():
     """put the read on a separate thread"""
     while True:
-        physicalLayer.receiveAll(sock, verbose=settings['trace'])
-        precise_sleep(.01)
+        count = 0
+        count += physicalLayer.sendAll(sock, verbose=True)
+        count += physicalLayer.receiveAll(sock, verbose=True)
+        if count < 1:
+            precise_sleep(.01)
+        # else no sleep (socket already delayed)
+    print("Stopped receiving.")
 
 
 import threading  # noqa E402
-thread = threading.Thread(daemon=True, target=receiveLoop)
+thread = threading.Thread(daemon=True, target=socketLoop)
 
 
 def result(arg1, arg2=None, arg3=None, result=True) :
@@ -199,17 +204,23 @@ message = Message(MTI.Verify_NodeID_Number_Global,
                   NodeID(settings['localNodeID']), None)
 if settings['trace'] : print("SM: {}".format(message))
 canLink.sendMessage(message)
-physicalLayer.sendAll(sock)
-# pull the received messages
-while True :
-    try :
-        received = readQueue.get(True, settings['timeout'])
-        if settings['trace']:
-            print("received: ", received)
-    except Empty:
-        break
 
+# physicalLayer.sendAll(sock, verbose=True)  # can't use port on 2 threads!
+# (moved to socketLoop)
+
+# pull the received messages
+# Commented since using verbose=True for receiveAll
+# while True :
+#     # physicalLayer.sendAll(sock, verbose=True)
+#     try :
+#         received = readQueue.get(True, settings['timeout'])
+#         if settings['trace']:
+#             print("received: ", received)
+#     except Empty:
+#         break
 # print the resulting node store contents
+print("\nWaiting for SNIP requests and responses...")
+precise_sleep(2)  # Wait for approximately all SNIP info to arrive.
 print("\nDiscovered nodes:")
 
 for node in remoteNodeStore.asArray() :
