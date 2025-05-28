@@ -1,5 +1,7 @@
 '''
-Demo of using the datagram service to send and receive a datagram
+Demo of creating a virtual node to represent the application
+(other local nodes are possible, but at least one is necessary
+for the application to announce itself and provide SNIP info).
 
 Usage:
 python3 example_node_implementation.py [host|host:port]
