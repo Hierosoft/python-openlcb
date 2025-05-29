@@ -1,4 +1,5 @@
 
+from typing import Callable
 from openlcb.eventid import EventID
 from openlcb.linklayer import LinkLayer
 from openlcb.node import Node
@@ -20,6 +21,20 @@ class RemoteNodeProcessor(Processor) :
 
     def __init__(self, linkLayer: LinkLayer = None) :
         self.linkLayer = linkLayer
+        self._nodeIdentifiedListeners = []
+        self._producerUpdatedListeners = []
+        self._consumerUpdatedListeners = []
+
+    def registerNodeIdentified(self, callback: Callable[[Node], None]):
+        self._nodeIdentifiedListeners.append(callback)
+
+    def registerProducerUpdated(self, callback: Callable[[Node, EventID],
+                                                         None]):
+        self._producerUpdatedListeners.append(callback)
+
+    def registerConsumerUpdated(self, callback: Callable[[Node, EventID],
+                                                         None]):
+        self._consumerUpdatedListeners.append(callback)
 
     def process(self, message: Message, node: Node) :
         """Do a fast drop of messages not to us, from us, or global
@@ -44,35 +59,35 @@ class RemoteNodeProcessor(Processor) :
 
         # specific message handling
         if message.mti in (MTI.Initialization_Complete, MTI.Initialization_Complete_Simple) :  # noqa: E501
-            self.initializationComplete(message, node)
+            self._initializationComplete(message, node)
             return True
         elif message.mti == MTI.Protocol_Support_Reply :
-            self.protocolSupportReply(message, node)
+            self._protocolSupportReply(message, node)
             return True
         elif message.mti == MTI.Link_Layer_Up :
-            self.linkUpMessage(message, node)
+            self._linkUpMessage(message, node)
         elif message.mti == MTI.Link_Layer_Down :
-            self.linkDownMessage(message, node)
+            self._linkDownMessage(message, node)
         elif message.mti == MTI.Simple_Node_Ident_Info_Request :
-            self.simpleNodeIdentInfoRequest(message, node)
+            self._simpleNodeIdentInfoRequest(message, node)
         elif message.mti == MTI.Simple_Node_Ident_Info_Reply :
-            self.simpleNodeIdentInfoReply(message, node)
+            self._simpleNodeIdentInfoReply(message, node)
             return True
         elif message.mti in (MTI.Producer_Identified_Active, MTI.Producer_Identified_Inactive, MTI.Producer_Identified_Unknown, MTI.Producer_Consumer_Event_Report) :  # noqa: E501
-            self.producedEventIndicated(message, node)
+            self._producedEventIndicated(message, node)
             return True
         elif message.mti in (MTI.Consumer_Identified_Active, MTI.Consumer_Identified_Inactive, MTI.Consumer_Identified_Unknown) :  # noqa: E501
-            self.consumedEventIndicated(message, node)
+            self._consumedEventIndicated(message, node)
             return True
         elif message.mti == MTI.New_Node_Seen :
-            self.newNodeSeen(message, node)
+            self._newNodeSeen(message, node)
             return True
         else :
             # we ignore others
             return False
         return False
 
-    def initializationComplete(self, message: Message, node: Node) :
+    def _initializationComplete(self, message: Message, node: Node) :
         if self.checkSourceID(message, node) :  # Send by us?
             node.state = Node.State.Initialized
             # clear out PIP, SNIP caches
@@ -80,17 +95,17 @@ class RemoteNodeProcessor(Processor) :
             node.pipSet = set(())
             node.snip = SNIP()
 
-    def linkUpMessage(self, message: Message, node: Node) :
+    def _linkUpMessage(self, message: Message, node: Node) :
         # affects everybody
         node.state = Node.State.Uninitialized
         # don't clear out PIP, SNIP caches, they're probably still good
 
-    def linkDownMessage(self, message: Message, node: Node) :
+    def _linkDownMessage(self, message: Message, node: Node) :
         # affects everybody
         node.state = Node.State.Uninitialized
         # don't clear out PIP, SNIP caches, they're probably still good
 
-    def newNodeSeen(self, message: Message, node: Node) :
+    def _newNodeSeen(self, message: Message, node: Node) :
         # send pip and snip requests for info from the new node
         pip = Message(MTI.Protocol_Support_Inquiry,
                       self.linkLayer.localNodeID, node.id, bytearray())
@@ -105,7 +120,7 @@ class RemoteNodeProcessor(Processor) :
                            self.linkLayer.localNodeID, node.id, bytearray())
         self.linkLayer.sendMessage(eventReq)
 
-    def protocolSupportReply(self, message: Message, node: Node) :
+    def _protocolSupportReply(self, message: Message, node: Node) :
         if self.checkSourceID(message, node) :  # sent by us?
             part0 = ((message.data[0]) << 24) if (len(message.data) > 0) else 0
             part1 = ((message.data[1]) << 16) if (len(message.data) > 1) else 0
@@ -115,28 +130,34 @@ class RemoteNodeProcessor(Processor) :
             content = part0 | part1 | part2 | part3
             node.pipSet = PIP.setContentsFromInt(content)
 
-    def simpleNodeIdentInfoRequest(self, message: Message, node: Node) :
+    def _simpleNodeIdentInfoRequest(self, message: Message, node: Node) :
         if self.checkDestID(message, node) :  # sent by us? - overlapping SNIP activity is otherwise confusing  # noqa: E501
             # clear SNIP in the node to start accumulating
             node.snip = SNIP()
 
-    def simpleNodeIdentInfoReply(self, message: Message, node: Node) :
+    def _simpleNodeIdentInfoReply(self, message: Message, node: Node) :
         if self.checkSourceID(message, node) :  # sent by this node? - overlapping SNIP activity is otherwise confusing  # noqa: E501
             # accumulate data in the node
             if len(message.data) > 2 :
                 node.snip.addData(message.data)
                 node.snip.updateStringsFromSnipData()
+                for callback in self._nodeIdentifiedListeners:
+                    callback(node)
 
-    def producedEventIndicated(self, message: Message, node: Node) :
+    def _producedEventIndicated(self, message: Message, node: Node) :
         if self.checkSourceID(message, node) :  # produced by this node?
             # make an event id from the data
             eventID = EventID(message.data)
             # register it
             node.events.produces(eventID)
+            for callback in self._producerUpdatedListeners:
+                callback(node, eventID)
 
-    def consumedEventIndicated(self, message: Message, node: Node) :
+    def _consumedEventIndicated(self, message: Message, node: Node) :
         if self.checkSourceID(message, node) :  # consumed by this node?
             # make an event id from the data
             eventID = EventID(message.data)
             # register it
             node.events.consumes(eventID)
+            for callback in self._consumerUpdatedListeners:
+                callback(node, eventID)
