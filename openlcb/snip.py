@@ -1,5 +1,6 @@
 
 import logging
+from typing import Union
 
 
 class SNIP:
@@ -112,7 +113,7 @@ class SNIP:
         # fell out without finding
         return 0
 
-    def getString(self, first, maxLength) -> str:
+    def getString(self, first: int, maxLength: int) -> str:
         """Get the string at index `first`
         ending with either a null or having maxLength,
         whichever comes first.
@@ -131,7 +132,7 @@ class SNIP:
         # terminate_i should point at the first zero or exclusive end
         return self.data[first:terminate_i].decode("utf-8")
 
-    def addData(self, in_data):
+    def addData(self, in_data: Union[bytearray, bytes]):
         '''Add additional bytes of SNIP data
         '''
         for i in range(0, len(in_data)):
