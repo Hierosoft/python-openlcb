@@ -311,7 +311,7 @@ while not complete_data and not read_failed:
     if canLink.nodeIdToAlias != previous_nodes:
         previous_nodes = copy.deepcopy(canLink.nodeIdToAlias)
 
-physicalLayer.onDisconnect()
+physicalLayer.physicalLayerDown()
 
 if read_failed:
     print("Read complete (FAILED)")

@@ -60,7 +60,6 @@ class LinkLayer:
         #   operator not work as expected in registerFrameReceivedListener.
         physicalLayer.onFrameReceived = self.handleFrameReceived
         physicalLayer.onFrameSent = self.handleFrameSent
-        physicalLayer.onDisconnect = self.handleDisconnect
         physicalLayer.linkLayer = self
         # # ^ enforce queue paradigm (See use in PhysicalLayer subclass)
         # physicalLayer.registerFrameReceivedListener(listener)
@@ -107,24 +106,6 @@ class LinkLayer:
                 and (frame.afterSendState is not None)):
             self.setState(frame.afterSendState)  # may change again
             #   since setState calls pollState via _onStateChanged.
-
-    def handleDisconnect(self):
-        """Run this whenever the socket connection is lost
-        and override _onStateChanged to handle the change.
-        * If you override this, you *must* call
-          `LinkLayer.handleDisconnect(self)` (such as via
-          physicalLayer.onDisconnect) to trigger _onStateChanged if the
-          implementation utilizes getState.
-        * Override this in each subclass or state won't match!
-        """
-        if type(self).__name__ != "LinkLayer":
-            # ^ Use name, since isinstance returns True for any subclass.
-            if isinstance(type(self).DisconnectedState, LinkLayer.State):
-                raise NotImplementedError(
-                    " LinkLayer.State and LinkLayer.DisconnectedState"
-                    " are only for testing. Redefine them in each subclass.")
-
-        self.setState(type(self).DisconnectedState)
 
     def getState(self):
         return self._state

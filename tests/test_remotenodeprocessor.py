@@ -13,7 +13,10 @@ from openlcb.pip import PIP
 
 
 class MockPhysicalLayer(PhysicalLayer):
-    pass
+    def physicalLayerDown(self):
+        # Usually this would trigger LinkLayerDown using a CanFrame,
+        #   but limit test to RemoteNodeProcessor as much as possible
+        pass
 
 
 class TesRemoteNodeProcessorClass(unittest.TestCase):
@@ -25,7 +28,7 @@ class TesRemoteNodeProcessorClass(unittest.TestCase):
         self.processor = RemoteNodeProcessor(self.canLink)
 
     def tearDown(self):
-        self.physicalLayer.onDisconnect()
+        self.physicalLayer.physicalLayerDown()
 
     def testInitializationComplete(self) :
         # not related to node

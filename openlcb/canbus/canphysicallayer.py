@@ -10,7 +10,6 @@ import warnings
 
 from openlcb.canbus.canframe import CanFrame
 from openlcb.canbus.controlframe import ControlFrame
-from openlcb.linklayer import LinkLayer
 from openlcb.physicallayer import PhysicalLayer
 
 logger = getLogger(__name__)
@@ -24,7 +23,6 @@ class CanPhysicalLayer(PhysicalLayer):
 
     def __init__(self,):
         PhysicalLayer.__init__(self)
-        self.linkLayer: LinkLayer = None  # CanLink would be circular import
         self._frameReceivedListeners: list[Callable[[CanFrame], None]] = []
 
     def sendFrameAfter(self, frame: CanFrame):

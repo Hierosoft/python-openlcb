@@ -61,17 +61,12 @@ def printFrame(frame):
     print("RL: {}".format(frame))
 
 
-def handleDisconnect():
-    print("Disconnected.")
-
-
 physicalLayer = CanPhysicalLayerGridConnect()
 
 # NOTE: Normally the required handlers are set by link layer
 #   constructor, but this example doesn't use a link layer:
 physicalLayer.onFrameSent = handleFrameSent
 physicalLayer.onFrameReceived = handleFrameReceived
-physicalLayer.onDisconnect = handleDisconnect
 
 physicalLayer.registerFrameReceivedListener(printFrame)
 

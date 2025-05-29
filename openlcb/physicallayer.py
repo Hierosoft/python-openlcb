@@ -60,6 +60,8 @@ class PhysicalLayer:
         self._send_frames = deque()
         # self._send_chunks = deque()
         self.onQueuedFrame = None
+        self.linkLayer = None  # LinkLayer would be circular import
+        #  so no type hint...o dear.
 
     def sendDataAfter(self, data: Union[bytes, bytearray], verbose=False):
         raise NotImplementedError(
@@ -162,19 +164,6 @@ class PhysicalLayer:
             " the PhysicalLayer/subclass instance:"
             " Set this method manually to LinkLayer/subclass instance's"
             " handleFrameReceived method.")
-
-    def onDisconnect(self, frame):
-        """Stub method, patched at runtime:
-        LinkLayer subclass's constructor must set instance's
-        onDisconnect to LinkLayer subclass' handleDisconnect (The
-        application must pass this instance to LinkLayer subclass's
-        constructor so it will do that).
-        """
-        raise NotImplementedError(
-            "The subclass must patch the instance:"
-            " PhysicalLayer instance's onDisconnect must be manually"
-            " set to the LinkLayer subclass instance' handleDisconnect"
-            " so state can be updated if necessary.")
 
     def onFrameSent(self, frame):
         """Stub method, patched at runtime:

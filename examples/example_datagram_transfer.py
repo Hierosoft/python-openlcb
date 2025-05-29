@@ -138,4 +138,4 @@ while True:
         precise_sleep(.01)
     # else skip sleep to avoid latency (port already delayed)
 
-physicalLayer.onDisconnect()
+physicalLayer.physicalLayerDown()

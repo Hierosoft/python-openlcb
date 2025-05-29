@@ -20,6 +20,9 @@ import threading
 
 from logging import getLogger
 
+from openlcb.message import Message
+from openlcb.mti import MTI
+
 try:
     import tkinter as tk
 except ImportError:
@@ -382,7 +385,7 @@ class MainForm(ttk.Frame):
         #   a tk.Font instance.
         self.local_node_url_label = ttk.Label(
             self,
-            text='See {})'.format(underlined_url),
+            text='See ({})'.format(underlined_url),
         )
         # A label is not a button, so must bind to mouse button event manually:
         self.local_node_url_label.bind(
@@ -453,6 +456,8 @@ class MainForm(ttk.Frame):
         self.cdi_row += 1
         self.cdi_form = CDIForm(self.cdi_tab)  # OpenLCBNetwork() subclass
         # ^ CDIForm has ttk.Treeview etc.
+        self.cdi_form.canLink.registerMessageReceivedListener(
+            self.handleMessage)
         self.cdi_form.grid(row=self.cdi_row)
 
         self.example_tab = ttk.Frame(self.notebook)
@@ -481,86 +486,45 @@ class MainForm(ttk.Frame):
         #     self.rowconfigure(row, weight=1)
         # self.rowconfigure(self.row_count-1, weight=1)  # make last row expand
 
-    def _connectStateChanged(self, event_d):
-        """Handle connection events.
-
-        This is an example of how to handle different combinations of
-        errors and messages. It could be simplified slightly by having a
-        multi-line log panel, which would allow adding both 'error' and
-        'message' on the same run on different lines (but still only
-        show ready_message if 'done' or not 'error').
-
-        This method must run on the main thread to affect the GUI, so it
-        is triggered indirectly (by connect_state_changed which runs on
-        the connect or _listen thread).
-
-        Args:
-            event_d (dict): Information sent by OpenLCBNetwork's
-                connect method during the connection steps
-                including alias reservation. Potential keys:
-                - 'error' (str): Indicates a failure
-                - 'status' (str): Status message
-                - 'done' (bool): Indicates the process is done, but
-                  *only ready to send messages if 'error' is None*.
+    def handleMessage(self, message: Message):
+        """Off-thread message handler.
+        This is called by the OpenLCB network stack which is controlled
+        by the socket loop thread, so we must use self.root.after to
+        trigger methods which affect the GUI (such as _handleMessage).
         """
-        # logger.debug("Connect state changed: {}".format(event_d))
-        status = event_d.get('status')
-        if status:
-            self.setStatus(status)
-        error = event_d.get('error')
-        if error:
-            if status:
-                raise ValueError(
-                    "openlcb should set message or error, not both")
-            self.setStatus(error)
-            status = error
-            logger.error("[_connect_state_changed] {}".format(error))
-        done = event_d.get('done')
-        if done:
-            ready_message = 'Ready to load CDI (click "Refresh").'
-            # if event_d.get('command') == "connect":
-            if status:
-                ready_message += " " + status
-            if not error:
-                self.cdi_refresh_button.configure(state=tk.NORMAL)
-                self.setStatus(ready_message)
-                print(ready_message)
-            else:
-                # Only would be enabled if done without error before,
-                #   but maybe connection went down, so disable the
-                #   refresh button since we cannot read CDI (can't send
-                #   any read/write messages to the LCC network) in this
-                #   situation:
-                self.cdi_refresh_button.configure(state=tk.DISABLED)
-                # Already called self.setStatus(error) above.
+        self.root.after(0, self._handleMessage(message))
 
-    def connectStateChanged(self, event_d):
-        """Handle a dict event from a different thread
-        by sending the event to the main (GUI) thread.
-
-        This handles changes in the network connection, whether
-        triggered by an LCC Message, TcpSocket or the OS's network
-        implementation (called by _listen directly unless triggered by
-        LCC Message).
-
-        In this program, this is added to OpenLCBNetwork via
-        setConnectHandler.
-
-        Therefore in this program, this is triggered during _listen in
-        OpenLCBNetwork: Connecting is actually done until
-        sendAliasAllocationSequence detects success and marks
-        canLink._state to CanLink.State.Permitted (which triggers
-        _handleMessage which calls this).
-        - May also be directly called by _listen directly in case
-          stopped listening (RuntimeError reading port, or other reason
-          lower in the stack than LCC).
-        - OpenLCBNetwork's _onConnect attribute is a method
-          reference to this if set via setConnectHandler.
+    def _handleMessage(self, message: Message):
+        """Main thread Message handler.
+        Use self.root.after to trigger this, since code here affects the
+        GUI (Only main thread can access the GUI)!
         """
-        # Trigger the main thread (only the main thread can access the
-        # GUI):
-        self.root.after(0, self._connectStateChanged, event_d)
-        return True  # indicate that the message was handled.
+        if message.mti == MTI.Link_Layer_Up:
+            self._handleConnect()
+        elif message.mti == MTI.Link_Layer_Down:
+            self._handleDisconnect()
+
+    def _handleDisconnect(self):
+        """Handle Link_Layer_Up Message.
+        Affects GUI, so run from main thread or via self.root.after.
+        """
+        # formerly part of _connectStateChanged
+        # formerly called from connectStateChanged such as on connect or
+        # _listen thread
+
+        # Can't communicate with LCC network, so disable related widget(s):
+        self.cdi_refresh_button.configure(state=tk.DISABLED)
+        self.setStatus("LCC network disconnected.")
+
+    def _handleConnect(self):
+        """Handle Link_Layer_Down Message
+        Affects GUI, so run from main thread or via self.root.after.
+        """
+        ready_message = 'Ready to load CDI (click "Refresh").'
+        # if event_d.get('command') == "connect":
+        self.cdi_refresh_button.configure(state=tk.NORMAL)
+        self.setStatus(ready_message)
+        print(ready_message)
 
     def _connect(self):
         host_var = self.fields.get('host')
@@ -579,13 +543,16 @@ class MainForm(ttk.Frame):
         self.cdi_refresh_button.configure(state=tk.DISABLED)
         msg = "connecting to {}...".format(host)
         self.cdi_form.setStatus(msg)
-        self.connectStateChanged({'status': msg})  # self._callback_msg(msg)
+        detectButton = self.fields['farNodeID'].button
+        detectButton.configure(state=tk.NORMAL)
+
         result = None
         try:
             self._tcp_socket = TcpSocket()
             # self._sock.settimeout(30)
             self._tcp_socket.connect(host, port)
-            self.cdi_form.setConnectHandler(self.connectStateChanged)
+            # self.cdi_form.setConnectHandler(self.connectStateChanged)
+            # ^ See message.mti == MTI Link_Layer_Down instead.
             result = self.cdi_form.startListening(
                 self._tcp_socket,
                 localNodeID,
@@ -607,6 +574,8 @@ class MainForm(ttk.Frame):
         self._connect_thread.start()
         # This thread may end quickly after connection since
         #   start_receiving starts a thread.
+        self.cdi_connect_button.configure(state=tk.DISABLED)
+        self.cdi_connect_button.configure(state=tk.DISABLED)
 
     def cdiRefreshClicked(self):
         self.cdi_connect_button.configure(state=tk.DISABLED)

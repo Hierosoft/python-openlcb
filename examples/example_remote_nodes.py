@@ -231,4 +231,4 @@ for node in remoteNodeStore.asArray() :
 
 # For explicitness (to make this example match use in non-linear
 #   application), notify openlcb of disconnect:
-physicalLayer.onDisconnect()
+physicalLayer.physicalLayerDown()

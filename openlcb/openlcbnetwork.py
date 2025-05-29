@@ -145,39 +145,8 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
 
         self._connectingStart: float = None
 
-    def _resetTree(self):
-        self.etree = ET.Element("root")
-        self._openEl = self.etree
-
-    def _fireStatus(self, status, callback=None):
-        """Fire status handlers with the given status."""
-        if callback is None:
-            callback = self._onElement
-        if callback is None:
-            callback = self._onConnect
-        if callback:
-            print("CDIForm callback_msg({})".format(repr(status)))
-            self._onConnect({
-                'status': status,
-            })
-        else:
-            logger.warning("No callback, but set status: {}".format(status))
-
-    def setElementHandler(self, handler: Callable):
-        self._onElement = handler
-
-    def setConnectHandler(self, handler: Callable):
-        self._onConnect = handler
-
-    def startListening(self, connected_port,
-                       localNodeID: Union[NodeID, int, str, bytearray]):
-        if self._port is not None:
-            logger.warning(
-                "[startListening] A previous _port will be discarded.")
-        self._port = connected_port
         self._fireStatus("CanPhysicalLayerGridConnect...")
         self.physicalLayer = CanPhysicalLayerGridConnect()
-
         self._fireStatus("CanLink...")
         self.canLink = CanLink(self.physicalLayer, NodeID(localNodeID))
         # ^ CanLink constructor sets _physicalLayer's onFrameReceived
@@ -202,26 +171,46 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         self._fireStatus("MemoryService...")
         self._memoryService = MemoryService(self._datagramService)
 
+    def _resetTree(self):
+        self.etree = ET.Element("root")
+        self._openEl = self.etree
+
+    def _fireStatus(self, status, callback=None):
+        """Fire status handlers with the given status."""
+        if callback is None:
+            callback = self._onElement
+        if callback is None:
+            callback = self._onConnect
+        if callback:
+            print("CDIForm callback_msg({})".format(repr(status)))
+            self._onConnect({
+                'status': status,
+            })
+        else:
+            logger.warning("No callback, but set status: {}".format(status))
+
+    def setElementHandler(self, handler: Callable):
+        self._onElement = handler
+
+    def setConnectHandler(self, handler: Callable):
+        """Deprecated in favor of a Message handler,
+        Since it is the socket loop's responsibility to call
+        physicalLayerUp and physicalLayerDown, and those each trigger a
+        Message (See Link_Layer_Up and Link_Layer_Down in _handleMessage
+        in examples_gui.py)
+        """
+        self._onConnect = handler
+
+    def startListening(self, connected_port,
+                       localNodeID: Union[NodeID, int, str, bytearray]):
+        if self._port is not None:
+            logger.warning(
+                "[startListening] A previous _port will be discarded.")
+        self._port = connected_port
+
         self._fireStatus("listen...")
 
-        self.listen()  # Must listen for alias reservation responses
-        #   (sendAliasConnectionSequence will occur for another 200ms
-        #   once, then another 200ms on each alias collision if any)
-        #   - must also keep doing frame = pollFrame() and sending
-        #     if not None.
-
-        self._fireStatus("physicalLayerUp...")
-        self.physicalLayer.physicalLayerUp()
-        self._fireStatus("Waiting for alias reservation...")
-        while self.canLink.pollState() != CanLink.State.Permitted:
-            precise_sleep(.02)
-        # ^ triggers fireFrameReceived which calls CanLink's default
-        #   receiveListener by default since added on CanPhysicalLayer
-        #   arg of linkPhysicalLayer.
-        #   - Must happen *after* listen thread starts, since
-        #     fireFrameReceived (ControlFrame.LinkUp)
-        #     calls sendAliasConnectionSequence on this thread!
-        self._fireStatus("Alias reservation complete.")
+        self.listen()
 
     def listen(self):
         self._listenThread = threading.Thread(
@@ -244,6 +233,8 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
         return self._port.receive()
 
     def _listen(self):
+        self._fireStatus("physicalLayerUp...")
+        self.physicalLayer.physicalLayerUp()
         self._connectingStart = time.perf_counter()
         self._messageStart = None
         self._mode = OpenLCBNetwork.Mode.Idle  # Idle until data type is known
@@ -319,7 +310,7 @@ class OpenLCBNetwork(xml.sax.handler.ContentHandler):
                 self._mode = OpenLCBNetwork.Mode.Disconnected
                 raise  # re-raise since incomplete (prevent done OK state)
         finally:
-            self.physicalLayer.onDisconnect()
+            self.physicalLayer.physicalLayerDown()  # Link_Layer_Down, setState
         self._listenThread: threading.Thread = None
 
         self._mode = OpenLCBNetwork.Mode.Disconnected
