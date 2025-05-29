@@ -36,15 +36,15 @@ class LocalNodeProcessor(Processor):
             return False  # not to us
         # specific message handling
         if message.mti == MTI.Link_Layer_Up:
-            self.linkUpMessage(message, node)
+            self._linkUpMessage(message, node)
         elif message.mti == MTI.Link_Layer_Down:
-            self.linkDownMessage(message, node)
+            self._linkDownMessage(message, node)
         elif message.mti == MTI.Verify_NodeID_Number_Global:
-            self.verifyNodeIDNumberGlobal(message, node)
+            self._verifyNodeIDNumberGlobal(message, node)
         elif message.mti == MTI.Verify_NodeID_Number_Addressed:
-            self.verifyNodeIDNumberAddressed(message, node)
+            self._verifyNodeIDNumberAddressed(message, node)
         elif message.mti == MTI.Protocol_Support_Inquiry:
-            self.protocolSupportInquiry(message, node)
+            self._protocolSupportInquiry(message, node)
         elif message.mti in (MTI.Protocol_Support_Reply,
                              MTI.Simple_Node_Ident_Info_Reply):
             # these are not relevant here
@@ -59,18 +59,17 @@ class LocalNodeProcessor(Processor):
             # DatagramService
             pass
         elif message.mti == MTI.Simple_Node_Ident_Info_Request:
-            self.simpleNodeIdentInfoRequest(message, node)
+            self._simpleNodeIdentInfoRequest(message, node)
         elif message.mti == MTI.Identify_Events_Addressed:
-            self.identifyEventsAddressed(message, node)
+            self._identifyEventsAddressed(message, node)
         elif message.mti in (MTI.Terminate_Due_To_Error,
                              MTI.Optional_Interaction_Rejected):
-            self.errorMessageReceived(message, node)
+            self._errorMessageReceived(message, node)
         else:
             self._unrecognizedMTI(message, node)
         return False
 
-    # private method
-    def linkUpMessage(self, message: Message, node: Node):
+    def _linkUpMessage(self, message: Message, node: Node):
         node.state = Node.State.Initialized
         msgIC = Message(MTI.Initialization_Complete, node.id,
                         None, node.id.toArray())
@@ -79,26 +78,22 @@ class LocalNodeProcessor(Processor):
         # msgVN = Message( MTI.Verify_NodeID_Number_Global,  node.id)
         # self.linkLayer.sendMessage(msgVN)
 
-    # private method
-    def linkDownMessage(self, message: Message, node: Node):
+    def _linkDownMessage(self, message: Message, node: Node):
         node.state = Node.State.Uninitialized
 
-    # private method
-    def verifyNodeIDNumberGlobal(self, message: Message, node: Node):
+    def _verifyNodeIDNumberGlobal(self, message: Message, node: Node):
         if not (len(message.data) == 0 or node.id == NodeID(message.data)):
             return  # not to us
         msg = Message(MTI.Verified_NodeID, node.id, message.source,
                       node.id.toArray())
         self.linkLayer.sendMessage(msg)
 
-    # private method
-    def verifyNodeIDNumberAddressed(self, message: Message, node: Node):
+    def _verifyNodeIDNumberAddressed(self, message: Message, node: Node):
         msg = Message(MTI.Verified_NodeID,  node.id, message.source,
                       node.id.toArray())
         self.linkLayer.sendMessage(msg)
 
-    # private method
-    def protocolSupportInquiry(self, message: Message, node: Node):
+    def _protocolSupportInquiry(self, message: Message, node: Node):
         pips = 0
         for pip in node.pipSet:
             pips |= pip.value
@@ -112,14 +107,12 @@ class LocalNodeProcessor(Processor):
                       retval)
         self.linkLayer.sendMessage(msg)
 
-    # private method
-    def simpleNodeIdentInfoRequest(self, message: Message, node: Node):
+    def _simpleNodeIdentInfoRequest(self, message: Message, node: Node):
         msg = Message(MTI.Simple_Node_Ident_Info_Reply, node.id,
                       message.source, node.snip.returnStrings())
         self.linkLayer.sendMessage(msg)
 
-    # private method
-    def identifyEventsAddressed(self, message: Message, node: Node):
+    def _identifyEventsAddressed(self, message: Message, node: Node):
         '''EventProtocol in PIP, but no Events here to reply about;
         no reply necessary
         '''
@@ -150,7 +143,6 @@ class LocalNodeProcessor(Processor):
                                  (originalMTI & 0xFF)]))  # permanent error
         self.linkLayer.sendMessage(msg)
 
-    # private method
-    def errorMessageReceived(self, message: Message, node: Node):
+    def _errorMessageReceived(self, message: Message, node: Node):
         # these are just logged until we have more complex interactions
         logging.info("received unexpected {}".format(message))
