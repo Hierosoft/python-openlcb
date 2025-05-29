@@ -38,6 +38,8 @@ from examples.tkexamples.cdiform import CDIForm
 from openlcb import emit_cast, formatted_ex
 from openlcb.tcplink.mdnsconventions import id_from_tcp_service_name
 
+from typing import OrderedDict as TypingOrderedDict
+
 zeroconf_enabled = False
 try:
     from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
@@ -143,39 +145,39 @@ class MainForm(ttk.Frame):
             #   have backed up & moved the bad JSON file:
             self.settings = Settings()
         self.detected_services = OrderedDict()
-        self.fields = OrderedDict()
+        self.fields: TypingOrderedDict[str, tk.Entry] = OrderedDict()
         self.proc = None
         self._gui(parent)
-        self.w1.after(1, self.on_form_loaded)  # must go after gui
+        self.w1.after(1, self.onFormLoaded)  # must go after gui
         self.example_modules = OrderedDict()
         self.example_buttons = OrderedDict()
         if zeroconf_enabled:
             self.zeroconf = Zeroconf()
             self.listener = MyListener()
-            self.listener.update_service = self.update_service
-            self.listener.remove_service = self.remove_service
-            self.listener.add_service = self.add_service
+            self.listener.update_service = self.updateService
+            self.listener.remove_service = self.removeService
+            self.listener.add_service = self.addService
 
-    def on_form_loaded(self):
-        self.load_settings()
-        self.load_examples()
-        count = self.show_next_error()
+    def onFormLoaded(self):
+        self.loadSettings()
+        self.loadExamples()
+        count = self.showNextError()
         if not count:
-            self.set_status(
+            self.setStatus(
                 "Welcome!"
             )
         # else show_next_error should have already set status label text.
 
-    def show_next_error(self):
+    def showNextError(self):
         if not self.errors:
             return 0
         error = self.errors.popleft()
         if not error:
             return 0
-        self.set_status(error)
+        self.setStatus(error)
         return 1
 
-    def remove_examples(self):
+    def removeExamples(self):
         for module_name, button in self.example_buttons.items():
             button.grid_forget()
             self.row -= 1
@@ -188,8 +190,8 @@ class MainForm(ttk.Frame):
         self.example_buttons.clear()
         self.example_modules.clear()
 
-    def load_examples(self):
-        self.remove_examples()
+    def loadExamples(self):
+        self.removeExamples()
         self.example_row = 0
         self.examples_label = ttk.Label(
             self.example_tab,
@@ -202,7 +204,7 @@ class MainForm(ttk.Frame):
         self.run_button = ttk.Button(
             self.example_tab,
             text="Run",
-            command=self.run_example,
+            command=self.runExample,
             # command=lambda x=name: self.run_example(module_name=x),
             # x=name is necessary for early binding, otherwise all
             # lambdas will have the *last* value in the loop.
@@ -236,7 +238,7 @@ class MainForm(ttk.Frame):
             self.example_buttons[name] = button
             self.example_row += 1
 
-    def run_example(self, module_name=None):
+    def runExample(self, module_name=None):
         """Run the selected example.
 
         Args:
@@ -248,26 +250,26 @@ class MainForm(ttk.Frame):
             # for name, radiobutton in self.example_buttons.items():
             index = self.example_var.get()
             if index is None:
-                self.set_status("Select an example first.")
+                self.setStatus("Select an example first.")
                 return
             module_name = self.examples[index]
 
-        self.set_status("")
+        self.setStatus("")
         node_ids = (
             self.fields['localNodeID'].get(),
             self.fields['farNodeID'].get(),
         )
         for node_id in node_ids:
             if (":" in node_id) or ("." not in node_id):
-                self.set_status("Error: expected dot-separated ID")
+                self.setStatus("Error: expected dot-separated ID")
                 return
-        self.save_settings()
+        self.saveSettings()
         module_path = self.example_modules[module_name]
         args = (sys.executable, module_path)
-        self.set_status("Running {} (see console for results)..."
-                        "".format(module_name))
+        self.setStatus("Running {} (see console for results)..."
+                       .format(module_name))
 
-        self.enable_buttons(False)
+        self.enableButtons(False)
         try:
             self.proc = subprocess.Popen(
                 args,
@@ -276,9 +278,9 @@ class MainForm(ttk.Frame):
                 # stdin=None, stdout=None, stderr=None,
             )
         finally:
-            self.enable_buttons(True)
+            self.enableButtons(True)
 
-    def enable_buttons(self, enable):
+    def enableButtons(self, enable):
         state = tk.NORMAL if enable else tk.DISABLED
         if self.run_button:
             self.run_button.configure(state=state)
@@ -287,13 +289,13 @@ class MainForm(ttk.Frame):
                 continue
             field.button.configure(state=state)
 
-    def load_settings(self):
+    def loadSettings(self):
         # import json
         # print(json.dumps(self.settings._meta, indent=1, sort_keys=True))
 
         # print("[gui] self.settings['localNodeID']={}"
         #       .format(self.settings['localNodeID']))
-        for key, var in self.fields.items():
+        for key in self.fields.keys():
             if key not in self.settings:
                 # The field must not be a setting. Don't try to load
                 #   (Avoid KeyError).
@@ -302,7 +304,7 @@ class MainForm(ttk.Frame):
         # print("[gui] self.fields['localNodeID']={}"
         #       .format(self.fields['localNodeID'].get()))
 
-    def save_settings(self):
+    def saveSettings(self):
         for key, field in self.fields.items():
             if key not in self.settings:
                 # Skip runtime GUI data fields such as
@@ -348,26 +350,26 @@ class MainForm(ttk.Frame):
         self.parent.rowconfigure(0, weight=1)
         self.parent.columnconfigure(0, weight=1)
         self.row = 0
-        self.add_field("service_name",
-                       "TCP Service name (optional, sets host&port)",
-                       gui_class=ttk.Combobox, tooltip="",
-                       command=self.set_id_from_name,
-                       command_text="Copy digits to Far Node ID")
+        self.addField("service_name",
+                      "TCP Service name (optional, sets host&port)",
+                      gui_class=ttk.Combobox, tooltip="",
+                      command=self.setIdFromName,
+                      command_text="Copy digits to Far Node ID")
         self.fields["service_name"].button.configure(state=tk.DISABLED)
-        self.fields["service_name"].var.trace('w', self.on_service_name_change)
-        self.add_field("host", "IP address/hostname",
-                       command=self.detect_hosts,
-                       command_text="Detect")
-        self.add_field(
+        self.fields["service_name"].var.trace('w', self.onServiceNameChange)
+        self.addField("host", "IP address/hostname",
+                      command=self.detectHosts,
+                      command_text="Detect")
+        self.addField(
             "port",
             "Port",
-            command=self.default_port,
+            command=self.fillDefaultPort,
             command_text="Default",
         )
-        self.add_field(
+        self.addField(
             "localNodeID",
             "Local Node ID",
-            command=self.default_local_node_id,
+            command=self.fillDefaultLocalNodeId,
             command_text="Default",
             tooltip=('("05.01.01.01.03.01 for Python openlcb examples only:'),
         )
@@ -385,7 +387,7 @@ class MainForm(ttk.Frame):
         # A label is not a button, so must bind to mouse button event manually:
         self.local_node_url_label.bind(
             "<Button-1>",  # Mouse button 1 (left click)
-            lambda e: self.open_url(self.unique_ranges_url)
+            lambda e: self.openUrl(self.unique_ranges_url)
         )
         self.local_node_url_label.grid(row=self.row,
                                        column=self.tooltip_column,
@@ -393,32 +395,32 @@ class MainForm(ttk.Frame):
                                        sticky=tk.N)
         self.row += 1
 
-        self.add_field(
+        self.addField(
             "farNodeID", "Far Node ID",
             gui_class=ttk.Combobox,
-            command=self.detect_nodes,  # TODO: finish detect_nodes & use
+            command=self.detectNodes,  # TODO: finish detect_nodes & use
             command_text="Detect",  # TODO: finish detect_nodes & use
         )
 
-        self.add_field(
+        self.addField(
             "device", "Serial Device (or COM port)",
             gui_class=ttk.Combobox,
-            command=lambda: self.load_default("device"),
+            command=lambda: self.fillDefault("device"),
             command_text="Default",
         )
 
-        self.add_field(
+        self.addField(
             "timeout", "Remote nodes timeout (seconds)",
             gui_class=ttk.Entry,
         )
 
-        self.add_field(
+        self.addField(
             "trace", "Remote nodes logging",
             gui_class=ttk.Checkbutton,
             text="Trace",
         )
 
-        # NOTE: load_examples (See on_form_loaded) fills Examples tab.
+        # NOTE: load_examples (See onFormLoaded) fills Examples tab.
         self.notebook = ttk.Notebook(self)
         self.notebook.grid(sticky=tk.NSEW, row=self.row, column=0,
                            columnspan=self.column_count)
@@ -436,20 +438,21 @@ class MainForm(ttk.Frame):
         self.cdi_connect_button = ttk.Button(
             self.cdi_tab,
             text="Connect",
-            command=self.cdi_connect_clicked,
+            command=self.cdiConnectClicked,
         )
         self.cdi_connect_button.grid(row=self.cdi_row, column=0)
 
         self.cdi_refresh_button = ttk.Button(
             self.cdi_tab,
             text="Refresh",
-            command=self.cdi_refresh_clicked,
+            command=self.cdiRefreshClicked,
             state=tk.DISABLED,  # enabled on connect success callback
         )
         self.cdi_refresh_button.grid(row=self.cdi_row, column=1)
 
         self.cdi_row += 1
         self.cdi_form = CDIForm(self.cdi_tab)  # OpenLCBNetwork() subclass
+        # ^ CDIForm has ttk.Treeview etc.
         self.cdi_form.grid(row=self.cdi_row)
 
         self.example_tab = ttk.Frame(self.notebook)
@@ -478,7 +481,7 @@ class MainForm(ttk.Frame):
         #     self.rowconfigure(row, weight=1)
         # self.rowconfigure(self.row_count-1, weight=1)  # make last row expand
 
-    def _connect_state_changed(self, event_d):
+    def _connectStateChanged(self, event_d):
         """Handle connection events.
 
         This is an example of how to handle different combinations of
@@ -503,13 +506,13 @@ class MainForm(ttk.Frame):
         # logger.debug("Connect state changed: {}".format(event_d))
         status = event_d.get('status')
         if status:
-            self.set_status(status)
+            self.setStatus(status)
         error = event_d.get('error')
         if error:
             if status:
                 raise ValueError(
                     "openlcb should set message or error, not both")
-            self.set_status(error)
+            self.setStatus(error)
             status = error
             logger.error("[_connect_state_changed] {}".format(error))
         done = event_d.get('done')
@@ -520,7 +523,7 @@ class MainForm(ttk.Frame):
                 ready_message += " " + status
             if not error:
                 self.cdi_refresh_button.configure(state=tk.NORMAL)
-                self.set_status(ready_message)
+                self.setStatus(ready_message)
                 print(ready_message)
             else:
                 # Only would be enabled if done without error before,
@@ -529,9 +532,9 @@ class MainForm(ttk.Frame):
                 #   any read/write messages to the LCC network) in this
                 #   situation:
                 self.cdi_refresh_button.configure(state=tk.DISABLED)
-                # Already called self.set_status(error) above.
+                # Already called self.setStatus(error) above.
 
-    def connect_state_changed(self, event_d):
+    def connectStateChanged(self, event_d):
         """Handle a dict event from a different thread
         by sending the event to the main (GUI) thread.
 
@@ -556,7 +559,7 @@ class MainForm(ttk.Frame):
         """
         # Trigger the main thread (only the main thread can access the
         # GUI):
-        self.root.after(0, self._connect_state_changed, event_d)
+        self.root.after(0, self._connectStateChanged, event_d)
         return True  # indicate that the message was handled.
 
     def _connect(self):
@@ -571,29 +574,32 @@ class MainForm(ttk.Frame):
         localNodeID_var = self.fields.get('localNodeID')
         localNodeID = localNodeID_var.get()
         # self.cdi_form.connect(host, port, localNodeID)
-        self.save_settings()
+        self.saveSettings()
         self.cdi_connect_button.configure(state=tk.DISABLED)
         self.cdi_refresh_button.configure(state=tk.DISABLED)
         msg = "connecting to {}...".format(host)
-        self.cdi_form.set_status(msg)
-        self.connect_state_changed({'status': msg})  # self._callback_msg(msg)
+        self.cdi_form.setStatus(msg)
+        self.connectStateChanged({'status': msg})  # self._callback_msg(msg)
         result = None
         try:
             self._tcp_socket = TcpSocket()
             # self._sock.settimeout(30)
             self._tcp_socket.connect(host, port)
-            self.cdi_form.setConnectHandler(self.connect_state_changed)
+            self.cdi_form.setConnectHandler(self.connectStateChanged)
             result = self.cdi_form.startListening(
                 self._tcp_socket,
                 localNodeID,
             )
             self._connect_thread = None
         except Exception as ex:
-            self.set_status("Connect failed. {}".format(formatted_ex(ex)))
+            if self.cdi_form.getStatus() == msg:
+                # If error wasn't shown, clear startup message.
+                self.cdi_form.setStatus("")
+            self.setStatus("Connect failed. {}".format(formatted_ex(ex)))
             raise  # show traceback still, in case in an IDE or Terminal.
         return result
 
-    def cdi_connect_clicked(self):
+    def cdiConnectClicked(self):
         self._connect_thread = threading.Thread(
             target=self._connect,
             daemon=True,  # True prevents continuing when trying to exit
@@ -602,15 +608,15 @@ class MainForm(ttk.Frame):
         # This thread may end quickly after connection since
         #   start_receiving starts a thread.
 
-    def cdi_refresh_clicked(self):
+    def cdiRefreshClicked(self):
         self.cdi_connect_button.configure(state=tk.DISABLED)
         self.cdi_refresh_button.configure(state=tk.DISABLED)
-        farNodeID = self.get_value('farNodeID')
+        farNodeID = self.getValue('farNodeID')
         if not farNodeID:
-            self.set_status('Set "Far node ID" first.')
+            self.setStatus('Set "Far node ID" first.')
             return
         print("Querying farNodeID={}".format(repr(farNodeID)))
-        self.set_status("Downloading CDI...")
+        self.setStatus("Downloading CDI...")
         threading.Thread(
             target=self.cdi_form.downloadCDI,
             args=(farNodeID,),
@@ -618,25 +624,25 @@ class MainForm(ttk.Frame):
             daemon=True,
         ).start()
 
-    def get_value(self, key):
+    def getValue(self, key):
         field = self.fields.get(key)
         if not field:
             raise KeyError("Invalid form field {}".format(repr(key)))
         return field.get()
 
-    def set_id_from_name(self):
-        id = self.get_id_from_name(update_button=True)
+    def setIdFromName(self):
+        id = self.getIdFromName(update_button=True)
         if not id:
-            self.set_status(
+            self.setStatus(
                 "The service name {} does not contain an LCC ID"
                 " (Does not follow hardware convention).")
             return
         self.fields['farNodeID'].var.set(id)
-        self.set_status(
+        self.setStatus(
             "Far Node ID has been set to {} portion of service name."
             .format(repr(id)))
 
-    def get_id_from_name(self, update_button=False):
+    def getIdFromName(self, update_button=False):
         lcc_id = id_from_tcp_service_name(
             self.fields['service_name'].var.get())
         if update_button:
@@ -646,9 +652,9 @@ class MainForm(ttk.Frame):
                 self.fields["service_name"].button.configure(state=tk.NORMAL)
         return lcc_id
 
-    def on_service_name_change(self, index, value, op):
+    def onServiceNameChange(self, index, value, op):
         key = self.fields['service_name'].get()
-        _ = self.get_id_from_name(update_button=True)
+        _ = self.getIdFromName(update_button=True)
         info = self.detected_services.get(key)
         if not info:
             # The user may be typing, so don't spam screen with messages,
@@ -658,11 +664,11 @@ class MainForm(ttk.Frame):
         self.fields['host'].set(info['server'].rstrip("."))
         # ^ Remove trailing "." to prevent getaddrinfo failed.
         self.fields['port'].set(info['port'])
-        self.set_status("Hostname & Port have been set ({server}:{port})"
-                        .format(**info))
+        self.setStatus("Hostname & Port have been set ({server}:{port})"
+                       .format(**info))
 
-    def add_field(self, key, caption, gui_class=ttk.Entry, command=None,
-                  command_text=None, tooltip=None, text=None):
+    def addField(self, key, caption, gui_class=ttk.Entry, command=None,
+                 command_text=None, tooltip=None, text=None):
         """Generate a uniform data field that may or may not affect a setting.
 
         The row(s) for the data field will start at self.row, and self.row will
@@ -740,48 +746,48 @@ class MainForm(ttk.Frame):
         if self.column > self.column_count:
             self.column_count = self.column
 
-    def open_url(self, url):
+    def openUrl(self, url):
         import webbrowser
         webbrowser.open_new_tab(url)
 
-    def default_local_node_id(self):
-        self.load_default('localNodeID')
+    def fillDefaultLocalNodeId(self):
+        self.fillDefault('localNodeID')
 
-    def default_port(self):
-        self.load_default('port')
+    def fillDefaultPort(self):
+        self.fillDefault('port')
 
-    def load_default(self, key):
+    def fillDefault(self, key):
         self.fields[key].set(self.settings.getDefault(key))
 
-    def set_status(self, msg):
+    def setStatus(self, msg):
         self.statusLabel.configure(text=msg)
 
-    def set_tooltip(self, key, msg):
+    def setTooltip(self, key, msg):
         self.fields[key].tooltip.configure(text=msg)
 
-    def show_services(self):
+    def showServices(self):
         self.fields['service_name'].widget['values'] = \
             list(self.detected_services.keys())
 
-    def update_service(self, zc: Zeroconf, type_: str, name: str) -> None:
+    def updateService(self, zc: Zeroconf, type_: str, name: str) -> None:
         if name in self.detected_services:
             self.detected_services[name]['type'] = type_
             print(f"Service {name} updated")
         else:
             self.detected_services[name] = {'type': type_}
             print(f"Warning: {name} was not present yet during update.")
-        self.show_services()
+        self.showServices()
 
-    def remove_service(self, zc: Zeroconf, type_: str, name: str) -> None:
+    def removeService(self, zc: Zeroconf, type_: str, name: str) -> None:
         if name in self.detected_services:
             del self.detected_services[name]
-            self.set_status(f"{name} disconnected from the Wi-Fi/LAN")
+            self.setStatus(f"{name} disconnected from the Wi-Fi/LAN")
             print(f"Service {name} removed")
         else:
             print(f"Warning: {name} was already removed.")
-        self.show_services()
+        self.showServices()
 
-    def add_service(self, zc: Zeroconf, type_: str, name: str) -> None:
+    def addService(self, zc: Zeroconf, type_: str, name: str) -> None:
         """
         This must use name as key, since multiple services can be advertised by
         one server!
@@ -800,40 +806,40 @@ class MainForm(ttk.Frame):
             self.detected_services[name]['addresses'] = info.addresses
             # ^ addresses is a list of bytes objects
             # other info attributes: priority, weight, added, interface_index
-            self.set_tooltip(
+            self.setTooltip(
                 'service_name',
                 f"Found {name} on Wi-Fi/LAN. Select an option above."
             )
             print(f"Service {name} added, service info: {info}")
         else:
             print(f"Warning: {name} was already added.")
-        self.show_services()
+        self.showServices()
 
-    def detect_hosts(self, servicetype="_openlcb-can._tcp.local."):
+    def detectHosts(self, servicetype="_openlcb-can._tcp.local."):
         if not zeroconf_enabled:
-            self.set_status("The Python zeroconf package is not installed.")
+            self.setStatus("The Python zeroconf package is not installed.")
             return
         if not self.zeroconf:
-            self.set_status("Zeroconf was not initialized.")
+            self.setStatus("Zeroconf was not initialized.")
             return
         if not self.listener:
-            self.set_status("Listener was not initialized.")
+            self.setStatus("Listener was not initialized.")
             return
         if self.browser:
-            self.set_status("Already listening for {} devices."
-                            .format(self.servicetype))
+            self.setStatus("Already listening for {} devices."
+                           .format(self.servicetype))
             return
         self.servicetype = servicetype
         self.browser = ServiceBrowser(self.zeroconf, self.servicetype,
                                       self.listener)
-        self.set_status("Detecting hosts...")
+        self.setStatus("Detecting hosts...")
 
-    def detect_nodes(self):
-        self.set_status("Detecting nodes...")
-        self.set_status("Detecting nodes...not implemented here."
-                        " See example_node_implementation.")
+    def detectNodes(self):
+        self.setStatus("Detecting nodes...")
+        self.setStatus("Detecting nodes...not implemented here."
+                       " See example_node_implementation.")
 
-    def exit_clicked(self):
+    def exitClicked(self):
         self.top = self.winfo_toplevel()
         self.top.quit()
 

@@ -91,7 +91,7 @@ class CDIForm(ttk.Frame, OpenLCBNetwork):
             widget = self._top_widgets.pop()
             widget.grid_forget()
         self._gui()
-        self.set_status("Display reset.")
+        self.setStatus("Display reset.")
 
     # def connect(self, new_socket, localNodeID, callback=None):
     #     return OpenLCBNetwork.connect(self, new_socket, localNodeID,
@@ -99,12 +99,12 @@ class CDIForm(ttk.Frame, OpenLCBNetwork):
 
     def downloadCDI(self, farNodeID: str,
                     callback: Callable[[dict], None] = None):
-        self.set_status("Downloading CDI...")
+        self.setStatus("Downloading CDI...")
         self.ignore_non_gui_tags = deque()
         self._populating_stack = deque()
         super().downloadCDI(farNodeID, callback=callback)
 
-    def set_status(self, message: str):
+    def setStatus(self, message: str):
         self._status_var.set(message)
 
     def on_cdi_element(self, event_d: dict):
@@ -141,7 +141,7 @@ class CDIForm(ttk.Frame, OpenLCBNetwork):
         elif done:
             show_status = "Done loading CDI."
         if show_status:
-            self.root.after(0, self.set_status, show_status)
+            self.root.after(0, self.setStatus, show_status)
         if done:
             return
         if event_d.get('end'):
