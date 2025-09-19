@@ -1,6 +1,6 @@
 import unittest
 
-from openlcb.openlcbnetwork import OpenLCBNetwork
+from openlcb.memoryservice import MemorySpace
 
 
 class OpenLCBNetworkTest(unittest.TestCase):
@@ -10,7 +10,7 @@ class OpenLCBNetworkTest(unittest.TestCase):
     def testEnum(self):
         usedValues = set()
         # ensure values are unique:
-        for entry in OpenLCBNetwork.Mode:
+        for entry in MemorySpace:
             self.assertNotIn(entry.value, usedValues)
             usedValues.add(entry.value)
             # print('{} = {}'.format(entry.name, entry.value))

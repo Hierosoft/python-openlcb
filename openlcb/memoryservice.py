@@ -21,6 +21,7 @@ To do memory read:
 - Wait for either dataReply or rejectedReply call back.
 '''
 
+from enum import Enum
 import logging
 
 from typing import (
@@ -36,6 +37,23 @@ from openlcb.datagramservice import (
 )
 
 
+class MemorySpace(Enum):
+    """The memory space to read.
+    In practice, MetadataProcessor (or a non-XML parser if necessary)
+    uses this to track what data type and format is to be assumed in a
+    received Message. It is assumed to have the same space as the
+    request (MemoryReadMemo).
+
+    Attributes:
+        Uninitialized: No data (memory read request response) is expected.
+        CDI: The data expected from the memory read is CDI XML.
+        FDI: The data expected from the memory read is FDI XML.
+    """
+    Uninitialized = -1
+    CDI = 0xFF  # decodes to 0x03
+    FDI = 0xFA
+
+
 class MemoryReadMemo:
     """Memo carries request and reply.
 
@@ -45,7 +63,9 @@ class MemoryReadMemo:
         space (int): Encoded memory space identifier, where values:
             - 0xFF to 0xFD are special spaces, and only the least significant
               2 bits are relevant.
+              - 0xFF is CDI (decodes to 0x03)
             - 0x00 to 0xFC represent standard memory spaces directly.
+              - 0xFA is FDI
         address (int): The address in memory where the read operation
             should be performed.
         rejectedReply (Callable[MemoryReadMemo]): Callback function to handle

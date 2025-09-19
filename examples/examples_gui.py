@@ -20,8 +20,12 @@ import threading
 
 from logging import getLogger
 
+from openlcb.memoryservice import MemorySpace
 from openlcb.message import Message
+from openlcb.metadataprocessor import MetadataProcessor
 from openlcb.mti import MTI
+from openlcb.nodeid import NodeID
+from openlcb.openlcbnetwork import OpenLCBNetwork
 
 try:
     import tkinter as tk
@@ -41,7 +45,7 @@ from examples.tkexamples.cdiform import CDIForm
 from openlcb import emit_cast, formatted_ex
 from openlcb.tcplink.mdnsconventions import id_from_tcp_service_name
 
-from typing import OrderedDict as TypingOrderedDict
+from typing import Callable, OrderedDict as TypingOrderedDict
 
 zeroconf_enabled = False
 try:
@@ -454,11 +458,8 @@ class MainForm(ttk.Frame):
         self.cdi_refresh_button.grid(row=self.cdi_row, column=1)
 
         self.cdi_row += 1
-        self.cdi_form = CDIForm(self.cdi_tab)  # OpenLCBNetwork() subclass
-        # ^ CDIForm has ttk.Treeview etc.
-        self.cdi_form.canLink.registerMessageReceivedListener(
-            self.handleMessage)
-        self.cdi_form.grid(row=self.cdi_row)
+        self.network = None
+        self.cdi_form = None
 
         self.example_tab = ttk.Frame(self.notebook)
         self.example_tab.columnconfigure(index=0, weight=1)
@@ -485,6 +486,15 @@ class MainForm(ttk.Frame):
         # for row in range(self.row_count):
         #     self.rowconfigure(row, weight=1)
         # self.rowconfigure(self.row_count-1, weight=1)  # make last row expand
+
+    def setupNetwork(self):
+        self.network = OpenLCBNetwork(self.getValue('localNodeID'))
+        self.cdi_form = CDIForm(self.network.canLink, self.cdi_tab)  # MetadataProcessor subclass
+        # ^ formerly OpenLCBNetwork() subclass
+        # ^ CDIForm has ttk.Treeview etc.
+        self.cdi_form.canLink.registerMessageReceivedListener(
+            self.handleMessage)
+        self.cdi_form.grid(row=self.cdi_row)
 
     def handleMessage(self, message: Message):
         """Off-thread message handler.
@@ -527,6 +537,12 @@ class MainForm(ttk.Frame):
         print(ready_message)
 
     def _connect(self):
+        userNodeID = NodeID(self.getValue('localNodeID'))  # assert good NodeID
+        if self.network is None:
+            self.setupNetwork()
+        elif self.network.canLink.localNodeID != userNodeID:
+            self.network.physicalLayer.physicalLayerDown()
+            self.setupNetwork()
         host_var = self.fields.get('host')
         host = host_var.get()
         port_var = self.fields.get('port')
@@ -535,8 +551,6 @@ class MainForm(ttk.Frame):
             port = int(port)
         else:
             raise TypeError("Expected int, got {}".format(emit_cast(port)))
-        localNodeID_var = self.fields.get('localNodeID')
-        localNodeID = localNodeID_var.get()
         # self.cdi_form.connect(host, port, localNodeID)
         self.saveSettings()
         self.cdi_connect_button.configure(state=tk.DISABLED)
@@ -553,9 +567,8 @@ class MainForm(ttk.Frame):
             self._tcp_socket.connect(host, port)
             # self.cdi_form.setConnectHandler(self.connectStateChanged)
             # ^ See message.mti == MTI Link_Layer_Down instead.
-            result = self.cdi_form.startListening(
+            result = self.network.startListening(
                 self._tcp_socket,
-                localNodeID,
             )
             self._connect_thread = None
         except Exception as ex:
@@ -587,11 +600,18 @@ class MainForm(ttk.Frame):
         print("Querying farNodeID={}".format(repr(farNodeID)))
         self.setStatus("Downloading CDI...")
         threading.Thread(
-            target=self.cdi_form.downloadCDI,
-            args=(farNodeID,),
+            target=self.downloadCDI,
+            args=(farNodeID, MemorySpace.CDI),
             kwargs={'callback': self.cdi_form.on_cdi_element},
             daemon=True,
         ).start()
+
+    def downloadCDI(self, farNodeID: str, space: MemorySpace,
+                    callback: Callable[[dict], None] = None):
+        self.setStatus("Downloading CDI...")
+        self.cdi_form.onStartDownload()
+        assert isinstance(space, MemorySpace)
+        self.network.download(farNodeID, self.cdi_form, callback=callback)
 
     def getValue(self, key):
         field = self.fields.get(key)
@@ -728,7 +748,12 @@ class MainForm(ttk.Frame):
     def fillDefault(self, key):
         self.fields[key].set(self.settings.getDefault(key))
 
+    def getStatus(self):
+        # See also CDIForm
+        return self.statusLabel.get()
+
     def setStatus(self, msg):
+        # See also CDIForm
         self.statusLabel.configure(text=msg)
 
     def setTooltip(self, key, msg):

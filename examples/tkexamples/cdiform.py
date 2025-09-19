@@ -17,9 +17,12 @@ from tkinter import ttk
 from collections import deque
 from logging import getLogger
 from typing import Callable
+
+from openlcb.linklayer import LinkLayer
+from openlcb.memoryservice import MemorySpace
+from openlcb.metadataprocessor import element_to_dict
 # from xml.etree import ElementTree as ET
 
-from openlcb.openlcbnetwork import element_to_dict
 
 if __name__ == "__main__":
     logger = getLogger(__file__)
@@ -37,7 +40,7 @@ else:
         " since test running from repo but could not find openlcb in {}."
         .format(repr(REPO_DIR)))
 try:
-    from openlcb.openlcbnetwork import OpenLCBNetwork
+    from openlcb.metadataprocessor import MetadataProcessor
 except ImportError as ex:
     print("{}: {}".format(type(ex).__name__, ex), file=sys.stderr)
     print("* You must run this from a venv that has openlcb installed"
@@ -46,7 +49,7 @@ except ImportError as ex:
     raise  # sys.exit(1)
 
 
-class CDIForm(ttk.Frame, OpenLCBNetwork):
+class CDIForm(ttk.Frame, MetadataProcessor):
     """A GUI frame to represent the CDI visually as a tree.
 
     Args:
@@ -54,7 +57,11 @@ class CDIForm(ttk.Frame, OpenLCBNetwork):
             attribute set.
     """
     def __init__(self, *args, **kwargs):
-        OpenLCBNetwork.__init__(self, *args, **kwargs)
+        assert isinstance(args[0], LinkLayer), \
+            "Expected LinkLayer/subclass got {}".format(type(args[0]).__name__)
+        linkLayer = args[0]
+        args = args[1:]  # remove first argument (only for GUI)
+        MetadataProcessor.__init__(self, linkLayer, MemorySpace.CDI)
         ttk.Frame.__init__(self, *args, **kwargs)
         self._top_widgets = []
         if len(args) < 1:
@@ -97,20 +104,25 @@ class CDIForm(ttk.Frame, OpenLCBNetwork):
     #     return OpenLCBNetwork.connect(self, new_socket, localNodeID,
     #                                   callback=callback)
 
-    def downloadCDI(self, farNodeID: str,
-                    callback: Callable[[dict], None] = None):
-        self.setStatus("Downloading CDI...")
+    def setStatus(self, message: str):
+        # See also MainForm
+        self._status_var.set(message)
+
+    def getStatus(self):
+        # See also MainForm
+        return self._status_var.get()
+
+    def onStartDownload(self):
+        """Initialize variables used by element handler(s)."""
+        self.onStart()
+        self._resetTree()
         self.ignore_non_gui_tags = deque()
         self._populating_stack = deque()
-        super().downloadCDI(farNodeID, callback=callback)
-
-    def setStatus(self, message: str):
-        self._status_var.set(message)
 
     def on_cdi_element(self, event_d: dict):
         """Handler for incoming CDI tag
-        (Use this for callback in downloadCDI, which sets parser's
-        _onElement)
+        Use this for callback in downloadCDI, which sets parser
+        (_dataListener)'s _onElement.
 
         Args:
             event_d (dict): Document parsing state info:
