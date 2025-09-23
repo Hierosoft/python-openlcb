@@ -26,9 +26,10 @@ from openlcb.canbus.canphysicallayergridconnect import (
 )
 from openlcb.canbus.canlink import CanLink
 from openlcb.datagramservice import DatagramReadMemo, DatagramService
+from openlcb.dataprocessor import DataFormat
 from openlcb.memoryservice import MemoryReadMemo, MemoryService, MemorySpace
 from openlcb.message import Message
-from openlcb.metadataprocessor import MetadataProcessor
+from openlcb.metadataprocessor import XMLDataProcessor
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
 from openlcb.portinterface import PortInterface
@@ -47,8 +48,8 @@ class OpenLCBNetwork:
     this class manages the network objects themselves including CanLink.
 
     Attributes:
-        _dataListener (MetadataProcessor): The handler for the current
-            type of data (type is defined by _dataListener._mode which
+        _dataProcessor (XMLDataProcessor): The handler for the current
+            type of data (type is defined by _dataProcessor.space which
             is a MemorySpace)
     """
     def __init__(self, localNodeID: Union[str, bytearray, int, NodeID]):
@@ -88,7 +89,7 @@ class OpenLCBNetwork:
 
         self._fireStatus("MemoryService...")
         self._memoryService = MemoryService(self._datagramService)
-        self._dataListener: MetadataProcessor = None
+        self._dataProcessor: XMLDataProcessor = None
 
     def setConnectHandler(self, handler: Callable):
         """Deprecated in favor of a Message handler,
@@ -129,7 +130,7 @@ class OpenLCBNetwork:
         """
         return self._port.receive()
 
-    def _memoryRead(self, farNodeID: Union[NodeID, int, str, bytearray]):
+    def _startMemoryRead(self, farNodeID: Union[NodeID, int, str, bytearray]):
         """Create and send a read datagram.
         This is a read of 64 bytes from the start of CDI space.
         We will fire it on a separate thread to give time for other nodes to
@@ -141,21 +142,23 @@ class OpenLCBNetwork:
         will have a KeyError when trying to use the farNodeID.
 
         Requirements:
-        - self._dataListener must be set. In practice, MemoryReadMemo
+        - self._dataProcessor must be set. In practice, MemoryReadMemo
           objects are a sequential chain, so OpenLCBNetwork uses
-          self._dataListener determine that each MemoryReadMemo space in
+          self._dataProcessor determine that each MemoryReadMemo space in
           the chain is consistent as well as know what is expected in a
           reply (Message).
         """
         # read 64 bytes from the CDI space starting at address zero
+        assert isinstance(self._dataProcessor.space, MemorySpace)
         memMemo = MemoryReadMemo(NodeID(farNodeID), 64,
-                                 self._dataListener.space,
-                                 self._dataListener._cdi_offset,
+                                 self._dataProcessor.space.value,
+                                 0,  # incremented on _memoryReadSuccess
                                  self._memoryReadFail,
                                  self._memoryReadSuccess)
         self._memoryService.requestMemoryRead(memMemo)
 
-    def download(self, farNodeID: str, dataListener, callback=None):
+    def download(self, farNodeID: str, space: MemorySpace,
+                 dataProcessor: XMLDataProcessor, callback=None):
         if not farNodeID or not farNodeID.strip():
             raise ValueError("No farNodeID specified.")
         self._farNodeID = farNodeID
@@ -169,13 +172,15 @@ class OpenLCBNetwork:
         if not self.physicalLayer:
             raise RuntimeError(
                 "No physicalLayer. Call startListening first.")
-        assert isinstance(dataListener._mode, MemorySpace)
-        self._dataListener = dataListener
-        self._dataListener._stringTerminated = False
-        self._dataListener._onElement = callback
-        self._memoryRead(farNodeID)
-        # ^ On a successful memory read, _memoryReadSuccess will trigger
-        #   _memoryRead again and again until end/fail.
+        assert isinstance(space, MemorySpace)
+        self._dataProcessor = dataProcessor
+        self._dataProcessor._onElement = callback
+        self._dataProcessor._space = space
+        self._dataProcessor._stringTerminated = False
+        self._startMemoryRead(farNodeID)
+        # ^ Each _memoryReadSuccess callback will
+        #   trigger requestMemoryRead, completing a
+        #   loop until end/fail.
 
     # def _sendToPort(self, string: str):
     #     # print("      SR: {}".format(string.strip()))
@@ -264,16 +269,16 @@ class OpenLCBNetwork:
             #   manually.
             #   - Usually "socket connection broken" due to no more
             #     bytes to read, but ok if "\0" terminator was reached.
-            if ((self._dataListener._resultingCDI is not None)
-                    and (not self._dataListener._stringTerminated)):
+            if ((self._dataProcessor._data is not None)
+                    and (not self._dataProcessor._stringTerminated)):
                 # This boolean is managed by the memoryReadSuccess
                 # callback.
                 event_d = {  # same as self._event_listener here
                     'error': formatted_ex(ex),
                     'done': True,  # stop progress in gui/other main thread
                 }
-                if self._dataListener._onElement:
-                    self._dataListener._onElement(event_d)
+                if self._dataProcessor._onElement:
+                    self._dataProcessor._onElement(event_d)
                 raise  # re-raise since incomplete (prevent done OK state)
         finally:
             self.physicalLayer.physicalLayerDown()  # Link_Layer_Down, setState
@@ -352,10 +357,10 @@ class OpenLCBNetwork:
         """
         # print("successful memory read: {}".format(memo.data))
         if len(memo.data) == 64 and 0 not in memo.data:  # *not* last chunk
-            self._dataListener._stringTerminated = False
-            if self._dataListener.space == MemorySpace.CDI.value:
+            self._dataProcessor._stringTerminated = False
+            if self._dataProcessor.format != DataFormat.EOF:
                 # save content
-                self._dataListener._CDIReadPartial(memo)
+                self._dataProcessor._feedNext(memo)
             else:
                 logger.error(
                     "Unknown data packet received"
@@ -366,21 +371,21 @@ class OpenLCBNetwork:
             self._memoryService.requestMemoryRead(memo)
             # The last packet is not yet reached
         else:  # last chunk
-            self._dataListener._stringTerminated = True
+            self._dataProcessor._stringTerminated = True
             # and we're done!
-            if self._dataListener.space == MemorySpace.CDI.value:
-                self._dataListener._CDIReadDone(memo)
+            if self._dataProcessor.format != DataFormat.EOF:
+                self._dataProcessor._feedLast(memo)
             else:
                 logger.error(
                     "Unknown last data packet received"
                     " (memory read not triggered by OpenLCBNetwork)")
-            self._dataListener.onStop()
+            self._dataProcessor.onStop()
             # done reading
 
     def _memoryReadFail(self, memo: MemoryReadMemo):
         error = "memory read failed: {}".format(memo.data)
-        if self._dataListener._onElement:
-            self._dataListener._onElement({
+        if self._dataProcessor._onElement:
+            self._dataProcessor._onElement({
                 'error': error,
                 'done': True,  # stop progress in gui/other main thread
             })

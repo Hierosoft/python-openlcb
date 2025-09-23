@@ -40,7 +40,7 @@ else:
         " since test running from repo but could not find openlcb in {}."
         .format(repr(REPO_DIR)))
 try:
-    from openlcb.metadataprocessor import MetadataProcessor
+    from openlcb.metadataprocessor import XMLDataProcessor
 except ImportError as ex:
     print("{}: {}".format(type(ex).__name__, ex), file=sys.stderr)
     print("* You must run this from a venv that has openlcb installed"
@@ -49,7 +49,7 @@ except ImportError as ex:
     raise  # sys.exit(1)
 
 
-class CDIForm(ttk.Frame, MetadataProcessor):
+class CDIForm(ttk.Frame, XMLDataProcessor):
     """A GUI frame to represent the CDI visually as a tree.
 
     Args:
@@ -61,7 +61,7 @@ class CDIForm(ttk.Frame, MetadataProcessor):
             "Expected LinkLayer/subclass got {}".format(type(args[0]).__name__)
         linkLayer = args[0]
         args = args[1:]  # remove first argument (only for GUI)
-        MetadataProcessor.__init__(self, linkLayer, MemorySpace.CDI)
+        XMLDataProcessor.__init__(self, linkLayer, MemorySpace.CDI)
         ttk.Frame.__init__(self, *args, **kwargs)
         self._top_widgets = []
         if len(args) < 1:
@@ -122,7 +122,7 @@ class CDIForm(ttk.Frame, MetadataProcessor):
     def on_cdi_element(self, event_d: dict):
         """Handler for incoming CDI tag
         Use this for callback in downloadCDI, which sets parser
-        (_dataListener)'s _onElement.
+        (_dataProcessor)'s _onElement.
 
         Args:
             event_d (dict): Document parsing state info:

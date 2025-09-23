@@ -39,7 +39,7 @@ from openlcb.datagramservice import (
 
 class MemorySpace(Enum):
     """The memory space to read.
-    In practice, MetadataProcessor (or a non-XML parser if necessary)
+    In practice, XMLDataProcessor (or a non-XML parser if necessary)
     uses this to track what data type and format is to be assumed in a
     received Message. It is assumed to have the same space as the
     request (MemoryReadMemo).

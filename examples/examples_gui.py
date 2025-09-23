@@ -22,7 +22,7 @@ from logging import getLogger
 
 from openlcb.memoryservice import MemorySpace
 from openlcb.message import Message
-from openlcb.metadataprocessor import MetadataProcessor
+from openlcb.metadataprocessor import XMLDataProcessor
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
 from openlcb.openlcbnetwork import OpenLCBNetwork
@@ -489,7 +489,7 @@ class MainForm(ttk.Frame):
 
     def setupNetwork(self):
         self.network = OpenLCBNetwork(self.getValue('localNodeID'))
-        self.cdi_form = CDIForm(self.network.canLink, self.cdi_tab)  # MetadataProcessor subclass
+        self.cdi_form = CDIForm(self.network.canLink, self.cdi_tab)  # XMLDataProcessor subclass
         # ^ formerly OpenLCBNetwork() subclass
         # ^ CDIForm has ttk.Treeview etc.
         self.cdi_form.canLink.registerMessageReceivedListener(
@@ -601,17 +601,17 @@ class MainForm(ttk.Frame):
         self.setStatus("Downloading CDI...")
         threading.Thread(
             target=self.downloadCDI,
-            args=(farNodeID, MemorySpace.CDI),
+            args=(farNodeID,),
             kwargs={'callback': self.cdi_form.on_cdi_element},
             daemon=True,
         ).start()
 
-    def downloadCDI(self, farNodeID: str, space: MemorySpace,
+    def downloadCDI(self, farNodeID: str,
                     callback: Callable[[dict], None] = None):
         self.setStatus("Downloading CDI...")
         self.cdi_form.onStartDownload()
-        assert isinstance(space, MemorySpace)
-        self.network.download(farNodeID, self.cdi_form, callback=callback)
+        self.network.download(farNodeID, MemorySpace.CDI, self.cdi_form,
+                              callback=callback)
 
     def getValue(self, key):
         field = self.fields.get(key)

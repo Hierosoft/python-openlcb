@@ -1,28 +1,22 @@
 import os
-import threading
-import sys
 import xml.sax  # noqa: E402
 import xml.sax.handler
 import xml.etree.ElementTree as ET
 
-from enum import Enum
 from logging import getLogger
 from typing import Callable, Union
 # from xml.sax.xmlreader import AttributesImpl  # for autocomplete only
 
+from openlcb import emit_cast
 from openlcb.canbus.canlink import CanLink
+from openlcb.dataprocessor import DataFormat, DataProcessor
 from openlcb.nodeid import NodeID
 from openlcb.platformextras import (
     SysDirs,
     clean_file_name,
 )
-from openlcb.datagramservice import (
-    DatagramReadMemo,
-    DatagramService,
-)
 from openlcb.memoryservice import (
     MemoryReadMemo,
-    MemoryService,
     MemorySpace,
 )
 # from openlcb.remotenodeprocessor import RemoteNodeProcessor
@@ -55,7 +49,16 @@ def attrs_to_dict(attrs) -> dict:
     return {key: attrs.getValue(key) for key in attrs.getNames()}
 
 
-class MetadataProcessor(xml.sax.handler.ContentHandler):
+def format_of_space(space):
+    assert isinstance(space, MemorySpace)
+    if space == MemorySpace.CDI:
+        return DataFormat.XML
+    elif space == MemorySpace.FDI:
+        return DataFormat.XML
+    raise NotImplementedError(emit_cast(space))
+
+
+class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
     """Manage Configuration Description Information.
     - Send events to downloadCDI caller describing the state and content
       of the document construction.
@@ -75,7 +78,7 @@ class MetadataProcessor(xml.sax.handler.ContentHandler):
         _onElement (Callable): Called if an XML element is
             received (including either a start or end tag).
             Typically set as `callback` argument to downloadCDI.
-        _resultingCDI (str): CDI document being collected from the
+        _data (str): CDI document being collected from the
             network stream (successful read request memo handler). To
             ensure valid state:
             - Initialize to None at program start, end download, or
@@ -83,22 +86,29 @@ class MetadataProcessor(xml.sax.handler.ContentHandler):
             - Assert is None at start of download, then set to
               bytearray().
     """
+    XML_TOP_TAGS = ("cdi", "fdi")
 
-    def __init__(self, linkLayer: CanLink, mode: MemorySpace):
+    def __init__(self, linkLayer: CanLink, space: MemorySpace):
         self.canLink: CanLink = linkLayer
         caches_dir = SysDirs.Cache
         self._top_tag = "cdi"  # cdi or fdi (detected in startElement)
         self._myCacheDir = os.path.join(caches_dir, "python-openlcb")
         self._onElement = None
-        self._mode = mode
-        # self._mode = MemorySpace.Uninitialized  # Idle until datatype known
+        assert isinstance(space, MemorySpace)
+        self.setSpace(space)  # also sets _format
+        # ^ Idle until DataFormat is known
         # ^ In case some parsing step happens early,
         #   prepare these for _callback_msg.
         xml.sax.ContentHandler.__init__(self)
+        DataProcessor.__init__(self)
         self._stringTerminated = None  # None means no read is occurring.
+        if self._format != DataFormat.XML:
+            raise NotImplementedError(
+                "This class only handles XML. Make a separate subclass for {}"
+                .format(self._format))
         self._parser = xml.sax.make_parser()
         self._parser.setContentHandler(self)
-        self._resultingCDI: bytearray = None
+        self._data: bytearray = None
 
         self._realtime = True
 
@@ -107,21 +117,33 @@ class MetadataProcessor(xml.sax.handler.ContentHandler):
         self._tag_stack = []
         # endregion ContentHandler
 
+    def setSpace(self, space):
+        self._space = space
+        self._format = format_of_space(space)
+
+    @property
+    def format(self) -> DataFormat:
+        assert isinstance(self._format, DataFormat), \
+            "expected DataFormat, got {}".format(emit_cast(self._format))
+        return self._format
+
     @property
     def space(self) -> int:
-        assert isinstance(self._mode, MemorySpace)
-        return self._mode.value
+        assert isinstance(self._space, MemorySpace)
+        return self._space
 
     def onStart(self):
-        self._cdi_offset = 0
-        if self._resultingCDI is not None:
+        # self._cdi_offset = 0  # Instead see memo.address (which is
+        #   incremented on _memoryReadSuccess or custom memory read
+        #   handler).
+        if self._data is not None:
             raise ValueError(
                 "A previous downloadCDI operation is in progress"
-                " or failed (Set _resultingCDI to None first if failed)")
-        self._resultingCDI = bytearray()
+                " or failed (Set _data to None first if failed)")
+        self._data = bytearray()
 
     def onStop(self):
-        self._mode = MemorySpace.Uninitialized  # CDI no longer expected
+        self._format = DataFormat.EOF  # no data expected
 
     def _resetTree(self):
         self.etree = ET.Element("root")
@@ -142,20 +164,21 @@ class MetadataProcessor(xml.sax.handler.ContentHandler):
     def setElementHandler(self, handler: Callable):
         self._onElement = handler
 
-    def _CDIReadPartial(self, memo: MemoryReadMemo):
+    def _feedNext(self, memo: MemoryReadMemo):
         """Handle partial CDI XML (any packet except last)
         The last packet is not yet reached, so don't parse (but
-        feed if self._realtime)
+        feed if self._realtime, which may trigger a
+        callback)
 
         Args:
             memo (MemoryReadMemo): successful read memo containing data.
         """
-        self._resultingCDI += memo.data
+        self._data += memo.data
         partial_str = memo.data.decode("utf-8")
         if self._realtime:
             self._parser.feed(partial_str)  # may call startElement/endElement
 
-    def _CDIReadDone(self, memo: MemoryReadMemo):
+    def _feedLast(self, memo: MemoryReadMemo):
         """Handle end of CDI XML (last packet)
         End of data, so parse (or feed if self._realtime)
 
@@ -164,7 +187,7 @@ class MetadataProcessor(xml.sax.handler.ContentHandler):
         """
         partial_str = memo.data.decode("utf-8")
         # save content
-        self._resultingCDI += memo.data
+        self._data += memo.data
         # concert resultingCDI to a string up to 1st zero
         # and process that
         cdiString = None
@@ -179,11 +202,11 @@ class MetadataProcessor(xml.sax.handler.ContentHandler):
         else:
             # *not* realtime (but got to end, so parse all at once)
             cdiString = ""
-            null_i = self._resultingCDI.find(b'\0')
-            terminate_i = len(self._resultingCDI)
+            null_i = self._data.find(b'\0')
+            terminate_i = len(self._data)
             if null_i > -1:
                 terminate_i = min(null_i, terminate_i)
-            cdiString = self._resultingCDI[:terminate_i].decode("utf-8")
+            cdiString = self._data[:terminate_i].decode("utf-8")
             # print (cdiString)
             self.parse(cdiString)
             # ^ startElement, endElement, etc. all consecutive using parse
@@ -198,10 +221,10 @@ class MetadataProcessor(xml.sax.handler.ContentHandler):
         path = self.cache_cdi_path(memo.nodeID)
         with open(path, 'w') as stream:
             if cdiString is None:
-                cdiString = self._resultingCDI.rstrip(b'\0').decode("utf-8")
+                cdiString = self._data.rstrip(b'\0').decode("utf-8")
             stream.write(cdiString)
             print('Saved "{}"'.format(path))
-        self._resultingCDI = None  # Ensure isn't reused for more than one doc
+        self._data = None  # Ensure isn't reused for more than one doc
 
     def cache_cdi_path(self, item_id: Union[NodeID, str]):
         cdi_cache_dir = os.path.join(self._myCacheDir, "cdi")
