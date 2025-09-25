@@ -1,13 +1,15 @@
 '''
 Store for seen remote (not implemented here) nodes
 '''
-
-from openlcb.nodestore import NodeStore
+# from logging import getLogger
 
 from openlcb.message import Message
 from openlcb.mti import MTI
 from openlcb.node import Node
 from openlcb.nodeid import NodeID
+from openlcb.nodestore import NodeStore
+
+# logger = getLogger(__name__)
 
 
 class RemoteNodeStore(NodeStore) :
@@ -67,6 +69,11 @@ class RemoteNodeStore(NodeStore) :
 
         Args:
             message (Message): Incoming message to process
+
+        Raises:
+            IndexError: (raised by process via invokeProcessorsOnNodes)
+                If source or destination is wrong (See NodeStore or
+                RemoteNodeStore `process` method documentation).
 
         Returns:
             bool: True is any of the nodes indicated a significant change.

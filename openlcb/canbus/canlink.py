@@ -727,6 +727,22 @@ class CanLink(LinkLayer):
             self.fireMessageReceived(msg)
 
     def sendMessage(self, msg: Message, verbose=False):
+        """Send a message using the physicalLayer.
+
+        Args:
+            msg (Message): Any message.
+            verbose (bool, optional): (Reserved argument). Defaults to
+                False.
+
+        Raises:
+            IndexError: If the source or destination address in the
+                Message is invalid. The sender and receiver must be on
+                the network. If not (not in nodeIdToAlias), the node
+                didn't announce itself properly (as per OpenLCB
+                standards), the node became disconnected, or a NodeID
+                was entered incorrectly such as in a GUI.
+        """
+        error = None
         #    special case for datagram
         if msg.mti == MTI.Datagram:
             header = 0x10_00_00_00
@@ -740,28 +756,32 @@ class CanLink(LinkLayer):
                 header |= ((sssAlias) & 0xFFF)
             except KeyboardInterrupt:
                 raise
-            except:
-                logger.warning(
+            except KeyError:
+                error = (
                     "Did not know source = {} on datagram send"
                     "".format(msg.source)
                 )
+                logger.error(error)
+                raise
 
             try:
                 dddAlias = self.nodeIdToAlias[msg.destination]
                 header |= ((dddAlias) & 0xFFF) << 12
             except KeyboardInterrupt:
                 raise
-            except Exception as ex:
-                logger.error(
-                    "Did not know destination = {} on datagram send ({})"
+            except KeyError:
+                error = (
+                    "Did not know destination = {} on datagram send"
                     " self.nodeIdToAlias={}. Ensure recv loop"
                     " (such as OpenLCBNetwork's _listen thread) is running"
                     " before and during alias reservation sequence delay."
                     " Check previous log messages for an exception"
                     " that may have ended the recv loop."
-                    .format(msg.destination, formatted_ex(ex),
+                    .format(msg.destination,
                             self.nodeIdToAlias)
                 )
+                logger.error(error)
+                raise
 
             if len(msg.data) <= 8:
                 #    single frame
@@ -797,9 +817,11 @@ class CanLink(LinkLayer):
             if alias is not None:  # might not know it if error
                 header |= (alias & 0xFFF)
             else:
-                logger.warning(
+                error = (
                     "Did not know source = {} on message send"
                     .format(msg.source))
+                logger.error(error)
+                raise
 
             # Is a destination address needed? Could be long message
             if msg.isAddressed():
@@ -816,9 +838,11 @@ class CanLink(LinkLayer):
                         frame = CanFrame(header, content)
                         self.physicalLayer.sendFrameAfter(frame)
                 else:
-                    logger.warning(
+                    error = (
                         "Don't know alias for destination = {}"
                         .format(msg.destination or NodeID(0)))
+                    logger.error(error)
+                    raise
             else:
                 #    global still can hold data; assume length is correct by
                 #    protocol send the resulting frame

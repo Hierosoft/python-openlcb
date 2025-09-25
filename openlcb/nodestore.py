@@ -1,3 +1,4 @@
+# from logging import getLogger
 from typing import (
     Dict,
     List,  # in case list doesn't support `[` in this Python version
@@ -8,6 +9,8 @@ from openlcb.message import Message
 from openlcb.node import Node
 from openlcb.nodeid import NodeID
 from openlcb.processor import Processor
+
+# logger = getLogger(__name__)
 
 
 class NodeStore :
@@ -57,9 +60,20 @@ class NodeStore :
                 return node
         return None
 
-    # Process a message across all nodes
     def invokeProcessorsOnNodes(self, message: Message) -> bool:
-        publish = False  # has any processor returned True?
+        """Process a message across all nodes
+
+        Args:
+            message (Message): Any Message.
+
+        Raises:
+            IndexError: If source or destination is wrong (See NodeStore
+                or RemoteNodeStore `process` method documentation).
+
+        Returns:
+            bool: True if any processor returned True.
+        """
+        publish = False
         for processor in self.processors :
             for node in self.byIdMap.values() :
                 publish = processor.process(message, node) or publish  # always invoke Processor on node first  # noqa: E501

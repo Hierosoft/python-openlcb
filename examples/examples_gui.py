@@ -610,8 +610,13 @@ class MainForm(ttk.Frame):
                     callback: Callable[[dict], None] = None):
         self.setStatus("Downloading CDI...")
         self.cdi_form.onStartDownload()
-        self.network.download(farNodeID, MemorySpace.CDI, self.cdi_form,
-                              callback=callback)
+        try:
+            self.network.download(farNodeID, MemorySpace.CDI, self.cdi_form,
+                                  callback=callback)
+        except KeyError as ex:
+            self.setStatus("The address was not correct: {}"
+                           .format(formatted_ex(ex)))
+            raise
 
     def getValue(self, key):
         field = self.fields.get(key)
