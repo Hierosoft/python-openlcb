@@ -59,7 +59,7 @@ def format_of_space(space):
 
 
 class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
-    """Manage Configuration Description Information.
+    """Collect & process consecutive XML data from each incoming MemoryReadMemo
     - Send events to downloadCDI caller describing the state and content
       of the document construction.
     - Collect and traverse XML in a CDI-specific way.

@@ -8,7 +8,8 @@ class DataFormat(Enum):
 
 
 class DataProcessor:
-    """Superclass for data listeners.
+    """Collect & process consecutive data from each incoming MemoryReadMemo.
+    Superclass for data listeners.
     """
     def __init__(self):
         pass
