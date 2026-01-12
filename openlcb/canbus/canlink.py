@@ -821,7 +821,6 @@ class CanLink(LinkLayer):
                     "Did not know source = {} on message send"
                     .format(msg.source))
                 logger.error(error)
-                raise
 
             # Is a destination address needed? Could be long message
             if msg.isAddressed():
@@ -842,7 +841,6 @@ class CanLink(LinkLayer):
                         "Don't know alias for destination = {}"
                         .format(msg.destination or NodeID(0)))
                     logger.error(error)
-                    raise
             else:
                 #    global still can hold data; assume length is correct by
                 #    protocol send the resulting frame
