@@ -659,8 +659,14 @@ class TestCanLinkClass(unittest.TestCase):
         canLink.sendMessage(message)
 
         self.assertEqual(len(canPhysicalLayer._send_frames), 1)
-        self.assertEqual(str(canPhysicalLayer._send_frames[0]),
-                         "CanFrame header: 0x1A000000 []")
+
+        alias = canLink.getLocalAlias()
+        expected_header = 0x1A000000 | (alias << 12) | alias
+        self.assertEqual(
+            str(canPhysicalLayer._send_frames[0]),
+            # "CanFrame header: 0x1A000000 []"
+            f"CanFrame header: 0x{expected_header:08X} []"
+        )
         canPhysicalLayer.physicalLayerDown()
 
     def testOneFrameDatagram(self):
@@ -690,9 +696,13 @@ class TestCanLinkClass(unittest.TestCase):
         canLink.sendMessage(message)
 
         self.assertEqual(len(canPhysicalLayer._send_frames), 1)
+
+        alias = canLink.getLocalAlias()
+        expected_header = 0x1A000000 | (alias << 12) | alias
         self.assertEqual(
             str(canPhysicalLayer._send_frames[0]),
-            "CanFrame header: 0x1A000000 [1, 2, 3, 4, 5, 6, 7, 8]"
+            # "CanFrame header: 0x1A000000 [1, 2, 3, 4, 5, 6, 7, 8]"
+            f"CanFrame header: 0x{expected_header:08X} [1, 2, 3, 4, 5, 6, 7, 8]"
         )
         canPhysicalLayer.physicalLayerDown()
 
@@ -711,13 +721,19 @@ class TestCanLinkClass(unittest.TestCase):
         canLink.sendMessage(message)
 
         self.assertEqual(len(canPhysicalLayer._send_frames), 2)
+
+        alias = canLink.getLocalAlias()
+        expected_header = 0x1B000000 | (alias << 12) | alias
         self.assertEqual(
             str(canPhysicalLayer._send_frames[0]),
-            "CanFrame header: 0x1B000000 [1, 2, 3, 4, 5, 6, 7, 8]"
+            # "CanFrame header: 0x1B000000 [1, 2, 3, 4, 5, 6, 7, 8]"
+            f"CanFrame header: 0x{expected_header:08X} [1, 2, 3, 4, 5, 6, 7, 8]"
         )
+        expected_header = 0x1D000000 | (alias << 12) | alias
         self.assertEqual(
             str(canPhysicalLayer._send_frames[1]),
-            "CanFrame header: 0x1D000000 [9, 10, 11, 12, 13, 14, 15, 16]"
+            # "CanFrame header: 0x1D000000 [9, 10, 11, 12, 13, 14, 15, 16]"
+            f"CanFrame header: 0x{expected_header:08X} [9, 10, 11, 12, 13, 14, 15, 16]"
         )
         canPhysicalLayer.physicalLayerDown()
 
@@ -738,16 +754,28 @@ class TestCanLinkClass(unittest.TestCase):
         canLink.sendMessage(message)
 
         self.assertEqual(len(canPhysicalLayer._send_frames), 3)
+
+        alias = canLink.getLocalAlias()
+        expected_header = 0x1B000000 | (alias << 12) | alias
         self.assertEqual(
             str(canPhysicalLayer._send_frames[0]),
-            "CanFrame header: 0x1B000000 [1, 2, 3, 4, 5, 6, 7, 8]"
+            # "CanFrame header: 0x1B000000 [1, 2, 3, 4, 5, 6, 7, 8]"
+            f"CanFrame header: 0x{expected_header:08X} [1, 2, 3, 4, 5, 6, 7, 8]"
         )
+        alias = canLink.getLocalAlias()
+        expected_header = 0x1C000000 | (alias << 12) | alias
         self.assertEqual(
             str(canPhysicalLayer._send_frames[1]),
-            "CanFrame header: 0x1C000000 [9, 10, 11, 12, 13, 14, 15, 16]"
+            # "CanFrame header: 0x1C000000 [9, 10, 11, 12, 13, 14, 15, 16]"
+            f"CanFrame header: 0x{expected_header:08X} [9, 10, 11, 12, 13, 14, 15, 16]"
         )
-        self.assertEqual(str(canPhysicalLayer._send_frames[2]),
-                         "CanFrame header: 0x1D000000 [17, 18, 19]")
+        alias = canLink.getLocalAlias()
+        expected_header = 0x1D000000 | (alias << 12) | alias
+        self.assertEqual(
+            str(canPhysicalLayer._send_frames[2]),
+            # "CanFrame header: 0x1D000000 [17, 18, 19]"
+            f"CanFrame header: 0x{expected_header:08X} [17, 18, 19]"
+        )
         canPhysicalLayer.physicalLayerDown()
 
     # MARK: - Test Remote Node Alias Tracking
