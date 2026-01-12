@@ -18,6 +18,11 @@ from openlcb.portinterface import PortInterface
 
 
 class PhyMockLayer(CanPhysicalLayer):
+    # FIXME: Doesn't work anymore. (Was) used for
+    #   testZeroLengthDatagram, testOneFrameDatagram,
+    #   testToFrameDataGram, testThreeFrameDatagram,
+    #   so use it in those places if fixed.
+
     def __init__(self):
         # onFrameSent will not work until this instance is passed to the
         #   LinkLayer subclass' constructor (See onFrameSent
@@ -44,9 +49,9 @@ class PhyMockLayer(CanPhysicalLayer):
         if self.linkLayer:
             self.linkLayer.pollState()  # run first since may enqueue frame(s)
         while True:
-            # self.physicalLayer must be set by canLink constructor by
+            # self.linkLayer must be set by canLink/superclass constructor by
             #   passing a physicalLayer to it.
-            frame = self.physicalLayer.pollFrame()
+            frame = self.linkLayer.pollFrame()
             if not frame:
                 break
             # ^ If using popleft, break on IndexError (empty) instead.
@@ -61,7 +66,7 @@ class PhyMockLayer(CanPhysicalLayer):
             if verbose:
                 print("- SENT frame (simulated socket) packet: {}"
                       .format(string.strip()))
-            self.physicalLayer.onFrameSent(frame)
+            self.onFrameSent(frame)
             count += 1
         return count
 
@@ -642,8 +647,11 @@ class TestCanLinkClass(unittest.TestCase):
         canPhysicalLayer.physicalLayerDown()
 
     def testZeroLengthDatagram(self):
-        canPhysicalLayer = PhyMockLayer()
+        # TODO: ?? canPhysicalLayer = PhyMockLayer()
+        canPhysicalLayer = CanPhysicalLayerSimulation()
         canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
+        canPhysicalLayer.physicalLayerUp()
+        canLink.waitForReady(self.device)
 
         message = Message(MTI.Datagram, getLocalNodeID(),
                           getLocalNodeID())
@@ -656,8 +664,24 @@ class TestCanLinkClass(unittest.TestCase):
         canPhysicalLayer.physicalLayerDown()
 
     def testOneFrameDatagram(self):
-        canPhysicalLayer = PhyMockLayer()
+        # TODO: ? canPhysicalLayer = PhyMockLayer()
+        canPhysicalLayer = CanPhysicalLayerSimulation()
         canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
+        canPhysicalLayer.physicalLayerUp()
+        canLink.waitForReady(self.device)
+        # tries = 0
+        # state = None
+        # while True:
+        #     frame = canPhysicalLayer.pollFrame()
+        #     canPhysicalLayer.sendAll(None)
+        #     state = canLink.pollState()
+        #     if state == CanLink.State.Permitted:
+        #         break
+        #     tries += 1
+        #     if tries > 1000:
+        #         raise NotImplementedError(
+        #             "CanLink couldn't raise network using mock physical layer."
+        #             " State is {}".format(state))
 
         message = Message(MTI.Datagram, getLocalNodeID(),
                           getLocalNodeID(),
@@ -673,8 +697,11 @@ class TestCanLinkClass(unittest.TestCase):
         canPhysicalLayer.physicalLayerDown()
 
     def testTwoFrameDatagram(self):
-        canPhysicalLayer = PhyMockLayer()
+        # TODO: ? canPhysicalLayer = PhyMockLayer()
+        canPhysicalLayer = CanPhysicalLayerSimulation()
         canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
+        canPhysicalLayer.physicalLayerUp()
+        canLink.waitForReady(self.device)
 
         message = Message(MTI.Datagram, getLocalNodeID(),
                           getLocalNodeID(),
@@ -696,8 +723,11 @@ class TestCanLinkClass(unittest.TestCase):
 
     def testThreeFrameDatagram(self):
         # FIXME: Why was testThreeFrameDatagram named same? What should it be?
-        canPhysicalLayer = PhyMockLayer()
+        # TODO: ? canPhysicalLayer = PhyMockLayer()
+        canPhysicalLayer = CanPhysicalLayerSimulation()
         canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
+        canPhysicalLayer.physicalLayerUp()
+        canLink.waitForReady(self.device)
 
         message = Message(MTI.Datagram, getLocalNodeID(),
                           getLocalNodeID(),
