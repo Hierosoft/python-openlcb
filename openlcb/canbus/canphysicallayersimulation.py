@@ -61,6 +61,10 @@ class CanPhysicalLayerSimulation(CanPhysicalLayer, FrameEncoder):
                         if verbose:
                             print("- Skipped (probably dup alias CID frame).")
                         continue
+                    if not self.linkLayer.isAllowed(frame):
+                        if verbose:
+                            print("- Skipped (Only CID/RID/AMD allowed while not Permitted).")
+                        continue
                 # data = self.encodeFrameAsData(frame)
                 # device.send(data)  # commented since simulation
                 self.onFrameSent(frame)

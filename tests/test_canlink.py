@@ -60,6 +60,10 @@ class PhyMockLayer(CanPhysicalLayer):
                     if verbose:
                         print("- Skipped (probably dup alias CID frame).")
                     continue
+                if not self.linkLayer.isAllowed(frame):
+                    if verbose:
+                        print("- Skipped (Only CID/RID/AMD allowed while not Permitted).")
+                    continue
 
             string = frame.encodeAsString()
             # device.sendString(string)  # commented since simulation

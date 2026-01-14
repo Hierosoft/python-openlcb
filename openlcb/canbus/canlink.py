@@ -203,6 +203,22 @@ class CanLink(LinkLayer):
             return False
         return frame.reservation < self._reservation
 
+    def isAllowed(self, frame: CanFrame) -> bool:
+        if self.isCanceled(frame):
+            return False
+        if self._state == CanLink.State.Permitted:
+            # All frame types are allowed in this state.
+            return True
+        control_frame = self.decodeControlFrameFormat(frame)
+        if control_frame == ControlFrame.CID:
+            return True
+        if control_frame == ControlFrame.RID:
+            return True
+        if control_frame == ControlFrame.AMD:
+            return True
+        return False
+
+
     # def isDuplicateAlias(self, alias):
     #     if not isinstance(alias, int):
     #         raise NotImplementedError(
@@ -408,7 +424,8 @@ class CanLink(LinkLayer):
         self.physicalLayer.sendFrameAfter(
             CanFrame(ControlFrame.AMD.value, self._localAlias,
                      self.localNodeID.toArray(),
-                     afterSendState=CanLink.State.RecordAliasReservation)
+                     afterSendState=CanLink.State.RecordAliasReservation,
+                     reservation=self._reservation)
         )
         self.setState(CanLink.State.WaitingForLocalNotifyReservation)
         # self._state = CanLink.State.Permitted  # not really ready
@@ -433,10 +450,15 @@ class CanLink(LinkLayer):
             " from a datagram from an unknown source"
             .format(self.localNodeID))
         self.nodeIdToAlias[self.localNodeID] = self._localAlias
+
+        # We already sent RID, so reservation is done
+        # (Also AME is not allowed unless state is Permitted!)
+        self.setState(CanLink.State.Permitted)
+
         #    send AME with no NodeID to get full alias map
         self.physicalLayer.sendFrameAfter(
-            CanFrame(ControlFrame.AME.value, self._localAlias,
-                     afterSendState=CanLink.State.Permitted)
+            CanFrame(ControlFrame.AME.value, self._localAlias)
+            # afterSendState=CanLink.State.Permitted)
         )
 
     #    TODO: (restart) Should this set inhibited every time? LinkUp not
@@ -477,9 +499,11 @@ class CanLink(LinkLayer):
         self.fireMessageReceived(msg)
 
     def handleReceivedCID(self, frame: CanFrame):
-        """Handle a Check ID (CID) frame only if addressed to us
-        (used to verify node uniqueness). Additional arguments may be
-        encoded in lower bits of frame.header (below ControlFrame.CID).
+        """Handle a Check ID (CID) frame (verifies node uniqueness).
+        If source alias is same as ours, send a RID to cause the sender
+        to try a different alias.
+        - Additional arguments may be encoded in higher bits of
+          frame.header (above FFF).
         """
         #    Does this carry our alias?
         if (frame.header & 0xFFF) != self._localAlias:
@@ -944,10 +968,15 @@ class CanLink(LinkLayer):
             "alias collision in {}, we restart with AMR"
             " and attempt to get new alias".format(frame))
         self.markDuplicateAlias(frame.alias)
-        self.physicalLayer.sendFrameAfter(CanFrame(
-            ControlFrame.AMR.value,
-            self._localAlias,
-            self.localNodeID.toArray()))
+        if self._state == CanLink.State.Permitted:
+            # Only tell nodes to stop using it if it was already in use
+            #   (See Can Frame Transfer Standard
+            #   section 6.2.5 Node ID Alias Collision Handling)
+            #   - should only happen while already Permitted!
+            self.physicalLayer.sendFrameAfter(CanFrame(
+                ControlFrame.AMR.value,
+                self._localAlias,
+                self.localNodeID.toArray()))
         #    Standard 6.2.5
         self._state = CanLink.State.Inhibited
         #    attempt to get a new alias and go back to .Permitted

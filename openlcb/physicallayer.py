@@ -97,6 +97,10 @@ class PhysicalLayer:
                         if verbose:
                             print("- Skipped (canceled by link layer).")
                         continue
+                    if not self.linkLayer.isAllowed(data):
+                        if verbose:
+                            print("- Skipped (Only CID/RID/AMD allowed while not Permitted).")
+                        continue
                 device.send(data)
                 count += 1
         except IndexError:
