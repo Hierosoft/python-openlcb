@@ -1,3 +1,9 @@
+import os
+import socket
+import hashlib
+import ipaddress
+from typing import Optional
+
 from logging import getLogger
 
 from openlcb import (
@@ -96,3 +102,100 @@ def is_dotted_lcc_id(value):
     if not hex_str:  # warning/info logged by dotted_lcc_id_to_hex
         return False
     return only_hex_pairs(hex_str)
+
+
+def get_process_id() -> int:
+    """Get current process ID."""
+    return os.getpid()
+
+
+def get_local_ip() -> Optional[str]:
+    """
+    Try to find a non-loopback IPv4 address.
+    Returns '127.0.0.1' as fallback.
+    """
+    try:
+        # Create a dummy UDP socket just to get routing information
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Doesn't need to actually connect
+        #   - just used to find default interface
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+
+        # Make sure it's not loopback
+        if ipaddress.ip_address(ip).is_loopback:
+            return None
+
+        return ip
+    except Exception:
+        pass
+
+    # Fallback: try to enumerate interfaces
+    try:
+        for iface in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            addr = iface[4][0]
+            if not ipaddress.ip_address(addr).is_loopback:
+                return addr
+    except Exception:
+        pass
+
+    return "127.0.0.1"
+
+
+def generate_last_three_octets() -> bytearray:
+    """Generate 3 hex octets from hash of (ip + pid)"""
+    ip = get_local_ip() or "127.0.0.1"
+    pid = get_process_id()
+
+    seed = f"{ip}:{pid}"
+
+    # Using hash() gives a signed 64-bit value in CPython
+    # We take abs() and then mask to 32 bits for consistency
+    h = abs(hash(seed)) & 0xFFFFFFFF
+
+    # Extract 3 bytes
+    return bytearray([
+        (h >> 16) & 0xFF,
+        (h >> 8)  & 0xFF,
+        h         & 0xFF,
+    ])
+
+
+def generate_last_three_octets_str() -> str:
+    octets = generate_last_three_octets()
+    return f"{octets[0]:02x}.{octets[1]:02x}.{octets[2]:02x}"
+
+
+def generate_node_id_str(id_range_prefix) -> str:
+    """Generate a unique NodeID string for the session to ensure each
+    instance (even of python-openlcb on same device) or
+    locally-generated virtual node is unique.
+
+    Args:
+        id_range_prefix (str): NodeID prefix in dotted hex notation
+            (3 to 5. 3 at most recommended to make uniqueness more
+            likely) Warning: 05.01.01 is *only* for Bob Jacobsen's
+            python-openlcb (or as otherwise assigned by OpenLCB Group
+            which reserves 05.* range) See
+            <https://registry.openlcb.org/uniqueidranges>.
+    Returns:
+        str: Full 48-bit node ID in dotted hex string notation (Example:
+            '05.01.01.4A.B7.19') that is unique (very likely...).
+    """
+
+    lastParts = [f"{p:02X}" for p in generate_last_three_octets()]
+    assert len(lastParts) == 3
+    prefixParts = id_range_prefix.split(".")
+    if len(prefixParts) < 3:
+        raise ValueError(
+            "Please specify at least 3 hex pairs separated by '.'. Got {}"
+            .format(id_range_prefix))
+    if len(prefixParts) > 5:
+        raise ValueError(
+            "Please specify at most 5 hex pairs separated by '.'"
+            " (preferably less to increase likelihood of uniqueness). Got {}"
+            .format(id_range_prefix))
+    uniqueCount = 6 - len(prefixParts)
+    return ".".join(prefixParts+lastParts[-uniqueCount:])
+    # ^ negative to keep last uniqueCount pairs

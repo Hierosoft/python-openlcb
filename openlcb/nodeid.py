@@ -1,5 +1,5 @@
 from openlcb import emit_cast
-
+from openlcb.conventions import generate_node_id_str
 
 class NodeID:
     """A 6-byte (48-bit) Node ID.
@@ -85,3 +85,20 @@ class NodeID:
 
     def __hash__(self):
         return hash(self.value)
+
+
+def generate_node_id(id_range_prefix):
+    """Generate a unique NodeID for the session to ensure each
+    instance (even of python-openlcb on same device) or
+    locally-generated virtual node is unique.
+
+    Args:
+        id_range_prefix (str): NodeID prefix in dotted hex notation.
+            Warning: 05.01.01 is *only* for Bob Jacobsen's
+            python-openlcb (or as otherwise assigned by OpenLCB Group
+            which reserves 05.* range) See
+            <https://registry.openlcb.org/uniqueidranges>.
+    Returns:
+        NodeID: A NodeID that is unique (very likely...).
+    """
+    return NodeID(generate_node_id_str(id_range_prefix))
