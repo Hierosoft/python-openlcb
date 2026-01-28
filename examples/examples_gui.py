@@ -20,13 +20,6 @@ import threading
 
 from logging import getLogger
 
-from openlcb.memoryservice import MemorySpace
-from openlcb.message import Message
-from openlcb.metadataprocessor import XMLDataProcessor
-from openlcb.mti import MTI
-from openlcb.nodeid import NodeID
-from openlcb.openlcbnetwork import OpenLCBNetwork
-
 try:
     import tkinter as tk
 except ImportError:
@@ -37,7 +30,16 @@ except ImportError:
 from tkinter import ttk
 from collections import OrderedDict, deque
 
+
 from examples_settings import Settings  # do 1st to fix path if no pip install
+
+
+from openlcb.memoryservice import MemorySpace
+from openlcb.message import Message
+from openlcb.metadataprocessor import XMLDataProcessor
+from openlcb.mti import MTI
+from openlcb.nodeid import NodeID
+from openlcb.openlcbnetwork import OpenLCBNetwork
 
 from openlcb.tcplink.tcpsocket import TcpSocket
 from examples.tkexamples.cdiform import CDIForm
