@@ -15,7 +15,7 @@ from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
 from openlcb.canbus.controlframe import ControlFrame
 from openlcb.portinterface import PortInterface
-
+from openlcb.nodeid import generate_node_id
 
 class PhyMockLayer(CanPhysicalLayer):
     # FIXME: Doesn't work anymore. (Was) used for
@@ -56,13 +56,10 @@ class PhyMockLayer(CanPhysicalLayer):
                 break
             # ^ If using popleft, break on IndexError (empty) instead.
             if self.linkLayer:
-                if self.linkLayer.isCanceled(frame):
+                blockedMsg = self.linkLayer.blockedReason(frame)
+                if blockedMsg:
                     if verbose:
-                        print("- Skipped (probably dup alias CID frame).")
-                    continue
-                if not self.linkLayer.isAllowed(frame):
-                    if verbose:
-                        print("- Skipped (Only CID/RID/AMD allowed while not Permitted).")
+                        print("Skipping sending frame: {}".format(blockedMsg))
                     continue
 
             string = frame.encodeAsString()
@@ -276,21 +273,37 @@ class TestCanLinkClass(unittest.TestCase):
         canPhysicalLayer.physicalLayerDown()
 
     def testRIDreceivedMatch(self):
+        # NOTE: The initiator is reversed in this test case to mimic collision.
         canPhysicalLayer = CanPhysicalLayerSimulation()
         canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
         canLink._state = CanLink.State.Permitted
 
+        self.assertEqual(canLink.pollState(), CanLink.State.Permitted)
         canPhysicalLayer.fireFrameReceived(
             CanFrame(ControlFrame.RID.value, ourAlias))
         # ^ collision
+        # ^ No listeners are registered, but `onFrameReceived` is set to
+        #   `canLink.handleFrameReceived` (So see
+        #   handleReceivedRID in canlink.py)
         canLink.waitForReady(self.device)
-        self.assertEqual(len(canPhysicalLayer.sentFrames), 8)
-        # ^ includes recovery of new alias 4 CID, RID, AMR, AME
-        self.assertFrameEqual(
-            canPhysicalLayer.sentFrames[0],
-            CanFrame(ControlFrame.AMR.value, ourAlias,
-                     bytearray([5, 1, 1, 1, 3, 1])))
+
+        # AMR + 4xCID + RID + AMD + AME is len 8 (See later comment about
+        #   this special AMR case):
+        self.assertEqual(
+            len(canPhysicalLayer.sentFrames),
+            8,
+            # Give details on each frame if assertion fails:
+            ["{} ({})".format(f, CanFrame.decodeControlFrameFormat(f)) for f in canPhysicalLayer.sentFrames]
+        )
+        # ^ includes recovery of new alias:
+
+        # CAN Frame Transfer Standard, 6.2.5: If received non-CID while
+        #   Permitted (This test case forced receiving RID via
+        #   fireFrameReceived), we must reset our alias so we should
+        #   have sent AMR before CID (only in such a case):
+        expectedAMR = CanFrame(ControlFrame.AMR.value, ourAlias, bytearray([5, 1, 1, 1, 3, 1]))
+        self.assertFrameEqual(canPhysicalLayer.sentFrames[0], expectedAMR)
         self.assertEqual(
             canPhysicalLayer.sentFrames[6],
             CanFrame(ControlFrame.AMD.value, 0x539,
@@ -312,7 +325,7 @@ class TestCanLinkClass(unittest.TestCase):
         physicalLayer = PhyMockLayer()
         canLink = CanLinkLayerSimulation(physicalLayer, getLocalNodeID())
         frame = CanFrame(0x1000, 0x000)  # invalid control frame content
-        self.assertEqual(canLink.decodeControlFrameFormat(frame),
+        self.assertEqual(CanFrame.decodeControlFrameFormat(frame),
                          ControlFrame.UnknownFormat)
         physicalLayer.physicalLayerDown()
 
@@ -785,26 +798,62 @@ class TestCanLinkClass(unittest.TestCase):
     # MARK: - Test Remote Node Alias Tracking
     def testAmdAmrSequence(self):
         canPhysicalLayer = CanPhysicalLayerSimulation()
-        canLink = CanLinkLayerSimulation(canPhysicalLayer, getLocalNodeID())
+        ourNodeID = getLocalNodeID()
+        otherNodeID = generate_node_id("05.01.01")  # "05.01.01" is only for OpenLCB Group. See <https://registry.openlcb.org/uniqueidranges>
+        canLink = CanLinkLayerSimulation(canPhysicalLayer, ourNodeID)
         ourAlias = canLink._localAlias  # 576 with NodeID(0x05_01_01_01_03_01)
 
-        canPhysicalLayer.fireFrameReceived(CanFrame(0x0701, ourAlias+1))
-        # ^ AMD from some other alias
+        # (Any, int) constructor is (control_frame, alias):
+        # canPhysicalLayer.fireFrameReceived(CanFrame(0x0701, ourAlias+1))
+        # ^ reserves NodeID 0 (may not be safe test: See AMR undefined
+        #   behavior comment below)
+        canPhysicalLayer.fireFrameReceived(CanFrame(0x0701, ourAlias+1, otherNodeID.toArray()))
+        # ^ AMD (0x0701) from some other alias (see handleReceivedAMD)
 
         self.assertEqual(len(canLink.aliasToNodeID), 1)
         self.assertEqual(len(canLink.nodeIdToAlias), 1)
 
         self.assertEqual(len(canPhysicalLayer.sentFrames), 0)
         # ^ nothing back down to CAN
+        # state = canLink.pollState()
 
-        canPhysicalLayer.fireFrameReceived(CanFrame(0x0703, ourAlias+1))
-        # ^ AMR from some other alias
+        # region commented since Standard doesn't say we have to be Permitted to process AMD/AMR
+        # canPhysicalLayer.physicalLayerUp()
+        # canLink._waitingForAliasStart = True  # pretend CID was sent
+        # canLink.waitForReady(self.device)  # puts ourAlias in the maps
+        # while transitioning to Permitted state.
+        # self.assertEqual(len(canLink.aliasToNodeID), 2)  # ourAlias, ourAlias+1
+        # self.assertEqual(len(canLink.nodeIdToAlias), 2)  # ourAlias, ourAlias+1
+        # endregion commented since Standard doesn't say we have to be Permitted to process AMD/AMR
 
+        self.assertEqual(len(canLink.aliasToNodeID), 1)  # ourAlias+1
+        self.assertEqual(len(canLink.nodeIdToAlias), 1)  # ourAlias+1
+
+        # (Any, int) constructor is (control_frame, alias):
+        # canPhysicalLayer.fireFrameReceived(CanFrame(0x0703, ourAlias+1))
+        # TODO: ^ AMR with no NodeID is undefined behavior (until bakerstu decides--I asked him about it--and that should be a separate test -Poikilos)
+        canPhysicalLayer.fireFrameReceived(
+            CanFrame(0x0703, ourAlias+1, otherNodeID.toArray()))
+        # ^ AMR (0x0703) from some other alias (see handleReceivedAMR)
+
+        # Our own mapping should remain, since we did physicalLayerUp
+        #   and waitForReady and used a different NodeID for AMR. If
+        #   NodeID were blank (old version of this test), that should be
+        #   a separate test (See AMR undefined behavior TODO above).
+
+        # region commented since Standard doesn't say we have to be Permitted to process AMD/AMR
+        # self.assertEqual(len(canLink.aliasToNodeID), 1)
+        # self.assertEqual(len(canLink.nodeIdToAlias), 1)
+        # endregion commented since Standard doesn't say we have to be Permitted to process AMD/AMR
         self.assertEqual(len(canLink.aliasToNodeID), 0)
         self.assertEqual(len(canLink.nodeIdToAlias), 0)
 
         self.assertEqual(len(canPhysicalLayer.sentFrames), 0)
         # ^ nothing back down to CAN
+        # If transitioning to permitted, that sends 7 frames: 4xCID,
+        #   RID, AME (optional) (or 8 in the case of initial AMR if was
+        #   Permitted then became Inhibited):
+        # self.assertEqual(len(canPhysicalLayer.sentFrames), 7)
         canPhysicalLayer.physicalLayerDown()
 
     # MARK: - Data size handling

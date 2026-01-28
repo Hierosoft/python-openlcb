@@ -155,7 +155,7 @@ class CanLink(LinkLayer):
     # This method may never actually be necessary, as
     # sendMessage uses nodeIdToAlias (which has localNodeID
     # *only after* a successful reservation)
-    def getLocalAlias(self) -> int:
+    def getLocalAlias(self, minimumState=State.Permitted) -> int:
         """Get the local alias, since it may differ from original
         localNodeID given at construction: It may have been
         reassigned (via incrementAlias48 and createAlias12 in
@@ -172,9 +172,9 @@ class CanLink(LinkLayer):
         Returns:
             int: The local alias.
         """
-        if self._state != CanLink.State.Permitted:
+        if self._state.value < minimumState.value:
             raise InterruptedError(
-                "The alias reservation is not complete (state={})."
+                "The alias reservation is not complete (state={}<{})."
                 " Make sure defineAliasReservation (physicalLayerUp) isn't"
                 " called in a way that blocks the socket receive thread,"
                 " and that your application has a Message received listener"
@@ -184,7 +184,7 @@ class CanLink(LinkLayer):
                 " unless you poll for"
                 " canlink.getState() == CanLink.State.Permitted in a"
                 " non-blocking manner."
-                .format(self._state)
+                .format(self._state, minimumState)
             )
         return self._localAlias
 
@@ -206,29 +206,57 @@ class CanLink(LinkLayer):
     def isAllowed(self, frame: CanFrame) -> bool:
         if self.isCanceled(frame):
             return False
+        return self.blockedFrameType(frame) is None
+
+    def blockedFrameType(self, frame: CanFrame) -> ControlFrame:
         if self._state == CanLink.State.Permitted:
             # All frame types are allowed in this state.
-            return True
-        control_frame = self.decodeControlFrameFormat(frame)
+            return None
+        control_frame = CanFrame.decodeControlFrameFormat(frame)
+        if frame.minimumState is not None:
+            assert control_frame == ControlFrame.AMR
+            # ^ assert since otherwise python-openlcb code itself has an error.
+            #   - only AMR is allowed to be sent while transitioning to
+            #     Inhibited state (and in this implementation, prior
+            #     states occur before sending CID)
+            if self.getState().value >= frame.minimumState.value:
+                return None
         if control_frame == ControlFrame.CID:
-            return True
+            return None
         if control_frame == ControlFrame.RID:
-            return True
+            return None
         if control_frame == ControlFrame.AMD:
-            return True
-        return False
+            return None
+        return control_frame
 
+    def isDuplicateAlias(self, alias):
+        if not isinstance(alias, int):
+            raise NotImplementedError(
+                "Can't check for duplicate due to alias not stored as int."
+                " bytearray parsing must be implemented in CanFrame"
+                " constructor if this markDuplicateAlias scenario is valid"
+                " (alias={})."
+                .format(emit_cast(alias)))
+        return alias in self.duplicateAliases
+    # ^ was Commented since isCanceled handles both collision and error,
+    #   but this can occur if a reservation was successful but the
+    #   link layer later switched to an Inhibited state and had to
+    #   generate a new alias
 
-    # def isDuplicateAlias(self, alias):
-    #     if not isinstance(alias, int):
-    #         raise NotImplementedError(
-    #             "Can't check for duplicate due to alias not stored as int."
-    #             " bytearray parsing must be implemented in CanFrame"
-    #             " constructor if this markDuplicateAlias scenario is valid"
-    #             " (alias={})."
-    #             .format(emit_cast(alias)))
-    #     return alias in self.duplicateAliases
-    # ^ Commented since isCanceled handles both collision and error.
+    def blockedReason(self, frame: CanFrame) -> str:
+        if self.isCanceled(frame):
+            return "The frame is using an alias from a previous reservation"
+        blocked_type = self.blockedFrameType(frame)
+        if blocked_type is not None:  # if not self.isAllowed(frame):
+            return ("Only CID/RID/AMD can be sent while Inhibited ({}), not {}"
+                    .format(self.getState(), blocked_type))
+        if self.isDuplicateAlias(frame.alias):
+            control_frame = CanFrame.decodeControlFrameFormat(frame)
+            if control_frame != ControlFrame.AMR:
+                return "can't send from an alias reserved by another node."
+            # else allow deleting our own alias (Ok since our NodeID is
+            #   required by the Standard to be unique).
+        return None
 
     # Commented since instead, socket code should call linkLayerUp and
     #   linkLayerDown. Constructors should construct the openlcb stack:
@@ -306,7 +334,7 @@ class CanLink(LinkLayer):
                 not then ignored).
         """
         handled = True  # True if state may change, otherwise set False
-        control_frame = self.decodeControlFrameFormat(frame)
+        control_frame = CanFrame.decodeControlFrameFormat(frame)
         if not ControlFrame.isInternal(control_frame):
             self._frameCount += 1
         else:
@@ -539,6 +567,30 @@ class CanLink(LinkLayer):
             .format(nodeID))
         self.nodeIdToAlias[nodeID] = alias
 
+    def handleGlobalAME(self, frame: CanFrame):
+        """If no data, clear all except self from maps
+        even if not in Permitted state
+        (CAN Frame Transfer Standard, 6.2.3).
+        """
+        if frame.data:  # not global
+            return
+        for otherNodeID in list(self.nodeIdToAlias.keys()):
+            if otherNodeID == self.localNodeID:
+                continue
+            del self.nodeIdToAlias[otherNodeID]
+            # except KeyError:
+            #     pass  # concurrent modification
+        for alias in list(self.aliasToNodeID.keys()):
+            otherNodeID = self.aliasToNodeID[alias]
+            # except KeyError:
+            #     pass  # concurrent modification
+            if otherNodeID == self.localNodeID:
+                continue
+            del self.nodeIdToAlias[otherNodeID]
+            # except KeyError:
+            #     pass  # concurrent modification
+            # TODO: clear matching _send_frames??
+
     def handleReceivedAME(self, frame: CanFrame):
         """Handle an Alias Mapping Enquiry (AME) frame
         (a node requested alias information from other nodes).
@@ -546,34 +598,72 @@ class CanLink(LinkLayer):
         if self.checkAndHandleAliasCollision(frame):
             return
         if self._state != CanLink.State.Permitted:
+            self.handleGlobalAME(frame)
             return
         #    check node ID
-        matchNodeID = self.localNodeID
-        if len(frame.data) >= 6 :
-            matchNodeID = NodeID(frame.data)
+        destNodeID = None
+        if len(frame.data) == 6 :
+            destNodeID = NodeID(frame.data)
 
-        if self.localNodeID == matchNodeID :
-            #    matched, send RID
+        if (self.localNodeID == destNodeID) or (destNodeID is None):
+            #    matched/global (and Permitted if got this far), so send AMD
             returnFrame = CanFrame(ControlFrame.AMD.value, self._localAlias,
                                    self.localNodeID.toArray())
             self.physicalLayer.sendFrameAfter(returnFrame)
+        self.handleGlobalAME(frame)
 
     def handleReceivedAMR(self, frame: CanFrame):
         """Handle an Alias Map Reset (AMR) frame
         (A node is asking to remove an alias from mappings).
         """
-        if (self.checkAndHandleAliasCollision(frame)):
-            return
-        #    Alias Map Reset - drop from maps
-        nodeID = NodeID(frame.data)
         alias = frame.header & 0xFFF
+        if (self.checkAndHandleAliasCollision(frame)):
+            pass  # return
+            logger.warning(f"Accepting AMR after collision (alias={alias:02X})")
+        #    Alias Map Reset - drop from maps
+        if not frame.data:
+            logger.warning(f"Bad AMR (no data, so no NodeID) from {alias:02X}")
+            return
+        if len(frame.data) < 6:
+            logger.warning("Bad AMR (data {} truncated--no NodeID) from {:02X}"
+                           .format(frame.data, alias))
+            return
+        nodeID = NodeID(frame.data)
+        # CAN Frame Transfer Standard 6.2.4 just says stop using the
+        #   alias to refer to that node, so delete only on that
+        #   condition to save steps and not lose any good mapping.
+        storedID = self.aliasToNodeID.get(alias)
+        localAlias = self.getLocalAlias(minimumState=CanLink.State.Initial)
+        # ^ Standard doesn't say we have to be Permitted to process AMR
+        if storedID == nodeID:
+            if ((alias == localAlias) and (storedID == self.localNodeID)):
+                logger.warning("AMR reset local nodeID {} (for alias [{}])"
+                               .format(storedID, alias))
+            try:
+                logger.warning(f"AMR alias={alias:02X}")
+                del self.aliasToNodeID[alias]
+            except KeyError:
+                pass  # deleted by a concurrent process
+        else:
+            logger.warning(f"AMR ignored: Node {nodeID} can't delete node {storedID}'s alias {alias} which is the same")
+
+        storedAlias = self.nodeIdToAlias.get(nodeID)
+        if storedAlias == alias:
+            if ((storedAlias == localAlias) and (nodeID == self.localNodeID)):
+                logger.warning("AMR reset local alias {} (for NodeID [{}])"
+                               .format(localAlias, nodeID))
+            try:
+                logger.warning(f"AMR nodeID={nodeID}")
+                del self.nodeIdToAlias[nodeID]
+            except KeyError:
+                pass  # deleted by a concurrent process
+        else:
+            logger.warning(f"AMR ignored: Alias {alias} can't delete alias {storedAlias}'s NodeID {nodeID} which is the same")
         try:
-            del self.aliasToNodeID[alias]
-            del self.nodeIdToAlias[nodeID]
-        except KeyboardInterrupt:
-            raise
-        except:
-            pass
+            self.duplicateAliases.remove(alias)
+        except ValueError:
+            pass  # not present
+        return
 
     def handleReceivedData(self, frame: CanFrame):
         """Handle a data frame.
@@ -634,6 +724,7 @@ class CanLink(LinkLayer):
                     destID = self.aliasToNodeID[destAlias]
                 else:
                     destID = NodeID(self.nextInternallyAssignedNodeID)
+                    self.nextInternallyAssignedNodeID += 1
                     logger.warning(
                         "message from unknown dest alias: {},"
                         " continue with {}"
@@ -693,6 +784,7 @@ class CanLink(LinkLayer):
                     raise
                 except:
                     destID = NodeID(self.nextInternallyAssignedNodeID)
+                    self.nextInternallyAssignedNodeID += 1
                     logger.warning(
                         "message from unknown dest alias:"
                         " 0x{:04X}, continue with 0x{}"
@@ -708,7 +800,7 @@ class CanLink(LinkLayer):
 
                 # check for start and end bits
                 key = CanLink.AccumKey(mti, sourceID, destID)
-                if (frame.data[0] & 0x20 == 0):
+                if frame.data and (frame.data[0] & 0x20 == 0):
                     #    is start, create the entry in the accumulator
                     self.accumulator[key] = bytearray()
                 else:
@@ -727,7 +819,7 @@ class CanLink(LinkLayer):
                     for byte in frame.data[2:]:  # through end of array
                         self.accumulator[key].append(byte)
 
-                if frame.data[0] & 0x10 == 0:
+                if frame.data and (frame.data[0] & 0x10 == 0):
                     # is end, ship and remove accumulation
                     msg = Message(mti, sourceID, destID, self.accumulator[key])
                     # This includes the special case of MTI.Unknown,
@@ -737,7 +829,7 @@ class CanLink(LinkLayer):
                     self.fireMessageReceived(msg)
 
                     # remove accumulation
-                    self.accumulator[key] = None
+                    del self.accumulator[key]
 
             # end addressed message case
 
@@ -973,13 +1065,23 @@ class CanLink(LinkLayer):
             #   (See Can Frame Transfer Standard
             #   section 6.2.5 Node ID Alias Collision Handling)
             #   - should only happen while already Permitted!
+            # self.physicalLayer.clearSendQueue()  # probably not necessary using blockedReason later (should be isCanceled in this case)  # noqa: E501
+            # Send AMR before inhibited (section 6.2.4):
             self.physicalLayer.sendFrameAfter(CanFrame(
                 ControlFrame.AMR.value,
                 self._localAlias,
-                self.localNodeID.toArray()))
-        #    Standard 6.2.5
-        self._state = CanLink.State.Inhibited
-        #    attempt to get a new alias and go back to .Permitted
+                self.localNodeID.toArray(),
+                minimumState=CanLink.State.WaitingForSendCIDSequence,
+                afterSendState=CanLink.State.Inhibited))
+            # ^ Allowed since defineAndReserveAlias below
+            #   sets EnqueueAliasAllocationRequest, which
+            #   triggers _enqueueCIDSequence which
+            #   sets WaitingForSendCIDSequence before
+            #   anything is sent (all happens via pollState).
+        else:
+            #    section 6.2.5 (restart alias reservation)
+            self._state = CanLink.State.Inhibited
+            #    attempt to get a new alias and go back to .Permitted
         self._localAliasSeed = self.incrementAlias48(self._localAliasSeed)
         self._localAlias = self.createAlias12(self._localAliasSeed)
         self.defineAndReserveAlias()
@@ -1158,26 +1260,6 @@ class CanLink(LinkLayer):
         if ((part1+part2+part3+part4) & 0xFF) != 0:
             return ((part1+part2+part3+part4) & 0xFF)
         return 0xAEF  # Why'd you say Burma?
-
-    def decodeControlFrameFormat(self, frame: CanFrame) -> ControlFrame:
-        if (frame.header & 0x0800_0000) == 0x0800_0000:
-            # data case; not checking leading 1 bit
-            # NOTE: handleReceivedData can get all header bits via frame
-            return ControlFrame.Data
-        if (frame.header & 0x4_000_000) != 0:  # CID case
-            # NOTE: handleReceivedCID can get all header bits via frame
-            return ControlFrame.CID
-
-        try:
-            retval = ControlFrame((frame.header >> 12) & 0x2_FF_FF)
-            return retval  # top 1 bit for out-of-band messages
-        except KeyboardInterrupt:
-            raise
-        except:
-            logger.warning(
-                "Could not decode header 0x{:08X}"
-                .format(frame.header))
-            return ControlFrame.UnknownFormat
 
     def canHeaderToFullFormat(self, frame: CanFrame) -> MTI:
         '''Returns a full 16-bit MTI from the full 29 bits of a CAN header'''

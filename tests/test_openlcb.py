@@ -26,6 +26,8 @@ import openlcb  # noqa: E402
 from openlcb import (  # noqa: E402
     emit_cast,
     formatted_ex,
+    from_all_hex_bytes,
+    from_hex_bytes,
     list_type_names,
     only_hex_pairs,
 )
@@ -36,13 +38,18 @@ class TestConventions(unittest.TestCase):
         self.assertTrue(only_hex_pairs("02015700049C"))
         self.assertTrue(only_hex_pairs("02015700049c"))
         self.assertTrue(only_hex_pairs("02"))
+        self.assertTrue(only_hex_pairs(b"19170365"))
+        self.assertTrue(only_hex_pairs(b"02015700049c"))
+        self.assertTrue(only_hex_pairs(bytearray(b'19490365')))
 
         self.assertFalse(only_hex_pairs("02.01.57.00.04.9C"))  # contains separator  # noqa:E501
+        self.assertFalse(only_hex_pairs(b"02.01.57.00.04.9C"))  # contains separator  # noqa:E501
         # ^ For the positive test (& allowing elements not zero-padded) see test_conventions.py  # noqa:E501
         self.assertFalse(only_hex_pairs("02015700049C."))  # contains end character  # noqa:E501
         self.assertFalse(only_hex_pairs("0"))  # not a full pair
         self.assertFalse(only_hex_pairs("_02015700049C"))  # contains start character  # noqa:E501
         self.assertFalse(only_hex_pairs("org_product_02015700049C"))  # service name not split  # noqa:E501
+
 
     def test_list_type_names(self):
         self.assertEqual(list_type_names({"a": 1, "b": "B"}),
@@ -91,6 +98,18 @@ class TestConventions(unittest.TestCase):
             formatted_ex(ValueError("hello")),
             "ValueError: hello"
         )
+
+    def test_from_hex_bytes(self):
+        with self.assertRaises(IndexError):
+            from_hex_bytes(b"00A", 0, 3)  # odd not allowed
+        with self.assertRaises(ValueError):
+            from_hex_bytes(b"0G", 0, 2)  # character not allowed
+        self.assertEqual(from_all_hex_bytes(b"0A"), bytearray([0x0A]))
+        with self.assertRaises(IndexError):
+            from_hex_bytes(b"0A", 0, 4)  # out of range
+        self.assertEqual(from_all_hex_bytes(b"0D0A"), bytearray([0x0D, 0x0A]))
+        self.assertEqual(from_all_hex_bytes(b"0D000A"), bytearray([0x0D, 0x00, 0x0A]))
+        self.assertEqual(from_all_hex_bytes(b"00"), bytearray([0x00]))
 
 
 if __name__ == '__main__':

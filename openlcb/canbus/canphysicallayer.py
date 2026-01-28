@@ -58,16 +58,18 @@ class CanPhysicalLayer(PhysicalLayer):
         return frame
 
     def registerFrameReceivedListener(self,
-                                      listener: Callable[[CanFrame], None]):
+                                      listener: Callable[[CanFrame], None],
+                                      enable_test=False):
         # ^ 2nd arg to Callable type is the return type.
         assert listener is not None
-        warnings.warn(
-            "[registerFrameReceivedListener]"
-            " You don't really need to listen to packets."
-            " Use pollFrame instead, which will collect and decode"
-            " packets into frames (this layer communicates to upper layers"
-            " using physicalLayer.onFrameReceived set by LinkLayer/subclass"
-            " constructor).")
+        if not enable_test:
+            warnings.warn(
+                "[registerFrameReceivedListener]"
+                " You don't really need to listen to packets."
+                " Use pollFrame instead, which will collect and decode"
+                " packets into frames (this layer communicates to upper layers"
+                " using physicalLayer.onFrameReceived set by LinkLayer/subclass"
+                " constructor).")
         self._frameReceivedListeners.append(listener)
 
     def fireFrameReceived(self, frame: CanFrame):

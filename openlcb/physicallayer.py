@@ -93,13 +93,10 @@ class PhysicalLayer:
                 # ^ exits loop with IndexError when done.
                 # (otherwise use pollFrame() and break if None)
                 if self.linkLayer:
-                    if self.linkLayer.isCanceled(data):
+                    blockedMsg = self.linkLayer.blockedReason(frame)
+                    if blockedMsg:
                         if verbose:
-                            print("- Skipped (canceled by link layer).")
-                        continue
-                    if not self.linkLayer.isAllowed(data):
-                        if verbose:
-                            print("- Skipped (Only CID/RID/AMD allowed while not Permitted).")
+                            print("Skipping sending frame: {}".format(blockedMsg))
                         continue
                 device.send(data)
                 count += 1
@@ -126,6 +123,13 @@ class PhysicalLayer:
             # (no problem, just fall through and return None)
             pass
         return None
+
+    def clearSendQueue(self):
+        """Clear send queue.
+        Reserved for future use (typically not necessary since
+        blockedReason should be called before actually sending).
+        """
+        self._send_frames.clear()
 
     def clearReservation(self, reservation: int):
         """Clear a reservation attempt number.

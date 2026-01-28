@@ -8,10 +8,19 @@ from typing import (
     Union,  # in case `|` doesn't support 'type' in this Python version
 )
 
-
-hex_pairs_rc = re.compile(r"^([0-9A-Fa-f]{2})+$")
+hex_pairs_re = r"^([0-9A-Fa-f]{2})+$"
+hex_pairs_rc = re.compile(hex_pairs_re)
+hex_pairs_brc = re.compile(hex_pairs_re.encode("utf-8"))
 # {2}: Exactly two characters found (only match if pair)
 # +: at least one match plus 0 or more additional matches
+ORD_0 = 0x30
+ORD_9 = 0x39
+ORD_A = 0x41
+ORD_F = 0x46
+ORD_Z = 0x5A
+ORD_a = 0x61
+ORD_f = 0x66
+ORD_z = 0x7A
 
 
 def only_hex_pairs(value: str) -> bool:
@@ -19,6 +28,9 @@ def only_hex_pairs(value: str) -> bool:
     See openlcb.conventions submodule for LCC ID dot notation
     functions (less restrictive).
     """
+    if isinstance(value, (bytearray, bytes)):
+        return hex_pairs_brc.fullmatch(value)
+    assert isinstance(value, str)
     return hex_pairs_rc.fullmatch(value)
 
 
@@ -77,3 +89,41 @@ def precise_sleep(seconds: Union[float, int], start: float = None) -> None:
 
 def formatted_ex(ex) -> str:
     return "{}: {}".format(type(ex).__name__, ex)
+
+
+def from_hex_bytes(b: bytearray, start: int, stop: int, assertValid=True) -> bytearray:
+    """ASCII hex bytearray (even length) → binary bytearray"""
+    # like bytearray.fromhex, except accepts bytes rather than str only
+    r = bytearray((stop-start) // 2)
+    if assertValid:
+        if (stop-start) % 2 > 0:
+            raise IndexError("Only hex pairs are accepted, got odd count: start={} stop={}".format(start, stop))
+        if start < 0 or start > len(b):
+            raise IndexError("start={} len={}".format(start, len(b)))
+        if stop < 0 or stop > len(b):
+            raise IndexError("stop={} len={}".format(start, len(b)))
+        if stop - start < 2:
+            raise IndexError("start={} stop={}".format(start, stop))
+        assert len(r) == (stop - start) // 2
+    i = start
+    rel = 0
+    while i < stop:
+        x, y = b[i], b[i+1]
+        if assertValid:
+            if not ((x >= ORD_A and x <= ORD_F) or (x >= ORD_a and x <= ORD_f) or (x >= ORD_0 and x <= ORD_9)):
+                raise ValueError("Got character {}, expected hex digit".format((bytearray([x])).decode("utf-8")))
+            if not ((y >= ORD_A and y <= ORD_F) or (y >= ORD_a and y <= ORD_f) or (y >= ORD_0 and y <= ORD_9)):
+                raise ValueError("Got character {}, expected hex digit".format((bytearray([y])).decode("utf-8")))
+        # v =
+        # NOTE: below will still raise exception if over 255 even if assertValid is False
+        r[rel] = ((x & 15) + ((x >> 6) & 1) * 9) << 4 | \
+            ((y & 15) + ((y >> 6) & 1) * 9)
+        # assert v < 256, str(b[i:i+1])
+        # r[rel] = v
+        i += 2
+        rel += 1
+    return r
+
+
+def from_all_hex_bytes(b: bytearray) -> bytearray:
+    return from_hex_bytes(b, 0, len(b))

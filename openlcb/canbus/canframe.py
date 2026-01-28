@@ -3,6 +3,7 @@ import openlcb
 from collections import OrderedDict
 from logging import getLogger
 
+from openlcb.canbus.controlframe import ControlFrame
 from openlcb.nodeid import NodeID
 
 logger = getLogger(__name__)
@@ -83,6 +84,28 @@ class CanFrame:
             result += "), "
         return result[:-2]  # -1 to remove last ", " from list
 
+    @staticmethod
+    def decodeControlFrameFormat(frame) -> ControlFrame:
+        # type: (CanFrame) -> ControlFrame
+        if (frame.header & 0x0800_0000) == 0x0800_0000:
+            # data case; not checking leading 1 bit
+            # NOTE: handleReceivedData can get all header bits via frame
+            return ControlFrame.Data
+        if (frame.header & 0x4_000_000) != 0:  # CID case
+            # NOTE: handleReceivedCID can get all header bits via frame
+            return ControlFrame.CID
+
+        try:
+            retval = ControlFrame((frame.header >> 12) & 0x2_FF_FF)
+            return retval  # top 1 bit for out-of-band messages
+        except KeyboardInterrupt:
+            raise
+        except:
+            logger.warning(
+                "Could not decode header 0x{:08X}"
+                .format(frame.header))
+            return ControlFrame.UnknownFormat
+
     def __str__(self):
         return "CanFrame header: 0x{:08X} {}".format(
             self.header,
@@ -99,10 +122,12 @@ class CanFrame:
     def alias(self) -> int:
         return self._alias
 
-    def __init__(self, *args, afterSendState=None, reservation=None):
+    def __init__(self, *args, afterSendState=None, reservation=None,
+                 minimumState=None):
         self.afterSendState = afterSendState
         self.encoder = NoEncoder()
         self.reservation = reservation
+        self.minimumState = minimumState
         arg1 = None
         arg2 = None
         arg3 = None
@@ -144,9 +169,12 @@ class CanFrame:
             # TODO: decode (header?) if self._alias is necessary in this case,
             #   otherwise is remains None!
             if not isinstance(arg1, int):
-                args_error = "Expected int since 2nd argument is bytearray."
+                args_error = "Expected int(header) since 2nd argument is bytearray."
             # Types of both args are enforced by this point.
             self.header = arg1
+            self._alias = arg1 & 0xFFF
+            if self._alias == 0:
+                logger.warning("Alias is {}".format(self._alias))
             self.data = arg2
             if len(args) > 2:
                 args_error = "2nd argument is data, but got extra argument(s)"

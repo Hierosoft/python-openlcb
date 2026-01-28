@@ -16,6 +16,7 @@ class PhysicalLayerMock(CanPhysicalLayerGridConnect):
         CanPhysicalLayerGridConnect.__init__(self)
         # ^ Sets onQueuedFrame on None, so set it afterward:
         self.onQueuedFrame = self.captureString
+        self.assertValidData = True
 
     def captureString(self, frame: CanFrame):
         # formerly was in CanPhysicalLayerGridConnectTest
@@ -84,26 +85,35 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
 
     def testOneFrameReceivedExactlyHeaderOnly(self):
         self.gc = PhysicalLayerMock()
-        self.gc.registerFrameReceivedListener(self.receiveListener)
+        self.gc.registerFrameReceivedListener(self.receiveListener,
+                                              enable_test=True)
+        # canLink = CanLink(self.gc, NodeID(0x010203040506))
         bytes = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33, 0x36, 0x35,
             0x4e, GC_END_BYTE, 0x0a])  # :X19490365N;\n
 
         self.gc.handleData(bytes)
-
+        self.assertEqual(len(self.receivedFrames), 1)
+        f0 = self.receivedFrames[0]
+        f1 = CanFrame(0x19490365, bytearray())
         self.assertEqual(
-            self.receivedFrames[0],
-            CanFrame(0x19490365, bytearray())
+            f0, f1,
+            # Give details on each frame if assertion fails:
+            "{} ({}) != {} ({})".format(f0, CanFrame.decodeControlFrameFormat(f0), f1, CanFrame.decodeControlFrameFormat(f1))
+            # ["{} ({})".format(f, CanFrame.decodeControlFrameFormat(f)) for f in self.receivedFrames]
         )
 
     def testOneFrameReceivedExactlyWithData(self):
         self.gc = PhysicalLayerMock()
-        self.gc.registerFrameReceivedListener(self.receiveListener)
+        self.gc.registerFrameReceivedListener(self.receiveListener,
+                                              enable_test=True)
         bytes = bytearray([
-            0x3a, 0x58, 0x31, 0x39, 0x31, 0x42, 0x30, 0x33, 0x36, 0x35,
-            0x4e, 0x30,
-            0x32, 0x30, 0x31, 0x31, 0x32, 0x46, 0x45, 0x30, 0x35, 0x36,
-            0x43, GC_END_BYTE])
+            0x3a, 0x58,  # : X
+            0x31, 0x39, 0x31, 0x42, 0x30, 0x33, 0x36, 0x35,
+            0x4e,  # N (ends header)
+            0x30, 0x32, 0x30, 0x31, 0x31, 0x32,
+            0x46, 0x45, 0x30, 0x35, 0x36, 0x43,
+            GC_END_BYTE])  # ;
         # :X19170365N020112FE056C;
 
         self.gc.handleData(bytes)
@@ -116,7 +126,8 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
 
     def testOneFrameReceivedHeaderOnlyTwice(self):
         self.gc = PhysicalLayerMock()
-        self.gc.registerFrameReceivedListener(self.receiveListener)
+        self.gc.registerFrameReceivedListener(self.receiveListener,
+                                              enable_test=True)
         bytes = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33, 0x36, 0x35,
             0x4e, GC_END_BYTE, 0x0a])  # :X19490365N;\n
@@ -130,7 +141,8 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
 
     def testOneFrameReceivedHeaderOnlyPlusPartOfAnother(self):
         self.gc = PhysicalLayerMock()
-        self.gc.registerFrameReceivedListener(self.receiveListener)
+        self.gc.registerFrameReceivedListener(self.receiveListener,
+                                              enable_test=True)
         bytes = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33, 0x36,
             0x35, 0x4e, GC_END_BYTE, 0x0a,  # :X19490365N;\n
@@ -150,7 +162,8 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
 
     def testOneFrameReceivedInTwoChunks(self):
         self.gc = PhysicalLayerMock()
-        self.gc.registerFrameReceivedListener(self.receiveListener)
+        self.gc.registerFrameReceivedListener(self.receiveListener,
+                                              enable_test=True)
         bytes1 = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x31, 0x37, 0x30, 0x33, 0x36, 0x35,
             0x4e, 0x30])
@@ -162,7 +175,7 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
             0x32, 0x30, 0x31, 0x31, 0x32, 0x46, 0x45, 0x30, 0x35, 0x36,
             0x43, GC_END_BYTE])
         self.gc.handleData(bytes2)
-
+        self.assertGreaterEqual(len(self.receivedFrames), 1)
         self.assertEqual(
             self.receivedFrames[0],
             CanFrame(0x19170365,
@@ -171,7 +184,8 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
 
     def testSequence(self):
         self.gc = PhysicalLayerMock()
-        self.gc.registerFrameReceivedListener(self.receiveListener)
+        self.gc.registerFrameReceivedListener(self.receiveListener,
+                                              enable_test=True)
         bytes = bytearray([
             0x3a, 0x58, 0x31, 0x39, 0x34, 0x39, 0x30, 0x33,
             0x36, 0x35, 0x4e, GC_END_BYTE, 0x0a])
@@ -185,7 +199,11 @@ class CanPhysicalLayerGridConnectTest(unittest.TestCase):
         self.receivedFrames = []
 
         self.gc.handleData(bytes)
-        self.assertEqual(len(self.receivedFrames), 1)
+        self.assertEqual(
+            len(self.receivedFrames), 1,
+            # Give details on each frame if assertion fails:
+            ["{} ({})".format(f, CanFrame.decodeControlFrameFormat(f)) for f in self.receivedFrames]
+        )
         self.assertEqual(self.receivedFrames[0],
                          CanFrame(0x19490365, bytearray()))
 

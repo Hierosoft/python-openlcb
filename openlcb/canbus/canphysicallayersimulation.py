@@ -57,13 +57,10 @@ class CanPhysicalLayerSimulation(CanPhysicalLayer, FrameEncoder):
                 # ^ exits loop with IndexError when done.
                 # (otherwise use pollFrame() and break if None)
                 if self.linkLayer:
-                    if self.linkLayer.isCanceled(frame):
+                    blockedMsg = self.linkLayer.blockedReason(frame)
+                    if blockedMsg:
                         if verbose:
-                            print("- Skipped (probably dup alias CID frame).")
-                        continue
-                    if not self.linkLayer.isAllowed(frame):
-                        if verbose:
-                            print("- Skipped (Only CID/RID/AMD allowed while not Permitted).")
+                            print("Skipping sending frame: {}".format(blockedMsg))
                         continue
                 # data = self.encodeFrameAsData(frame)
                 # device.send(data)  # commented since simulation

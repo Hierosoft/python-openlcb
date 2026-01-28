@@ -99,6 +99,9 @@ class LinkLayer:
             return False
         return True
 
+    def blockedReason(self, frame) -> str:
+        return None
+
     def handleFrameReceived(self, frame):
         logger.warning(
             "{} abstract handleFrameReceived called (expected implementation)"
