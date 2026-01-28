@@ -224,9 +224,12 @@ precise_sleep(2)  # Wait for approximately all SNIP info to arrive.
 print("\nDiscovered nodes:")
 
 for node in remoteNodeStore.asArray() :
-    print(node, node.snip.manufacturerName, "/",
-          node.snip.userProvidedNodeName)
-
+    print(node, repr(node.snip.manufacturerName), "/",
+          repr(node.snip.userProvidedNodeName))
+    # 0-5: manufacturerName, modelName, hardwareVersion,
+    #   softwareVersion, userProvidedNodeName, userProvidedDescription
+    for i in range(6):
+        print('  [{}] = {}'.format(i, repr(node.snip.getStringN(i))))
 # this ends here, which takes the local node offline
 
 # For explicitness (to make this example match use in non-linear

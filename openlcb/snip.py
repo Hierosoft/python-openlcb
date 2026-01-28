@@ -93,23 +93,23 @@ class SNIP:
 
         if n == 0:
             return 1  # first one is automatic
-        retval = 1
-        stringCount = 0
+        currentStart = 1
+        stringsFound = 0
         # scan over the buffer
         for i in range(1, 252):
             # checking for an end-of-string mark
             if self.data[i] == 0:
                 # found one - this ends the stringCount string
                 # if that's the request, return start
-                if stringCount == n:
-                    return retval
+                if stringsFound == n:
+                    return currentStart
                 # if not, the _next_ character starts the next string
-                retval = i+1
-                stringCount += 1
+                currentStart = i+1
+                stringsFound += 1
                 # special case for the 5th string
-                if stringCount == 4:
+                if stringsFound == 4:
                     i += 1
-                    retval += 1
+                    currentStart += 1
         # fell out without finding
         return 0
 
