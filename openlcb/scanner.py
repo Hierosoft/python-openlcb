@@ -17,15 +17,14 @@ class Scanner:
             _onHasNext on every push). Mimic Java behavior where
             "\\Z" can be added as the delimiter for EOF.
     """
-    EOF = bytes([0x05])  # flag value *not* used for find arg
+    EOF = 0x05  # flag value (*skips find*)
     # ESCAPED_EOF = ESCAPED_EOF_S.encode("utf-8")
     # EOF = 0x05  # type: int
     # EOF = -1
 
     def __init__(self, delimiter: Union[bytes, bytearray, int] = EOF):
-        if isinstance(delimiter, int):
-            delimiter = bytes([delimiter])
-        self._delimiter = delimiter  # type: Union[bytes, bytearray]
+        # ^ NOTE: b''.find(int(delimiter)) works fine
+        self._delimiter = delimiter  # type: Union[bytes, bytearray, int]
         self._buffer = bytearray()
 
     def push(self, data: Union[bytearray, bytes, int]):
