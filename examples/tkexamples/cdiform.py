@@ -16,12 +16,12 @@ from tkinter import ttk
 
 from collections import deque
 from logging import getLogger
-from typing import Callable
+from typing import Any, Callable, Dict, Union
+from xml.etree import ElementTree as ET
 
 from openlcb.linklayer import LinkLayer
 from openlcb.memoryservice import MemorySpace
 from openlcb.metadataprocessor import element_to_dict
-# from xml.etree import ElementTree as ET
 
 
 if __name__ == "__main__":
@@ -72,7 +72,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         if hasattr(self.parent, 'root'):
             self.root = self.parent.root
         self._container = self  # where to put visible widgets
-        self._treeview = None
+        self._treeview = None  # type: ttk.Treeview
         self._gui(self._container)
 
     def _gui(self, container: tk.Widget):
@@ -90,14 +90,15 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         self._treeview.grid(sticky=tk.NSEW, row=len(self._top_widgets))
         self.rowconfigure(len(self._top_widgets), weight=1)  # weight=1: expand
         self._top_widgets.append(self._treeview)
-        self._populating_stack = None  # no parent when top of Treeview
+        self._populating_stack = None  # type: deque
+        # ^ no parent when top of Treeview
         self._current_iid = 0   # id of Treeview element
 
     def clear(self):
         while self._top_widgets:
             widget = self._top_widgets.pop()
             widget.grid_forget()
-        self._gui()
+        self._gui(self._container)
         self.setStatus("Display reset.")
 
     # def connect(self, new_socket, localNodeID, callback=None):
@@ -193,12 +194,13 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             return ""  # "" (empty str) is magic value for top of ttk.Treeview
         return self._populating_stack.pop()
 
-    def _on_cdi_element_start(self, event_d: dict):
-        element = event_d.get('element')
+    def _on_cdi_element_start(self, event_d: Dict[str, Any]):
+        element = event_d.get('element')  # type: Union[ET, None]
+        assert element is not None
         segment = event_d.get('segment')
         groups = event_d.get('groups')
         prev_ignore_size = len(self.ignore_non_gui_tags)
-        tag = element.tag
+        tag = element.tag if element is not None else None
         if not tag:
             logger.warning("Ignored blank tag for event: {}".format(event_d))
             return
