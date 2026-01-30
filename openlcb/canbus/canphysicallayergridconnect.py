@@ -217,8 +217,8 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
             v = (v << 4) + (data[i] & 15) + ((data[i] >> 6) & 1) * 9
         return v
 
-    def handleDataOptimized(self, data: Union[bytes, bytearray],
-                            test_output=None, verbose=False) -> int:
+    def handleData(self, data: Union[bytes, bytearray],
+                   test_output=None, verbose=False) -> int:
         """Provide characters from the outside link to be parsed
 
         Args:
@@ -295,8 +295,8 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
             self.inboundBuffer = self.inboundBuffer[lastByte:]
         return frameCount
 
-    def handleData(self, data: Union[bytes, bytearray],
-                   test_output=None, verbose=False) -> int:
+    def handleDataStrict(self, data: Union[bytes, bytearray],
+                         test_output=None, verbose=False) -> int:
         """Provide characters from the outside link to be parsed
 
         Args:
@@ -311,6 +311,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         Returns:
             int: The number of frames completed by inboundBuffer+data.
         """
+        # TODO: Not fully implemented. See https://www.merg.org.uk/merg_wiki/lib/exe/fetch.php?media=public:cbuspublic:developer_6b.pdf
         # same as the original handleData (renamed to
         #   handleDataOptimized, but more explicit with messages and error
         #   checking (effectively noise rejection).
