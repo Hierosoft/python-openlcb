@@ -22,9 +22,11 @@ Handles link quiesce/restart so that higher level services don't have to.
 2) Once the link has been quiesced, datagrams are held until it's restarted
 '''
 
-from enum import Enum
 import logging
+
+from enum import Enum
 from typing import (
+    Any,
     Callable,
     List,  # in case list doesn't support `[` in this Python version
     Union,  # in case `|` doesn't support 'type' in this Python version
@@ -34,10 +36,10 @@ from openlcb.linklayer import LinkLayer
 from openlcb.message import Message
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
-from openlcb.memoryservice import DatagramWriteMemo
 
 
-def defaultIgnoreReply(memo: Union[DatagramWriteMemo, None]):
+def defaultIgnoreReply(memo: Union[Any, None]):
+    # ^ DatagramWriteMemo is the type, but that is not defined yet
     '''default handling of reply does nothing'''
     pass
 
