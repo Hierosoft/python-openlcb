@@ -233,8 +233,8 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         Returns:
             int: The number of frames completed by inboundBuffer+data.
         """
-        # This is the old version of the handleData method without
-        #   specific integrity checks & messages.
+        # This is the original handleData method (without specific
+        #   integrity checks & messages).
         frameCount = 0
         self.inboundBuffer += data
         lastByte = 0  # last index is at ';'
@@ -312,9 +312,9 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
             int: The number of frames completed by inboundBuffer+data.
         """
         # TODO: Not fully implemented. See https://www.merg.org.uk/merg_wiki/lib/exe/fetch.php?media=public:cbuspublic:developer_6b.pdf
-        # same as the original handleData (renamed to
-        #   handleDataOptimized, but more explicit with messages and error
-        #   checking (effectively noise rejection).
+        # (Should be) same as the original handleData (but more explicit
+        #   with messages and error checking (effectively noise
+        #   rejection).
         cls = type(self)
         frameCount = 0
         self.inboundBuffer += data
