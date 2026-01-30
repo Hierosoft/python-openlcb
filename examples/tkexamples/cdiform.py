@@ -68,7 +68,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             raise ValueError("at least one argument (parent) is required")
         self.parent = args[0]
         self.root = args[0]
-        self.ignore_non_gui_tags = None
+        self.ignore_non_gui_tags = None  # type: deque
         if hasattr(self.parent, 'root'):
             self.root = self.parent.root
         self._container = self  # where to put visible widgets

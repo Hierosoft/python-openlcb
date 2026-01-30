@@ -23,7 +23,7 @@ and predictable use in applications.
 
 from collections import deque
 from logging import getLogger
-from typing import Union
+from typing import Any, Union
 
 from openlcb.portinterface import PortInterface
 
@@ -60,8 +60,10 @@ class PhysicalLayer:
         self._send_frames = deque()
         # self._send_chunks = deque()
         self.onQueuedFrame = None
-        self.linkLayer = None  # LinkLayer would be circular import
-        #  so no type hint...o dear.
+        self.linkLayer = None  # type: Any
+        # ^ LinkLayer would be circular import,
+        #   so can't have type hint...Move it (or LinkLayer's
+        #   physicalLayer) to subclass?
 
     def sendDataAfter(self, data: Union[bytes, bytearray], verbose=False):
         raise NotImplementedError(
@@ -75,6 +77,9 @@ class PhysicalLayer:
     def hasFrame(self) -> bool:
         """Check if there is a frame queued to send."""
         return bool(self._send_frames)
+
+    def fireFrameReceived(self, frame: Any):
+        raise NotImplementedError("Implement this in the subclass")
 
     def sendAll(self, device: PortInterface, mode="binary",
                 verbose=False) -> int:
@@ -230,3 +235,8 @@ class PhysicalLayer:
     def physicalLayerDown(self):
         """abstract method"""
         raise NotImplementedError("Each subclass must implement this.")
+
+    def handleData(self, data: Union[bytes, bytearray]) -> int:
+        """abstract method (accept data, return # of frames created)"""
+        raise NotImplementedError(
+            "A network data format must be defined in the subclass.")

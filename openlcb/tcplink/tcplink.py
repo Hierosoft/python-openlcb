@@ -68,15 +68,15 @@ class TcpLink(LinkLayer):
         print(f"[TcpLink] _onStateChanged from {oldState} to {newState}"
               " (nothing to do since TcpLink)")
 
-    def handleFrameReceived(self, inputData: Union[bytes, bytearray]):
+    def handleFrameReceived(self, frame: Union[bytes, bytearray]):
         """Receives bytes from lower level
         and accumulates them into individual message parts.
 
         Args:
             inputData ([int]) : next chunk of the input stream
         """
-        assert isinstance(inputData, (bytes, bytearray))
-        self.accumulatedData.extend(inputData)
+        assert isinstance(frame, (bytes, bytearray))
+        self.accumulatedData.extend(frame)
         # Now check it if has one or more complete message.
         while len(self.accumulatedData) > 0 :
             # first, see if entire prefix is present
@@ -194,7 +194,7 @@ class TcpLink(LinkLayer):
         msg = Message(MTI.Link_Layer_Down, NodeID(0), None, bytearray())
         self.fireMessageReceived(msg)
 
-    def sendMessage(self, message: Message, verbose=False):
+    def sendMessage(self, msg: Message, verbose=False):
         """
         The message level calls this with an OpenLCB
         message.  That is then converted to a byte
@@ -204,11 +204,11 @@ class TcpLink(LinkLayer):
             verbose (bool, optional): Ignored (Reserved for subclass).
         """
 
-        mti = message.mti
+        mti = msg.mti
 
         outputBytes = bytearray([0x80, 0x00])  # flags
 
-        length = 12+2+6+len(message.data)
+        length = 12+2+6+len(msg.data)
         if mti.addressPresent() : length = length+6
 
         l0 = (length & 0xFF0000) >> 16
@@ -231,12 +231,12 @@ class TcpLink(LinkLayer):
         m1 = (mti.value & 0xFF)
         outputBytes.extend([m0, m1])
 
-        outputBytes.extend(message.source.toArray())
+        outputBytes.extend(msg.source.toArray())
 
         if mti.addressPresent() :
-            outputBytes.extend(message.destination.toArray())
+            outputBytes.extend(msg.destination.toArray())
 
-        outputBytes.extend(message.data)
+        outputBytes.extend(msg.data)
 
         self.physicalLayer.sendDataAfter(outputBytes, verbose=verbose)
         # ^ The physical layer should be one with "Raw" in the name

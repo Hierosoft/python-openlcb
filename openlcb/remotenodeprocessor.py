@@ -1,5 +1,6 @@
 
-from typing import Callable
+from typing import Callable, Union
+
 from openlcb.eventid import EventID
 from openlcb.linklayer import LinkLayer
 from openlcb.node import Node
@@ -19,7 +20,7 @@ class RemoteNodeProcessor(Processor) :
     track memory (config, CDI) contents due to size.
     '''
 
-    def __init__(self, linkLayer: LinkLayer = None) :
+    def __init__(self, linkLayer: Union[LinkLayer, None] = None) :
         self.linkLayer = linkLayer
         self._nodeIdentifiedListeners = []
         self._producerUpdatedListeners = []

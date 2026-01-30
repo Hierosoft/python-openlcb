@@ -26,7 +26,7 @@ class RemoteNodeStore(NodeStore) :
         '''
         return "RemoteNodeStore w {}".format(self.nodes.count)
 
-    def checkForNewNode(self, message) :
+    def checkForNewNode(self, message: Message) :
         '''Check if the message is to a new node.
         Returns:
             bool: True if the message is to a new node, so that
@@ -45,7 +45,7 @@ class RemoteNodeStore(NodeStore) :
             return False
         return True
 
-    def createNewRemoteNode(self, message) :
+    def createNewRemoteNode(self, message: Message) :
         '''
         A new node was found by checkForNewNode, so this
         mutates the store to add this.  This should only be called
@@ -63,7 +63,7 @@ class RemoteNodeStore(NodeStore) :
         for processor in self.processors :
             processor.process(new_message, node)
 
-    def processMessageFromLinkLayer(self, message) :
+    def processMessageFromLinkLayer(self, message: Message) :
         '''Process an incoming message
         across all the nodes in the remote node store.
 

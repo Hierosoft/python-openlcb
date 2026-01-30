@@ -1,6 +1,7 @@
 from openlcb import emit_cast
 from openlcb.conventions import generate_node_id_str
 
+
 class NodeID:
     """A 6-byte (48-bit) Node ID.
     The constructor is manually overloaded as follows:

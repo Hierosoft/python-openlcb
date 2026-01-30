@@ -53,10 +53,11 @@ class OpenLCBNetwork:
             is a MemorySpace)
     """
     def __init__(self, localNodeID: Union[str, bytearray, int, NodeID]):
-        self._onConnect = None
+        self._onConnect: Callable[[dict], None] = None
         self._port: PortInterface = None
         self.physicalLayer: CanPhysicalLayerGridConnect = None
         self.canLink: CanLink = None
+
         self._fireStatus("CanPhysicalLayerGridConnect...")
         self.physicalLayer = CanPhysicalLayerGridConnect()
         self._fireStatus("CanLink...")
@@ -157,15 +158,16 @@ class OpenLCBNetwork:
                                  self._memoryReadSuccess)
         self._memoryService.requestMemoryRead(memMemo)
 
+    def _default_dl_callback(self, event_d: dict):
+        print(f"[download default callback] {event_d}", file=sys.stderr)
+
     def download(self, farNodeID: str, space: MemorySpace,
                  dataProcessor: XMLDataProcessor, callback=None):
         if not farNodeID or not farNodeID.strip():
             raise ValueError("No farNodeID specified.")
         self._farNodeID = farNodeID
         if callback is None:
-            def callback(event_d):
-                print("downloadCDI default callback: {}".format(event_d),
-                      file=sys.stderr)
+            callback = self._default_dl_callback
         if not self._port:
             raise RuntimeError(
                 "No port connection. Call startListening first.")
@@ -242,7 +244,9 @@ class OpenLCBNetwork:
                     precise_sleep(.01)  # let processor sleep before read
                     if default_timer() - self._connectingStart > .21:
                         if self.canLink._state != CanLink.State.Permitted:
-                            delta = default_timer() - self._messageStart
+                            delta = 0
+                            if self._messageStart is not None:
+                                delta = default_timer() - self._messageStart
                             if ((self._messageStart is None) or (delta > 1)):
                                 logger.warning(
                                     "CanLink is not ready yet."
@@ -282,7 +286,7 @@ class OpenLCBNetwork:
                 raise  # re-raise since incomplete (prevent done OK state)
         finally:
             self.physicalLayer.physicalLayerDown()  # Link_Layer_Down, setState
-        self._listenThread: threading.Thread = None
+        self._listenThread: Union[threading.Thread, None] = None
 
         # If we got here, the RuntimeError was ok since the
         #   null terminator '\0' was reached (otherwise re-raise occurs above)

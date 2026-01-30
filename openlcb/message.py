@@ -2,11 +2,10 @@
 based on Message.swift
 Created by Bob Jacobsen on 6/1/22.
 '''
-
+from typing import Union
 
 from openlcb import emit_cast
 from openlcb.mti import MTI
-from openlcb.node import Node
 from openlcb.nodeid import NodeID
 
 
@@ -21,13 +20,15 @@ class Message:
             empty bytearray().
     """
 
-    def __init__(self, mti, source: NodeID, destination: NodeID, data=None):
+    def __init__(self, mti, source: NodeID,
+                 destination: Union[NodeID, None], data=None):
         # For args, see class docstring.
         if data is None:
             data = bytearray()
         self.mti = mti
         self.source = source
-        self.destination = destination
+        self.destination = destination  # Union[NodeID, None]
+        self.originalMTI = None  # type: Union[int, None]
         self.assertTypes()
         if not isinstance(data, bytearray):
             raise TypeError("Expected bytearray, got {}"

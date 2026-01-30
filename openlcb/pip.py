@@ -40,10 +40,12 @@ class PIP(Enum):
     FIRMWARE_UPGRADE_PROTOCOL              = 0x00_00_20_00
     FIRMWARE_ACTIVE                        = 0x00_00_10_00
 
-    # get a list of all enum entries
+    @staticmethod
     def list() -> List:
+        """get a list of all enum entries"""
         return list(map(lambda c: c, PIP))
 
+    @staticmethod
     def contentsNamesFromInt(bitmask: int) -> List[str]:
         """Convert protocol bits to strings.
 
@@ -63,6 +65,7 @@ class PIP(Enum):
                 retval.append(val)
         return retval
 
+    @staticmethod
     def contentsNamesFromList(pipList: Iterable) -> List[str]:
         """Convert a list of PIP values to strings.
 
@@ -81,6 +84,7 @@ class PIP(Enum):
             retval.append(val)
         return retval
 
+    @staticmethod
     def setContentsFromInt(bitmask: int) -> Set:
         """Get a set of contents from a single numeric bitmask
 
@@ -98,8 +102,9 @@ class PIP(Enum):
                 retVal.append(pip)
         return set(retVal)
 
+    @staticmethod
     def setContentsFromList(
-            values: Union[bytearray, bytes, Iterable[int]]) -> Set:
+            values: Union[bytearray, bytes, List[int]]) -> Set:
         """set contents from a list of numeric inputs
 
         Args:

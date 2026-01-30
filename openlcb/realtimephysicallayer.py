@@ -80,7 +80,7 @@ class RealtimePhysicalLayer(PhysicalLayer):
         #   but we do all this here in the Realtime subclass:
         self.sock.send(data)
         self.onFrameSent(data)
-        if hasattr(frame, 'afterSendState') and frame.afterSendState:
+        if hasattr(frame, 'afterSendState') and frame.afterSendState:  # type: ignore # noqa: E501
             # Use hasattr since only applicable to subclasses that use
             #   CanFrame.
             self.fireFrameReceived(frame)  # also calls self.onFrameSent(frame)
@@ -95,6 +95,7 @@ class RealtimePhysicalLayer(PhysicalLayer):
         if len(self._send_frames) > 0:
             raise AssertionError("Realtime subclasses should not use a queue!")
         logger.debug("sendAll ran (realtime subclass, so nothing to do)")
+        return 0
 
     def registerFrameReceivedListener(self, listener):
         """Register a new frame received listener

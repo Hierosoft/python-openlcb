@@ -2,7 +2,12 @@ import openlcb
 
 from collections import OrderedDict
 from logging import getLogger
+from typing import Any, Union
 
+from openlcb import (
+    emit_cast,
+    list_type_names,
+)
 from openlcb.canbus.controlframe import ControlFrame
 from openlcb.nodeid import NodeID
 
@@ -125,13 +130,13 @@ class CanFrame:
     def __init__(self, *args, afterSendState=None, reservation=None,
                  minimumState=None):
         self.afterSendState = afterSendState
-        self.encoder = NoEncoder()
+        self.encoder = NoEncoder()  # type: Any
         self.reservation = reservation
         self.minimumState = minimumState
         arg1 = None
         arg2 = None
         arg3 = None
-        self._alias = None
+        self._alias = None  # type: Union[int, None]  # TODO: type: int ?
         if len(args) > 0:
             arg1 = args[0]
         if len(args) > 1:
@@ -142,7 +147,7 @@ class CanFrame:
             arg3 = bytearray()
         # There are three ctor forms.
         # - See "Args" in class for docstring.
-        self.header = 0
+        self.header = 0  # type: int
         self.direction = None  # See deque for usage
         self.data = bytearray()
         # three arguments as N_cid, nodeID, alias
@@ -153,26 +158,35 @@ class CanFrame:
             #   (duck typing) in this case.
             if len(args) < 3:
                 args_error = "Expected alias after NodeID"
+            assert isinstance(arg3, int), \
+                ("Expected int alias after NodeID, got"
+                 f" {emit_cast(arg3)}")
             # cid must be 4 to 7 inclusive (100 to 111 binary)
             # precondition(4 <= cid && cid <= 7)
-            cid = arg1
             nodeID = arg2
             self._alias = arg3
+            if not isinstance(arg1, int):
+                args_error = \
+                    ("Expected CID 4 to 7 if arg2 is NodeID,"
+                     f" got {emit_cast(arg1)}")
+            else:
+                cid = arg1
 
-            nodeCode = ((nodeID.value >> ((cid-4)*12)) & 0xFFF)
-            # ^ cid-4 results in 0 to 3. *12 results in 0 to 36 bit shift (nodeID size)  # noqa: E501
-            self.header = ((cid << 12) | nodeCode) << 12 | (self._alias & 0xFFF) | 0x10_00_00_00  # noqa: E501
-            # self.data = bytearray()
+                nodeCode = ((nodeID.value >> ((cid-4)*12)) & 0xFFF)
+                # ^ cid-4 results in 0 to 3. *12 results in 0 to 36 bit shift (nodeID size)  # noqa: E501
+                self.header = ((cid << 12) | nodeCode) << 12 | (self._alias & 0xFFF) | 0x10_00_00_00  # noqa: E501
+                # self.data = bytearray()
 
         # two arguments as header, data
         elif isinstance(arg2, bytearray):
             # TODO: decode (header?) if self._alias is necessary in this case,
             #   otherwise is remains None!
             if not isinstance(arg1, int):
-                args_error = "Expected int(header) since 2nd argument is bytearray."
+                args_error = \
+                    "Expected int(header) since 2nd argument is bytearray."
             # Types of both args are enforced by this point.
-            self.header = arg1
-            self._alias = arg1 & 0xFFF
+            self.header = arg1  # type: ignore
+            self._alias = arg1 & 0xFFF  # type: ignore
             if self._alias == 0:
                 logger.warning("Alias is {}".format(self._alias))
             self.data = arg2
@@ -190,7 +204,7 @@ class CanFrame:
         # three arguments as control, alias, data
         elif isinstance(arg2, int):
             # Types of all 3 are enforced by usage (duck typing) in this case.
-            control = arg1
+            control = arg1  # type: int # type: ignore
             self._alias = arg2
             self.header = \
                 (control << 12) | (self._alias & 0xFFF) | 0x10_00_00_00
@@ -203,9 +217,10 @@ class CanFrame:
 
         if args_error:
             raise TypeError(
-                args_error.rstrip(".") + ". Valid constructors:"
-                + CanFrame.constructor_help() + ". Got: "
-                + openlcb.list_type_names(args))
+                "{}. Valid constructors: {}. Got: {}".format(
+                    args_error.rstrip("."),
+                    CanFrame.constructor_help(),
+                    list_type_names(args)))
         if self._alias is not None:
             if self._alias & 0xFFF != self._alias:
                 raise ValueError(

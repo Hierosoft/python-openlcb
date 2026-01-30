@@ -49,10 +49,10 @@ class NodeStore :
     #     userProvidedDescription: string to match SNIP content
     #     nodeID: for direct lookup
     # - Returns: None if the there's no match
-    def lookup(self, parm: Union[NodeID, str]) -> Node:
+    def lookup(self, parm: Union[NodeID, str]) -> Union[Node, None]:
         if isinstance(parm, NodeID) :
             if parm not in self.byIdMap :
-                self.byIdMap[parm] = None
+                self.byIdMap[parm] = None  # TODO: delete line and return None?
             return self.byIdMap[parm]
         # assume parm is string
         for node in self.byIdMap.values() :

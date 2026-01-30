@@ -5,7 +5,7 @@ This is a class because it represents a single physical connection to a layout
 and is subclassed.
 '''
 from logging import getLogger
-from typing import Callable
+from typing import Callable, Union
 import warnings
 
 from openlcb.canbus.canframe import CanFrame
@@ -50,7 +50,7 @@ class CanPhysicalLayer(PhysicalLayer):
         frame.encoder = self
         PhysicalLayer.sendFrameAfter(self, frame)  # calls onQueuedFrame if set
 
-    def pollFrame(self) -> CanFrame:
+    def pollFrame(self) -> Union[CanFrame, None]:
         frame = super().pollFrame()
         if frame is None:
             return None
@@ -68,8 +68,8 @@ class CanPhysicalLayer(PhysicalLayer):
                 " You don't really need to listen to packets."
                 " Use pollFrame instead, which will collect and decode"
                 " packets into frames (this layer communicates to upper layers"
-                " using physicalLayer.onFrameReceived set by LinkLayer/subclass"
-                " constructor).")
+                " using physicalLayer.onFrameReceived set by"
+                " LinkLayer/subclass constructor).")
         self._frameReceivedListeners.append(listener)
 
     def fireFrameReceived(self, frame: CanFrame):

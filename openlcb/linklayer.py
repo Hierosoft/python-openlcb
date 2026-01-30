@@ -18,6 +18,7 @@ making multiple copies of a single object.
 
 from enum import Enum
 from logging import getLogger
+from typing import Any, Union
 
 from openlcb import emit_cast
 from openlcb.message import Message
@@ -99,15 +100,15 @@ class LinkLayer:
             return False
         return True
 
-    def blockedReason(self, frame) -> str:
+    def blockedReason(self, frame) -> Union[str, None]:
         return None
 
-    def handleFrameReceived(self, frame):
+    def handleFrameReceived(self, frame: Any):
         logger.warning(
             "{} abstract handleFrameReceived called (expected implementation)"
             .format(type(self).__name__))
 
-    def pollState(self):
+    def pollState(self) -> Any:
         print("Abstract pollState ran (implement in subclass)."
               "  Continuing anyway (assuming non-CAN or test subclass).")
 
@@ -120,7 +121,7 @@ class LinkLayer:
             self.setState(frame.afterSendState)  # may change again
             #   since setState calls pollState via _onStateChanged.
 
-    def getState(self):
+    def getState(self) -> Any:
         return self._state
 
     def setState(self, state):

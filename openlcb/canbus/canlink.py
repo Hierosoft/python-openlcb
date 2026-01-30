@@ -24,7 +24,7 @@ from timeit import default_timer
 from typing import (
     # Iterable,
     List,  # in case list doesn't support `[` in this Python version
-    # Union,  # in case `|` doesn't support 'type' in this Python version
+    Union,  # in case `|` doesn't support 'type' in this Python version
 )
 
 from openlcb import (
@@ -208,7 +208,7 @@ class CanLink(LinkLayer):
             return False
         return self.blockedFrameType(frame) is None
 
-    def blockedFrameType(self, frame: CanFrame) -> ControlFrame:
+    def blockedFrameType(self, frame: CanFrame) -> Union[ControlFrame, None]:
         if self._state == CanLink.State.Permitted:
             # All frame types are allowed in this state.
             return None
@@ -219,7 +219,10 @@ class CanLink(LinkLayer):
             #   - only AMR is allowed to be sent while transitioning to
             #     Inhibited state (and in this implementation, prior
             #     states occur before sending CID)
-            if self.getState().value >= frame.minimumState.value:
+            state = self.getState()
+            if state is None:
+                return control_frame
+            if state.value >= frame.minimumState.value:
                 return None
         if control_frame == ControlFrame.CID:
             return None
@@ -243,7 +246,7 @@ class CanLink(LinkLayer):
     #   link layer later switched to an Inhibited state and had to
     #   generate a new alias
 
-    def blockedReason(self, frame: CanFrame) -> str:
+    def blockedReason(self, frame: CanFrame) -> Union[str, None]:
         if self.isCanceled(frame):
             return "The frame is using an alias from a previous reservation"
         blocked_type = self.blockedFrameType(frame)
@@ -619,7 +622,8 @@ class CanLink(LinkLayer):
         alias = frame.header & 0xFFF
         if (self.checkAndHandleAliasCollision(frame)):
             pass  # return
-            logger.warning(f"Accepting AMR after collision (alias={alias:02X})")
+            logger.warning(
+                f"Accepting AMR after collision (alias={alias:02X})")
         #    Alias Map Reset - drop from maps
         if not frame.data:
             logger.warning(f"Bad AMR (no data, so no NodeID) from {alias:02X}")
@@ -645,7 +649,9 @@ class CanLink(LinkLayer):
             except KeyError:
                 pass  # deleted by a concurrent process
         else:
-            logger.warning(f"AMR ignored: Node {nodeID} can't delete node {storedID}'s alias {alias} which is the same")
+            logger.warning(
+                f"AMR ignored: Node {nodeID} can't delete node"
+                f" {storedID}'s alias {alias} which is the same")
 
         storedAlias = self.nodeIdToAlias.get(nodeID)
         if storedAlias == alias:
@@ -658,7 +664,9 @@ class CanLink(LinkLayer):
             except KeyError:
                 pass  # deleted by a concurrent process
         else:
-            logger.warning(f"AMR ignored: Alias {alias} can't delete alias {storedAlias}'s NodeID {nodeID} which is the same")
+            logger.warning(
+                f"AMR ignored: Alias {alias} can't delete alias"
+                f" {storedAlias}'s NodeID {nodeID} which is the same")
         try:
             self.duplicateAliases.remove(alias)
         except ValueError:
@@ -1380,9 +1388,10 @@ class CanLink(LinkLayer):
                 break
             # if verbose:
             #     print("  * state: {}".format(state))
-            assert self.getWaitForAliasResponseStart() is not None, \
+            responseStart = self.getWaitForAliasResponseStart()
+            assert responseStart is not None, \
                 "openlcb didn't send 7,6,5,4 CIDs (state={})".format(state)
-            if ((default_timer() - self.getWaitForAliasResponseStart())
+            if ((default_timer() - responseStart)
                     > CanLink.ALIAS_RESPONSE_DELAY):
                 # 200ms = standard wait time for responses
                 pass  # no collisions (fail collision test if doing that)

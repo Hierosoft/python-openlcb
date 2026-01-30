@@ -5,6 +5,8 @@ builtin modules.
 import os
 import platform
 
+from typing import Union
+
 from openlcb import emit_cast
 
 if platform.system() == "Windows":
@@ -39,7 +41,7 @@ def is_file_name_char(c: str) -> bool:
     return c.isalnum() or (c in file_name_extra_symbols)
 
 
-def clean_file_name_char(c: str, placeholder: str = None) -> str:
+def clean_file_name_char(c: str, placeholder: Union[str, None] = None) -> str:
     if placeholder is None:
         placeholder = "_"
     else:
@@ -50,7 +52,7 @@ def clean_file_name_char(c: str, placeholder: str = None) -> str:
     return placeholder
 
 
-def clean_file_name(name: str, placeholder: str = None) -> str:
+def clean_file_name(name: str, placeholder: Union[str, None] = None) -> str:
     assert isinstance(name, str)
     if (os.path.sep in name) or ("/" in name):
         # or "/" since Python uses that even on Windows

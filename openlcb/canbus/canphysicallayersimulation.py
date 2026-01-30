@@ -60,7 +60,7 @@ class CanPhysicalLayerSimulation(CanPhysicalLayer, FrameEncoder):
                     blockedMsg = self.linkLayer.blockedReason(frame)
                     if blockedMsg:
                         if verbose:
-                            print("Skipping sending frame: {}".format(blockedMsg))
+                            print(f"Skipping sending frame: {blockedMsg}")
                         continue
                 # data = self.encodeFrameAsData(frame)
                 # device.send(data)  # commented since simulation

@@ -91,9 +91,11 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
     def __init__(self, linkLayer: CanLink, space: MemorySpace):
         self.canLink: CanLink = linkLayer
         caches_dir = SysDirs.Cache
+        self._space: Union[MemorySpace, None] = None
+        self._openEl: Union[ET.Element, None] = None
         self._top_tag = "cdi"  # cdi or fdi (detected in startElement)
         self._myCacheDir = os.path.join(caches_dir, "python-openlcb")
-        self._onElement = None
+        self._onElement: Union[Callable[[dict], None], None] = None
         assert isinstance(space, MemorySpace)
         self.setSpace(space)  # also sets _format
         # ^ Idle until DataFormat is known
@@ -101,14 +103,15 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         #   prepare these for _callback_msg.
         xml.sax.ContentHandler.__init__(self)
         DataProcessor.__init__(self)
-        self._stringTerminated = None  # None means no read is occurring.
+        self._stringTerminated = None  # type: Union[bool, None]
+        # ^ None means no read is occurring.
         if self._format != DataFormat.XML:
             raise NotImplementedError(
                 "This class only handles XML. Make a separate subclass for {}"
                 .format(self._format))
         self._parser = xml.sax.make_parser()
         self._parser.setContentHandler(self)
-        self._data: bytearray = None
+        self._data: Union[bytearray, None] = None
 
         self._realtime = True
 
@@ -117,7 +120,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         self._tag_stack = []
         # endregion ContentHandler
 
-    def setSpace(self, space):
+    def setSpace(self, space: MemorySpace):
         self._space = space
         self._format = format_of_space(space)
 
@@ -128,7 +131,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         return self._format
 
     @property
-    def space(self) -> int:
+    def space(self) -> MemorySpace:
         assert isinstance(self._space, MemorySpace)
         return self._space
 
@@ -173,6 +176,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         Args:
             memo (MemoryReadMemo): successful read memo containing data.
         """
+        assert self._data is not None
         self._data += memo.data
         partial_str = memo.data.decode("utf-8")
         if self._realtime:
@@ -187,6 +191,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         """
         partial_str = memo.data.decode("utf-8")
         # save content
+        assert self._data is not None
         self._data += memo.data
         # concert resultingCDI to a string up to 1st zero
         # and process that
@@ -257,6 +262,10 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             print(tab, "  Attributes: ", attrs.getNames())
         # el = ET.Element(name, attrs)
         attrib = attrs_to_dict(attrs)
+
+        # NOTE: self._openEl is root if this is the first tag.
+        assert self._openEl is not None, "_openEl wasn't even set to etree yet"
+
         el = ET.SubElement(self._openEl, name, attrib)
         # if self._tag_stack:
         #     parent = self._tag_stack[-1]
@@ -331,6 +340,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             # Notify downloadCDI's caller since it can potentially add
             #   UI widget(s) for at least one setting/segment/group
             #   using this 'element'.
+            assert self._onElement is not None
             self._onElement(event_d)
 
     # def _flushCharBuffer(self):

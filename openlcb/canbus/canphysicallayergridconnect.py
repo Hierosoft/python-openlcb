@@ -105,7 +105,8 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
             pass
         return count
 
-    def sendAll(self, device: PortInterface, mode="binary", verbose=False) -> int:
+    def sendAll(self, device: PortInterface, mode="binary",
+                verbose=False) -> int:
         """Send all queued frames using the given device.
 
         Args:
@@ -169,7 +170,8 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
 
     @classmethod
     def nextPacketRange(cls, data: Union[bytes, bytearray],
-                        start: int = 0) -> Tuple[int, int]:
+                        start: int = 0) -> Union[Tuple[int, int],
+                                                 Tuple[None, None]]:
         """Get the packet slice if any.
         Returns:
             tuple(int, int): Position of ':' and position *after* ';' or
@@ -187,7 +189,8 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         return (firstI, lastI+1)
 
     @classmethod
-    def nextPacket(cls, data: Union[bytes, bytearray]) -> bytearray:
+    def nextPacket(cls, data: Union[bytes, bytearray]) -> Union[bytearray,
+                                                                bytes, None]:
         """Get the packet including ':' and ';'."""
         start, end = cls.nextPacketRange(data)
         if start is None:
@@ -197,7 +200,8 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
     @staticmethod
     def readInt32(data, start):
         # chunk = data[start:start+8]
-        # return int.from_bytes(chunk, 'big') - 0x30303030 + ((chunk & 0x40404040) >> 6) * 9
+        # return (int.from_bytes(chunk, 'big') - 0x30303030 +
+        #         ((chunk & 0x40404040) >> 6) * 9)
         """Fast hex bytearray → 32-bit int (8 hex chars, ASCII)"""
         # branchless conversion for uppercase/lowercase or digits:
         # - (data[i] & 15): Gives the low 4 bits (0-9 for digits
@@ -320,7 +324,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
             if first is None:
                 break
             # else last is not None guaranteed
-            semi = (end - 2) if (self.inboundBuffer[end-1] == 0x0a) else (end - 1)
+            semi = (end - 2) if (self.inboundBuffer[end-1] == 0x0a) else (end - 1)  # noqa: E501
             if semi - first < 11:  # len(":X") + 8 data + len("N")
                 logger.warning(
                     "[handleData] Skipped malformed {} "
@@ -352,17 +356,19 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
             dataEnd = semi
             if self.assertValidData and (dataEnd - dataI > 0):
                 assert only_hex_pairs(self.inboundBuffer[headerI:headerEnd]), \
-                    self.inboundBuffer[headerI:headerEnd]  # show the non-hex data
+                    self.inboundBuffer[headerI:headerEnd]  # show non-hex data
                 assert only_hex_pairs(self.inboundBuffer[dataI:dataEnd]), \
                     self.inboundBuffer[dataI:dataEnd]  # show the non-hex data
-            header_bytes = from_hex_bytes(self.inboundBuffer, headerI, headerEnd,
+            header_bytes = from_hex_bytes(self.inboundBuffer, headerI,
+                                          headerEnd,
                                           assertValid=self.assertValidData)
             if dataEnd - dataI > 0:
                 if (dataEnd - dataI) % 2 > 0:
                     logger.warning(
                         "[handleData] Skipped malformed packet"
                         " (Incomplete pair in {} (range {},{}) in {})"
-                        .format(repr(self.inboundBuffer[dataI:dataEnd]), dataI, dataEnd, repr(self.inboundBuffer[first:end])))
+                        .format(repr(self.inboundBuffer[dataI:dataEnd]), dataI,
+                                dataEnd, repr(self.inboundBuffer[first:end])))
                     start = end
                     continue
                 outData = from_hex_bytes(self.inboundBuffer, dataI, dataEnd,

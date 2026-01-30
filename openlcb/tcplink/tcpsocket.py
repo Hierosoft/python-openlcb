@@ -76,7 +76,7 @@ class TcpSocket(PortInterface):
                 raise RuntimeError("socket connection broken")
             total_sent = total_sent + sent
 
-    def _receive(self) -> bytes:
+    def _receive(self) -> Union[bytes, None]:
         '''Receive one or more bytes and return as an [int]
         Blocks until at least one byte is received, but may return more.
 

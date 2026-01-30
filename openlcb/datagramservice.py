@@ -34,27 +34,34 @@ from openlcb.linklayer import LinkLayer
 from openlcb.message import Message
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
+from openlcb.memoryservice import DatagramWriteMemo
 
 
-def defaultIgnoreReply(memo):
+def defaultIgnoreReply(memo: Union[DatagramWriteMemo, None]):
     '''default handling of reply does nothing'''
     pass
 
 
 class DatagramWriteMemo:
-    '''Immutable memo carrying write request and two reply callbacks.
+    '''Immutable memo carrying write request and two reply callbacks
+    (In this context "Write" means sent to other node, even if
+    associated with a MemoryReadMemo).
     Source is automatically this node.
     '''
-    def __init__(self, destID: NodeID, data, okReply=defaultIgnoreReply,
+    def __init__(self, destID: NodeID, data,
+                 okReply=defaultIgnoreReply,
                  rejectedReply=defaultIgnoreReply):
+        # type: (NodeID, bytearray, Callable[[Union[DatagramWriteMemo, None]], None], Callable[[Union[DatagramWriteMemo, None]], None]) -> None  # noqa: E501
         assert isinstance(destID, NodeID)
         self.destID = destID
+        # NOTE: No srcID since always from this node ("Write" means send
+        #   to other node, even if carrying a memory read request)
         if not isinstance(data, bytearray):
             raise TypeError("Expected bytearray (formerly list[int]), got {}"
                             .format(type(data).__name__))
-        self.data = data
-        self.okReply = okReply
-        self.rejectedReply = rejectedReply
+        self.data: bytearray = data
+        self.okReply: Callable[[Union[DatagramWriteMemo, None]], None] = okReply  # noqa: E501
+        self.rejectedReply: Callable[[Union[DatagramWriteMemo, None]], None] = rejectedReply  # noqa: E501
 
     def __eq__(lhs, rhs):
         if lhs.destID != rhs.destID:
@@ -65,12 +72,16 @@ class DatagramWriteMemo:
 
 
 class DatagramReadMemo:
-    '''Immutable memo carrying read result.
+    '''Immutable memo carrying read result
+    (In this context "Read" means received from other node,
+    *not* associated with a MemoryReadMemo which, however, may be what
+    the sender is doing, but in that context "Read" means something
+    different).
     Destination of operations is automatically this node.
     '''
     def __init__(self, srcID: NodeID, data: bytearray):
-        self.srcID = srcID
-        self.data = data
+        self.srcID: NodeID = srcID
+        self.data: bytearray = data
 
     def __eq__(lhs, rhs):
         if lhs.srcID != rhs.srcID:
@@ -102,10 +113,10 @@ class DatagramService:
 
     def __init__(self, linkLayer: LinkLayer):
         self.linkLayer: LinkLayer = linkLayer
-        self.quiesced = False
-        self.currentOutstandingMemo = None
-        self.pendingWriteMemos = []
-        self._datagramReceivedListeners = []
+        self.quiesced: bool = False
+        self.currentOutstandingMemo: Union[DatagramWriteMemo, None] = None  # noqa: E501
+        self.pendingWriteMemos: List[DatagramWriteMemo] = []
+        self._datagramReceivedListeners: List[Callable[[DatagramReadMemo], bool]] = []  # noqa: E501
 
     def datagramType(self, data: Union[bytearray, List[int]]):
         """Determine the protocol type of the content of the datagram.
@@ -140,7 +151,7 @@ class DatagramService:
         assert isinstance(nodeID, NodeID)
         return message.destination == nodeID
 
-    def sendDatagram(self, memo: Union[DatagramReadMemo, DatagramWriteMemo]):
+    def sendDatagram(self, memo: DatagramWriteMemo):
         '''Queue a ``DatagramWriteMemo`` to send a datagram to another node
         on the network.
         '''
@@ -152,15 +163,15 @@ class DatagramService:
         if len(self.pendingWriteMemos) == 1:
             self.sendDatagramMessage(memo)
 
-    def sendDatagramMessage(self,
-                            memo: Union[DatagramReadMemo, DatagramWriteMemo]):
+    def sendDatagramMessage(self, memo: DatagramWriteMemo):
         '''Send datagram message'''
         message = Message(MTI.Datagram, self.linkLayer.localNodeID,
                           memo.destID, memo.data)
         self.linkLayer.sendMessage(message)
         self.currentOutstandingMemo = memo
 
-    def registerDatagramReceivedListener(self, listener: Callable):
+    def registerDatagramReceivedListener(
+            self, listener: Callable[[DatagramReadMemo], bool]):
         '''Register a listener to be notified when each datagram arrives.
 
         One and only one listener should reply positively or negatively to the
@@ -185,6 +196,13 @@ class DatagramService:
 
     def process(self, message: Message):
         '''Processor entry point.
+        Args:
+            message (Message): Message that could be from anywhere,
+                internal or from the network, since this method is
+                typically called by CanLink's fireMessageReceived (If
+                registered by instantiating DatagramService
+                automatically using OpenLCBNetwork or calling
+                canLink.registerMessageReceivedListener manually).
 
         Returns:
             bool: Always False; a datagram doesn't mutate the node, it's the
@@ -217,7 +235,7 @@ class DatagramService:
     def handleDatagramReceivedOK(self, message: Message):
         '''OK reply to write'''
         # match to the memo and remove from queue
-        memo = self.matchToWriteMemo(message)
+        memo = self.matchToWriteMemo(message)  # type: DatagramWriteMemo|None
 
         # check of tracking logic
         if self.currentOutstandingMemo != memo:

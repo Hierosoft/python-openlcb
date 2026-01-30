@@ -1,6 +1,5 @@
 import os
 import socket
-import hashlib
 import ipaddress
 from typing import Optional
 
@@ -133,7 +132,8 @@ def get_local_ip() -> Optional[str]:
 
     # Fallback: try to enumerate interfaces
     try:
-        for iface in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+        for iface in socket.getaddrinfo(socket.gethostname(), None,
+                                        socket.AF_INET):
             addr = iface[4][0]
             if not ipaddress.ip_address(addr).is_loopback:
                 return addr

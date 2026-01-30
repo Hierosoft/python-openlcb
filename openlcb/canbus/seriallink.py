@@ -28,7 +28,7 @@ class SerialLink(PortInterface):
         logger.warning("settimeout is not implemented for SerialLink")
         pass
 
-    def _connect(self, _, port: str, device: serial.Serial = None,
+    def _connect(self, _, port: str, device: Union[serial.Serial, None] = None,
                  baudrate: int = 230400):
         """Connect to a serial port.
 
@@ -51,7 +51,7 @@ class SerialLink(PortInterface):
             self._device = device
         self._device.reset_input_buffer()  # drop anything that's just sitting there already  # noqa: E501
 
-    def _send(self, msg: Union[bytes, bytearray]):
+    def _send(self, data: Union[bytes, bytearray]) -> None:
         """send bytes
 
         Args:
@@ -62,8 +62,8 @@ class SerialLink(PortInterface):
             RuntimeError: If the string couldn't be written to the port.
         """
         total_sent = 0
-        while total_sent < len(msg[total_sent:]):
-            sent = self._device.write(msg[total_sent:])
+        while total_sent < len(data[total_sent:]):
+            sent = self._device.write(data[total_sent:])
             if sent == 0:
                 self.setOpen(False)
                 raise RuntimeError("socket connection broken")

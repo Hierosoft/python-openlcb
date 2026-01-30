@@ -23,7 +23,7 @@ ORD_f = 0x66
 ORD_z = 0x7A
 
 
-def only_hex_pairs(value: str) -> bool:
+def only_hex_pairs(value: str) -> Union[re.Match[bytes], re.Match[str], None]:
     """Check if string contains only machine-readable hex pairs.
     See openlcb.conventions submodule for LCC ID dot notation
     functions (less restrictive).
@@ -68,7 +68,8 @@ def list_type_names(values) -> List[str]:
                     .format(type(values).__name__))
 
 
-def precise_sleep(seconds: Union[float, int], start: float = None) -> None:
+def precise_sleep(seconds: Union[float, int],
+                  start: Union[float, None] = None) -> None:
     """Wait for a precise number of seconds
     (precise to hundredths approximately, depending on accuracy of
     platform's sleep). Since time.sleep(seconds) is generally not
@@ -91,13 +92,16 @@ def formatted_ex(ex) -> str:
     return "{}: {}".format(type(ex).__name__, ex)
 
 
-def from_hex_bytes(b: bytearray, start: int, stop: int, assertValid=True) -> bytearray:
+def from_hex_bytes(b: bytearray, start: int, stop: int,
+                   assertValid=True) -> bytearray:
     """ASCII hex bytearray (even length) → binary bytearray"""
     # like bytearray.fromhex, except accepts bytes rather than str only
     r = bytearray((stop-start) // 2)
     if assertValid:
         if (stop-start) % 2 > 0:
-            raise IndexError("Only hex pairs are accepted, got odd count: start={} stop={}".format(start, stop))
+            raise IndexError(
+                "Only hex pairs are accepted, got odd count: start={} stop={}"
+                .format(start, stop))
         if start < 0 or start > len(b):
             raise IndexError("start={} len={}".format(start, len(b)))
         if stop < 0 or stop > len(b):
@@ -110,12 +114,12 @@ def from_hex_bytes(b: bytearray, start: int, stop: int, assertValid=True) -> byt
     while i < stop:
         x, y = b[i], b[i+1]
         if assertValid:
-            if not ((x >= ORD_A and x <= ORD_F) or (x >= ORD_a and x <= ORD_f) or (x >= ORD_0 and x <= ORD_9)):
-                raise ValueError("Got character {}, expected hex digit".format((bytearray([x])).decode("utf-8")))
-            if not ((y >= ORD_A and y <= ORD_F) or (y >= ORD_a and y <= ORD_f) or (y >= ORD_0 and y <= ORD_9)):
-                raise ValueError("Got character {}, expected hex digit".format((bytearray([y])).decode("utf-8")))
+            if not ((x >= ORD_A and x <= ORD_F) or (x >= ORD_a and x <= ORD_f) or (x >= ORD_0 and x <= ORD_9)):  # noqa: E501
+                raise ValueError("Got character {}, expected hex digit".format((bytearray([x])).decode("utf-8")))  # noqa: E501
+            if not ((y >= ORD_A and y <= ORD_F) or (y >= ORD_a and y <= ORD_f) or (y >= ORD_0 and y <= ORD_9)):  # noqa: E501
+                raise ValueError("Got character {}, expected hex digit".format((bytearray([y])).decode("utf-8")))  # noqa: E501
         # v =
-        # NOTE: below will still raise exception if over 255 even if assertValid is False
+        # NOTE: below will still raise exception if over 255 even if assertValid is False  # noqa: E501
         r[rel] = ((x & 15) + ((x >> 6) & 1) * 9) << 4 | \
             ((y & 15) + ((y >> 6) & 1) * 9)
         # assert v < 256, str(b[i:i+1])

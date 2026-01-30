@@ -11,7 +11,7 @@ and threads must be used in a typical implementation
   call in defineAndReserveAlias.
 """
 from logging import getLogger
-from typing import Union
+from typing import Any, Union
 
 logger = getLogger(__name__)
 
@@ -74,7 +74,7 @@ class PortInterface:
     def settimeout(self, seconds):
         return self._settimeout(seconds)
 
-    def _connect(self, host, port, device=None):
+    def _connect(self, host: Any, port: Any, device: Any = None):
         """Abstract interface. Return: implementation-specific or None
         See connect for details.
         raise exception on failure to prevent self._open = True.
@@ -130,12 +130,13 @@ class PortInterface:
             if self._onReadyToReceive:
                 self._onReadyToReceive()
 
-    def _receive(self) -> bytearray:
+    def _receive(self) -> Union[bytearray, bytes, None]:
         """Abstract method. Return (bytes): data"""
         raise NotImplementedError("Subclass must implement this.")
 
-    def receive(self) -> bytearray:
+    def receive(self) -> Union[bytearray, bytes, None]:
         self._setBusy("receive")
+        result = None
         try:
             result = self._receive()
         finally:
@@ -168,7 +169,7 @@ class PortInterface:
     #         str: The received bytes decoded into a UTF-8 string.
     #     '''
     #     data = self.receive()
-    #     # Use receive (uses required semaphores) not _receive (not thread safe)
+    #     # Use receive (has required semaphores) not _receive--not thread safe
     #     return data.decode("utf-8")
 
     def sendString(self, string: str):

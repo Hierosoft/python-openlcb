@@ -24,8 +24,8 @@ class LinkMockLayer(LinkLayer):
 
     DisconnectedState = State.Disconnected
 
-    def sendMessage(self, message, verbose=False):
-        LinkMockLayer.sentMessages.append(message)
+    def sendMessage(self, msg, verbose=False):
+        LinkMockLayer.sentMessages.append(msg)
 
     def _onStateChanged(self, oldState, newState):
         print(f"[TcpLink] _onStateChanged from {oldState} to {newState}"
@@ -38,7 +38,8 @@ class TestLocalNodeProcessorClass(unittest.TestCase):
         self.node21 = Node(NodeID(21))
         LinkMockLayer.sentMessages = []
         self.processor = LocalNodeProcessor(
-            LinkMockLayer(MockPhysicalLayer(), NodeID(100))
+            LinkMockLayer(MockPhysicalLayer(), NodeID(100)),
+            self.node21,
         )
 
     def testLinkUp(self):

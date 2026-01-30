@@ -25,6 +25,7 @@ from enum import Enum
 import logging
 
 from typing import (
+    Callable,
     List,  # in case list doesn't support `[` in this Python version
     Union,  # in case `|` doesn't support 'type' in this Python version
 )
@@ -133,11 +134,11 @@ class MemoryService:
         service (DatagramService): See DatagramService.
     """
 
-    def __init__(self, service):
-        self.service = service
-        self.readMemos = []
-        self.writeMemos = []
-        self.spaceLengthCallback = None
+    def __init__(self, service: DatagramService):
+        self.service: DatagramService = service
+        self.readMemos: List[MemoryReadMemo] = []
+        self.writeMemos: List[MemoryWriteMemo] = []
+        self.spaceLengthCallback: Union[Callable[[int], None], None] = None
 
         # register to DatagramService to hear arriving datagrams
         self.service.registerDatagramReceivedListener(
@@ -168,6 +169,7 @@ class MemoryService:
         return (True, space)
 
     def requestMemoryRead(self, memo):
+        # type: (MemoryReadMemo) -> None
         '''Request a read operation start.
 
         - If okReply in the memo is triggered, it will be followed by a
@@ -185,6 +187,7 @@ class MemoryService:
             self.requestMemoryReadNext(memo)
 
     def requestMemoryReadNext(self, memo):
+        # type: (MemoryReadMemo) -> None
         """send the read request
 
         Args:
@@ -209,15 +212,13 @@ class MemoryService:
                                         self.receivedOkReplyToWrite)
         self.service.sendDatagram(dgWriteMemo)
 
-    def receivedOkReplyToWrite(self, memo: DatagramWriteMemo):
+    def receivedOkReplyToWrite(self, memo: Union[DatagramWriteMemo, None]):
         '''Wait for following response to be returned via listener.
         This is normal.
         '''
         pass
 
-    def datagramReceivedListener(self,
-                                 dmemo: Union[DatagramReadMemo,
-                                              DatagramWriteMemo]) -> bool:
+    def datagramReceivedListener(self, dmemo: DatagramReadMemo) -> bool:
         '''Process a datagram.
 
         Sends the positive reply and returns true if this is from our service.
@@ -246,7 +247,7 @@ class MemoryService:
             # memo, then reply
             for index in range(0, len(self.readMemos)):
                 if self.readMemos[index].nodeID == dmemo.srcID:
-                    tMemoryMemo = self.readMemos[index]
+                    tMemoryMemo = self.readMemos[index]  # type: MemoryReadMemo
                     del self.readMemos[index]
                     # decode type of operation, hence offset for start of
                     # data
@@ -275,12 +276,12 @@ class MemoryService:
             # memo, then reply
             for index in range(0, len(self.writeMemos)):
                 if self.writeMemos[index].nodeID == dmemo.srcID:
-                    tMemoryMemo = self.writeMemos[index]
+                    writeMemo = self.writeMemos[index]  # type: MemoryWriteMemo
                     del self.writeMemos[index]
                     if dmemo.data[1] & 0x08 == 0 :
-                        tMemoryMemo.okReply(tMemoryMemo)
+                        writeMemo.okReply(writeMemo)
                     else:
-                        tMemoryMemo.rejectedReply(tMemoryMemo)
+                        writeMemo.rejectedReply(writeMemo)
                     break
         elif dmemo.data[1] in (0x86, 0x87):  # Address Space Information Reply
             if self.spaceLengthCallback is None:

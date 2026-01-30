@@ -12,6 +12,9 @@ Process messages destined for a node implemented by this application.
 # multiple local nodes.
 
 import logging
+
+from typing import Union
+
 from openlcb.linklayer import LinkLayer
 from openlcb.node import Node
 from openlcb.mti import MTI
@@ -22,11 +25,11 @@ from openlcb.nodeid import NodeID
 
 class LocalNodeProcessor(Processor):
 
-    def __init__(self, linkLayer: LinkLayer = None, node: Node = None):
+    def __init__(self, linkLayer: LinkLayer, node: Node):
         self.linkLayer = linkLayer
         self.node = node
 
-    def process(self, message: Message, givenNode=None):
+    def process(self, message: Message, givenNode: Union[Node, None] = None):
         if givenNode is None:
             node = self.node
         else:
@@ -127,7 +130,7 @@ class LocalNodeProcessor(Processor):
         unknownAddressed = False
         originalMTI = 0xFFFF
         if message.mti == MTI.Unknown :
-            if hasattr(message, "originalMTI") :
+            if message.originalMTI is not None:
                 originalMTI = message.originalMTI
             else :
                 logging.error("MTI.Unknown without originalMTI")
