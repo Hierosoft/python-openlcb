@@ -22,9 +22,8 @@ Handles link quiesce/restart so that higher level services don't have to.
 2) Once the link has been quiesced, datagrams are held until it's restarted
 '''
 
-import logging
-
 from enum import Enum
+from logging import getLogger
 from typing import (
     Any,
     Callable,
@@ -36,6 +35,8 @@ from openlcb.linklayer import LinkLayer
 from openlcb.message import Message
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
+
+logger = getLogger(__name__)
 
 
 def defaultIgnoreReply(memo: Union[Any, None]):
@@ -183,10 +184,16 @@ class DatagramService:
             listener (Callable): A function that accepts a DatagramReadMemo
                 as an argument.
         '''
+        logger.debug(
+            "REGISTERING registerDatagramReceivedListener listener"
+            f" {len(self._datagramReceivedListeners) + 1}")
         self._datagramReceivedListeners.append(listener)
 
     def fireDatagramReceived(self, dg: DatagramReadMemo):  # internal for tests
         """Fire *datagram received* listeners."""
+        logger.debug(
+            f"FIRING listeners for datagram from {dg.srcID},"
+            f" size={len(dg.data)}")
         replied = False
         for listener in self._datagramReceivedListeners:
             replied = listener(dg) or replied
@@ -241,7 +248,7 @@ class DatagramService:
 
         # check of tracking logic
         if self.currentOutstandingMemo != memo:
-            logging.error(
+            logger.error(
                 "Outstanding and replied-to memos don't match on OK reply"
             )
 
@@ -259,7 +266,7 @@ class DatagramService:
 
         # check of tracking logic
         if self.currentOutstandingMemo != memo:
-            logging.error(
+            logger.error(
                 "Outstanding and replied-to memos don't match on rejected"
             )
 
@@ -281,7 +288,7 @@ class DatagramService:
         self.quiesced = False
         if self.currentOutstandingMemo is not None:
             # there's a current outstanding memo to repeat
-            logging.info("Retrying datagram after restart")
+            logger.info("Retrying datagram after restart")
             self.sendDatagramMessage(self.currentOutstandingMemo)
             return
         else:
@@ -300,8 +307,8 @@ class DatagramService:
             return memo
 
         # did not find one
-        logging.error("Did not match memo to message {}"
-                      "".format(message))
+        logger.error("Did not match memo to message {}"
+                     .format(message))
         return None  # this will prevent further processing
 
     def sendNextDatagramFromQueue(self):

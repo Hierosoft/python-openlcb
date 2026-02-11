@@ -22,8 +22,7 @@ To do memory read:
 '''
 
 from enum import Enum
-import logging
-
+from logging import getLogger
 from typing import (
     Callable,
     List,  # in case list doesn't support `[` in this Python version
@@ -36,6 +35,8 @@ from openlcb.datagramservice import (
     DatagramWriteMemo,
     DatagramService,
 )
+
+logger = getLogger(__name__)
 
 
 class MemorySpace(Enum):
@@ -208,6 +209,9 @@ class MemoryService:
         if byte6:
             data.extend([(memo.space & 0xFF)])
         data.extend([memo.size])
+        logger.debug(
+            "[requestMemoryReadNext] creating DatagramWriteMemo"
+            f" to destID={memo.nodeID} with data={list(data)}")
         dgWriteMemo = DatagramWriteMemo(memo.nodeID, data,
                                         self.receivedOkReplyToWrite)
         self.service.sendDatagram(dgWriteMemo)
@@ -230,8 +234,8 @@ class MemoryService:
 
         # datagram must has a command value
         if len(dmemo.data) < 2:
-            logging.error("Memory service datagram too short:"
-                          " {}".format(dmemo.data.count))
+            logger.error("Memory service datagram too short: {}"
+                         .format(dmemo.data.count))
             # TODO: ^ more necessary to show same output as Swift? Formerly:
             #   " \(dmemo.data.count, privacy: .public)")
             self.service.negativeReplyToDatagram(dmemo, 0x1041)
@@ -262,6 +266,10 @@ class MemoryService:
                     # fill data for call-back to requestor
                     if len(dmemo.data) > offset:
                         tMemoryMemo.data = dmemo.data[offset:]
+                        logger.debug(
+                            f"[datagramReceivedListener] got read reply"
+                            f" data={list(tMemoryMemo.data)} offset={offset}"
+                            f", requested @{tMemoryMemo.address}")
 
                     # check for read or read error reply
                     if (dmemo.data[1] & 0x08 == 0):
@@ -285,8 +293,8 @@ class MemoryService:
                     break
         elif dmemo.data[1] in (0x86, 0x87):  # Address Space Information Reply
             if self.spaceLengthCallback is None:
-                logging.error("Address Space Information Reply"
-                              " received with no callback")
+                logger.error("Address Space Information Reply"
+                             " received with no callback")
                 return True
             if dmemo.data[1] == 0x86:
                 # not present
@@ -301,8 +309,8 @@ class MemoryService:
             self.spaceLengthCallback(address)
             self.spaceLengthCallback = None
         else:
-            logging.error("Did not expect reply of type 0x{:02X}"
-                          "".format(dmemo.data[1]))
+            logger.error("Did not expect reply of type 0x{:02X}"
+                         .format(dmemo.data[1]))
 
         return True
 
@@ -351,7 +359,7 @@ class MemoryService:
             None
         '''
         if self.spaceLengthCallback is not None:
-            logging.error("Overlapping calls to requestSpaceLength")
+            logger.error("Overlapping calls to requestSpaceLength")
             return
         self.spaceLengthCallback = callback
         # send request
@@ -454,7 +462,7 @@ class MemoryService:
                 ((value >> 24) & 0xff), ((value >> 16) & 0xff),
                 ((value >> 8) & 0xff), (value & 0xff)
             ])
-        logging.error("integer length {} is not implemented.".format(length))
+        logger.error("integer length {} is not implemented.".format(length))
         return bytearray()
 
     @staticmethod
@@ -475,7 +483,7 @@ class MemoryService:
         contentPart = bytearray(strToUInt8[:byteCount])
         if len(contentPart) >= length:
             if len(contentPart) > length:
-                logging.warning(
+                logger.warning(
                     "MemoryService stringToArray: len(value)=={}"
                     " exceeds length {}".format(len(value), length))
                 # TODO: Truncate (or is any length ok for the caller)?
