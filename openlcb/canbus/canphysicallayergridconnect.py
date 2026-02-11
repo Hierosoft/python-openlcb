@@ -243,11 +243,11 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
             #  ^ ';' ends message so we have at least one (CR/LF not required)
             # found end, now find start of that same message, earlier in buffer
             for index in range(0, len(self.inboundBuffer)):
-                outData = bytearray()
                 if GC_END_BYTE not in self.inboundBuffer[index:]:
                     break
                 if self.inboundBuffer[index] == 0x3A:  # ':' starts message
                     # now start to accumulate data from entire message
+                    outData = bytearray()
                     header = 0
                     for offset in range(2, 9+1):  # skip first 2 bytes (":X")
                         nextChar = (self.inboundBuffer[index+offset])
