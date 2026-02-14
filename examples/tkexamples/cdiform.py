@@ -19,10 +19,6 @@ from logging import getLogger
 from typing import Any, Callable, Dict, Union
 from xml.etree import ElementTree as ET
 
-from openlcb.linklayer import LinkLayer
-from openlcb.memoryservice import MemorySpace
-from openlcb.metadataprocessor import element_to_dict
-
 
 if __name__ == "__main__":
     logger = getLogger(__file__)
@@ -41,6 +37,10 @@ else:
         .format(repr(REPO_DIR)))
 try:
     from openlcb.metadataprocessor import XMLDataProcessor
+    from openlcb.cdimemo import CDIMemo
+    from openlcb.linklayer import LinkLayer
+    from openlcb.memoryservice import MemorySpace
+    from openlcb.metadataprocessor import element_to_dict
 except ImportError as ex:
     print("{}: {}".format(type(ex).__name__, ex), file=sys.stderr)
     print("* You must run this from a venv that has openlcb installed"
@@ -68,12 +68,12 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             raise ValueError("at least one argument (parent) is required")
         self.parent = args[0]
         self.root = args[0]
-        self.ignore_non_gui_tags = None  # type: deque
         if hasattr(self.parent, 'root'):
             self.root = self.parent.root
         self._container = self  # where to put visible widgets
         self._treeview = None  # type: ttk.Treeview
         self._gui(self._container)
+        self.cursorCol = 0
 
     def _gui(self, container: tk.Widget):
         if self._top_widgets:
@@ -90,8 +90,6 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         self._treeview.grid(sticky=tk.NSEW, row=len(self._top_widgets))
         self.rowconfigure(len(self._top_widgets), weight=1)  # weight=1: expand
         self._top_widgets.append(self._treeview)
-        self._populating_stack = None  # type: deque
-        # ^ no parent when top of Treeview
         self._current_iid = 0   # id of Treeview element
 
     def clear(self):
@@ -105,6 +103,9 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
     #     return OpenLCBNetwork.connect(self, new_socket, localNodeID,
     #                                   callback=callback)
 
+    def indent(self):
+        return len(self._tag_stack) * "  "
+
     def setStatus(self, message: str):
         # See also MainForm
         self._status_var.set(message)
@@ -117,162 +118,180 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         """Initialize variables used by element handler(s)."""
         self.onStart()
         self._resetTree()
-        self.ignore_non_gui_tags = deque()
-        self._populating_stack = deque()
 
-    def on_cdi_element(self, event_d: dict):
+    def on_cdi_element(self, cm: CDIMemo):
         """Handler for incoming CDI tag
         Use this for callback in downloadCDI, which sets parser
         (_dataProcessor)'s _onElement.
 
         Args:
-            event_d (dict): Document parsing state info:
-                - 'element' (SubElement): The element
-                  that has been completely parsed ('</...>' reached)
-                - 'error' (str): Message of failure (requires 'done' if
-                  stopped).
-                - 'done' (bool): If True, downloadCDI is finished.
-                  Though document itself may be incomplete if 'error' is
-                  also set, stop tracking status of downloadCDI
-                  regardless.
-                - 'end' (bool): False to start a deeper scope, or True
-                  for end tag, which exits current scope (last created
-                  Treeview branch in this case, or top if empty
-                  self._populating_stack).
+            cm (CDIMemo): Document parsing state info
         """
-        done = event_d.get('done')
-        error = event_d.get('error')
-        status = event_d.get('status')
-        element = event_d.get('element')
-        if element is None:
+        if cm.element is None:
             raise ValueError("No element for tag event")
         show_status = None
-        if error:
-            show_status = error
-        elif status:
-            show_status = status
-        elif done:
+        if cm.error:
+            show_status = cm.error
+        elif cm.status:
+            show_status = cm.status
+        elif cm.done:
             show_status = "Done loading CDI."
         if show_status:
             self.root.after(0, self.setStatus, show_status)
-        if done:
+        if cm.done:
             return
-        if event_d.get('end'):
-            self.root.after(0, self._on_cdi_element_end, event_d)
+        if cm.end:
+            self.root.after(0, self._on_cdi_element_end, cm)
         else:
-            self.root.after(0, self._on_cdi_element_start, event_d)
+            self.root.after(0, self._on_cdi_element_start, cm)
 
-    def _on_cdi_element_end(self, event_d: dict):
-        name = event_d['name']
-        nameLower = name.lower()
-        if (self.ignore_non_gui_tags
-                and (nameLower == self.ignore_non_gui_tags[-1])):
-            print("Done ignoring {}".format(name))
-            self.ignore_non_gui_tags.pop()
-            return
-        if not self._populating_stack:
-            element = event_d.get('element')
-            if nameLower in ("acdi", "cdi"):
-                raise ValueError(
-                    "Can't close acdi, is self-closing (no branch pushed)")
-            tag = None
-            element_d = None
-            if element is not None:
-                tag = element.tag  # same as name in startElement
-                element_d = element_to_dict(element)
-            logger.error("Unexpected element_d={}".format(element_d))
-            raise IndexError(
-                "Got stray end tag in top level of XML (event_d={},"
-                " name={}, element_d={}, ignore_non_gui_tags={})"
-                .format(event_d, tag, element_d,
-                        self.ignore_non_gui_tags))
-            # pop would also raise IndexError, but this message is more clear.
-        return self._populating_stack.pop()
+    def getBranch(self) -> str:
+        """Get the Treeview branch iid of the tag currently being parsed"""
+        if not len(self._tag_stack):
+            return ""
+        branch = self._tag_stack[-1].getBranch()
+        return branch if (branch is not None) else ""
 
-    def _populating_branch(self):
-        if not self._populating_stack:
-            return ""  # "" (empty str) is magic value for top of ttk.Treeview
-        return self._populating_stack.pop()
+    def _on_cdi_element_end(self, cm: CDIMemo):
+        """Handle end XML tag processed by XMLDataProcessor's superclass
 
-    def _on_cdi_element_start(self, event_d: Dict[str, Any]):
-        element = event_d.get('element')  # type: Union[ET, None]
-        assert element is not None
-        segment = event_d.get('segment')
-        groups = event_d.get('groups')
-        prev_ignore_size = len(self.ignore_non_gui_tags)
-        tag = element.tag if element is not None else None
+        Args:
+            cm (CDIMemo): XML element container from
+                `startElement` or endElement in XMLDataProcessor
+                superclass
+                - 'element' (xml.etree.ElementTree.Element): Any Element
+                - 'content' (str): Content (only set during this
+                  callback, not start tag).
+
+        Raises:
+            NotImplementedError: _description_
+            NotImplementedError: _description_
+        """
+        if self.cursorCol != 0:
+            self.print()
+        nameLower = cm.name.lower() if cm.name else None
+        assert nameLower is not None  # only None for done/fail events
+        cm.content
+        if nameLower == "name":
+            parentIID = self.getBranch()
+            assert parentIID is not None, "name must be in a branch"
+            if parentIID:
+                assert cm.content is not None
+                cm.content = cm.content.strip()
+                if cm.content is None:
+                    logger.warning(
+                        self.indent() + f"content is None for /{cm.name}")
+                    cm.content = ""
+                # "name" applies to parent, such as "segment" or "string"
+                parent = self._treeview.item(
+                    parentIID, text=cm.content.strip())
+            if cm.content:
+                self.print('/{} "{}"'.format(cm.name, cm.content))
+            else:
+                self.print('/{}'.format(cm.name))
+        else:
+            print(self.indent() + "Done ignoring {}".format(cm.name))
+        return cm
+
+    def write(self, *args, **kwargs):
+        args = list(args)
+        if self.cursorCol == 0:
+            tab = len(self._tag_stack)*"  "
+            self.cursorCol += len(tab)
+            args.insert(0, tab)  # prepend indent
+        for arg in args:
+            sys.stdout.write(arg)
+            self.cursorCol += len(arg)
+            sys.stdout.flush()
+
+    def print(self, *args, **kwargs):
+        if self.cursorCol == 0:  # No indent yet, so use write.
+            self.write(*args, **kwargs)
+            print()
+        else:
+            print(*args, **kwargs)
+        self.cursorCol = 0
+
+    def _on_cdi_element_start(self, cm: CDIMemo):
+        """Handle start XML tag processed by XMLDataProcessor's superclass
+
+        Args:
+            cm (CDIMemo): XML element container from
+                `startElement` or endElement in XMLDataProcessor
+                superclass
+                - 'element' (xml.etree.ElementTree.Element): Any Element
+                - 'space' (str, optional): MemorySpace value as string.
+                  Only optional for identification and its children,
+                  otherwise required (collected from ancestors by
+                  XMLDataProcessor)
+                - 'address' (str, optional): Memory address. Only
+                  optional for identification and its children otherwise
+                  required (previous start tags by XMLDataProcessor)
+
+        Raises:
+            NotImplementedError: _description_
+            NotImplementedError: _description_
+        """
+        # NOTE: If it is self-closing such as
+        #   `<group offset='4'/>`,
+        #   then _on_cdi_element_end will also run (see endElement such
+        #   as in python-openlcb's implementation of ContentHandler).
+        assert cm.element is not None
+        tag = cm.element.tag if cm.element is not None else None
         if not tag:
-            logger.warning("Ignored blank tag for event: {}".format(event_d))
+            logger.warning("Ignored blank tag for event: {}".format(cm))
             return
         tagLower = tag.lower()
-        # TODO: handle start tags separately (Branches are too late to be
-        #   created here since all children are done).
         index = "end"  # "end" is at end of current branch (otherwise use int)
-        prev_stack_size = len(self._populating_stack)
+        name = cm.element.tag
+        if self.cursorCol != 0:
+            self.print()
+        self.write(name)
+        # if attrs is not None and attrs:
+        #     self.print(" {}".format(attrs_to_dict(attrs)))
+
         if tagLower in ("segment", "group"):
-            name = ""
-            for child in element:
-                if child.tag.lower() == "name":
-                    name = child.text
-                    # FIXME: move to end tag when done populating
-                    break
-            # element = ET.Element(element)  # for autocomplete only
+            content = ""  # Temporary (The visible text is set to content of name
+            #   element in _on_cdi_element_end)
             # if not name:
             if tagLower == "segment":
-                space = element.attrib['space']
-                name = space
+                space = cm.element.attrib['space']
+                content = space
                 origin = None
-                if 'origin' in element.attrib:
-                    origin = element.attrib['origin']
+                if 'origin' in cm.element.attrib:
+                    origin = cm.element.attrib['origin']
             elif tagLower == "group":
-                if 'offset' in element.attrib:
-                    name = element.attrib['offset']
+                if 'offset' in cm.element.attrib:
+                    content = cm.element.attrib['offset']
                 # else must be a subgroup (offset optional in that case)
             else:
                 raise NotImplementedError(tagLower)
-
-            # ^ 'xml.etree.ElementTree.Element' object has no attribute 'attrs'
             new_branch = self._treeview.insert(
-                self._populating_branch(),
+                self.getBranch(),
                 index,
                 iid=self._current_iid,
-                text=name,
+                text=content,
             )
-            self._populating_stack.append(new_branch)
+            self._tag_stack[-1].iid = new_branch
             # values=(), image=None
             self._current_iid += 1  # TODO: associate with SubElement
         elif tagLower == "acdi":
-            # "Indicates that certain configuration information in the
-            # node has a standardized simplified format."
-            # Configuration Description Information - Standard - section 5.1
-            # (self-closing tag; triggers startElement and endElement)
-            self.ignore_non_gui_tags.append(tagLower)
+            pass  # handled by superclass (sets self.acdi)
         elif tagLower in ("int", "string", "float"):
-            name = ""
-            for child in element:
+            content = ""
+            for child in cm.element:
                 if child.tag == "name":
-                    name = child.text
+                    content = child.text
+                    if content is None:
+                        content = ""
                     break
             new_branch = self._treeview.insert(
-                self._populating_branch(),
+                self.getBranch(),
                 index,
                 iid=self._current_iid,
-                text=name,
+                text=content,
             )
-            self._populating_stack.append(new_branch)
+            self._tag_stack[-1].iid = new_branch
             # values=(), image=None
             self._current_iid += 1  # TODO: associate with SubElement
             #  and/or set values keyword argument to create association(s)
-        elif tagLower == "cdi":
-            self.ignore_non_gui_tags.append(tagLower)
-        else:
-            logger.warning("Ignored {}".format(tag))
-            self.ignore_non_gui_tags.append(tagLower)
-
-        if len(self.ignore_non_gui_tags) <= prev_ignore_size:
-            if len(self._populating_stack) <= prev_stack_size:
-                raise NotImplementedError(
-                    "Must either ignore tag (to prevent pop"
-                    " during _on_cdi_element_end)"
-                    " or add to GUI stack so end tag can pop {}"
-                    .format(tagLower))

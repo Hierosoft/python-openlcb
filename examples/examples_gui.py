@@ -34,6 +34,7 @@ from collections import OrderedDict, deque
 from examples_settings import Settings  # do 1st to fix path if no pip install
 
 
+from openlcb.cdimemo import CDIMemo
 from openlcb.memoryservice import MemorySpace
 from openlcb.message import Message
 from openlcb.metadataprocessor import XMLDataProcessor
@@ -47,7 +48,7 @@ from examples.tkexamples.cdiform import CDIForm
 from openlcb import emit_cast, formatted_ex
 from openlcb.tcplink.mdnsconventions import id_from_tcp_service_name
 
-from typing import Callable, OrderedDict as TypingOrderedDict
+from typing import Callable, OrderedDict as TypingOrderedDict, Union
 
 zeroconf_enabled = False
 try:
@@ -601,6 +602,7 @@ class MainForm(ttk.Frame):
             return
         print("Querying farNodeID={}".format(repr(farNodeID)))
         self.setStatus("Downloading CDI...")
+        assert self.cdi_form is not None
         threading.Thread(
             target=self.downloadCDI,
             args=(farNodeID,),
@@ -609,11 +611,22 @@ class MainForm(ttk.Frame):
         ).start()
 
     def downloadCDI(self, farNodeID: str,
-                    callback: Callable[[dict], None] = None):
+                    callback: Union[Callable[[CDIMemo], None], None] = None):
+        """Download Configuration Description Information XML from the node.
+
+        Args:
+            farNodeID (str): Any valid node ID.
+            callback (Callable[[dict], None], optional): The element
+                handler (set to self.cdi_form.on_cdi_element in
+                cdiRefreshClicked). Defaults to None.
+        """
         self.setStatus("Downloading CDI...")
+        assert self.cdi_form is not None
+        assert self.network is not None
         self.cdi_form.onStartDownload()
         try:
-            self.network.download(farNodeID, MemorySpace.CDI, self.cdi_form,
+            self.network.download(farNodeID, MemorySpace.CDI,
+                                  self.cdi_form,
                                   callback=callback)
         except KeyError as ex:
             self.setStatus("The address was not correct: {}"

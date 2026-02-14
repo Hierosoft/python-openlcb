@@ -1,14 +1,17 @@
+from collections import OrderedDict
 import os
 import xml.sax  # noqa: E402
 import xml.sax.handler
 import xml.etree.ElementTree as ET
 
 from logging import getLogger
-from typing import Callable, Union
-# from xml.sax.xmlreader import AttributesImpl  # for autocomplete only
+from typing import Callable, List, Union
+# from xml.sax.xmlreader import AttributesImpl  # for type hints, for autocomplete only in this case
+import xml.sax.xmlreader  # for type hints, for autocomplete only in this case
 
 from openlcb import emit_cast
 from openlcb.canbus.canlink import CanLink
+from openlcb.cdimemo import CDIMemo
 from openlcb.dataprocessor import DataFormat, DataProcessor
 from openlcb.nodeid import NodeID
 from openlcb.platformextras import (
@@ -49,6 +52,13 @@ def attrs_to_dict(attrs) -> dict:
     return {key: attrs.getValue(key) for key in attrs.getNames()}
 
 
+def attrs_to_ordered(attrs: xml.sax.xmlreader.AttributesImpl):
+    od = OrderedDict()
+    for name in attrs.getNames():
+        od['name'] = attrs[name]
+    return od
+
+
 def format_of_space(space):
     assert isinstance(space, MemorySpace)
     if space == MemorySpace.CDI:
@@ -85,6 +95,10 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
               failed download.
             - Assert is None at start of download, then set to
               bytearray().
+        _tmp_space (int|None): What space we are currently on.
+        _tmp_address (int|None): Where we are in the memory space
+            (starting at origin, and calculated using offset and/or size
+            of start tags).
     """
     XML_TOP_TAGS = ("cdi", "fdi")
 
@@ -95,7 +109,9 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         self._openEl: Union[ET.Element, None] = None
         self._top_tag = "cdi"  # cdi or fdi (detected in startElement)
         self._myCacheDir = os.path.join(caches_dir, "python-openlcb")
-        self._onElement: Union[Callable[[dict], None], None] = None
+        self._onElement: Union[Callable[[CDIMemo], None], None] = None
+        self._tmp_space = None  # type: int|None
+        self._tmp_address = None  # type: int|None
         assert isinstance(space, MemorySpace)
         self.setSpace(space)  # also sets _format
         # ^ Idle until DataFormat is known
@@ -116,9 +132,10 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         self._realtime = True
 
         # region ContentHandler
-        # self._chunks = []
-        self._tag_stack = []
+        self._chunks = []
+        self._tag_stack = []  # type: List[CDIMemo]
         # endregion ContentHandler
+        self.acdi = False
 
     def setSpace(self, space: MemorySpace):
         self._space = space
@@ -132,6 +149,8 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
 
     @property
     def space(self) -> MemorySpace:
+        """The memory space of the XML itself. See also
+        `space` in event dict in startElement, and _tmp_space."""
         assert isinstance(self._space, MemorySpace)
         return self._space
 
@@ -152,19 +171,18 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         self.etree = ET.Element("root")
         self._openEl = self.etree
 
-    def _fireStatus(self, status, callback=None):
+    def _fireStatus(self, status,
+                    callback: Union[Callable[[CDIMemo], None], None] = None):
         """Fire status handlers with the given status."""
         if callback is None:
             callback = self._onElement
         if callback:
             print("OpenLCBNetwork callback_msg({})".format(repr(status)))
-            callback({
-                'status': status,
-            })
+            callback(CDIMemo(status=status))
         else:
             logger.warning("No callback, but set status: {}".format(status))
 
-    def setElementHandler(self, handler: Callable):
+    def setElementHandler(self, handler: Callable[[CDIMemo], None]):
         self._onElement = handler
 
     def _feedNext(self, memo: MemoryReadMemo):
@@ -217,9 +235,9 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             # ^ startElement, endElement, etc. all consecutive using parse
             # self._fireStatus("Done loading CDI.")
             if self._onElement:
-                self._onElement({
-                    'done': True,  # 'done' and not 'error' means got all
-                })
+                cm = CDIMemo()
+                cm.done = True  # 'done' and not 'error' means got all
+                self._onElement(cm)
         if self._realtime:
             self._parser.feed(partial_str)  # may call startElement/endElement
         # memo = MemoryReadMemo(memo)
@@ -228,7 +246,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             if cdiString is None:
                 cdiString = self._data.rstrip(b'\0').decode("utf-8")
             stream.write(cdiString)
-            print('Saved "{}"'.format(path))
+            print('Saved {}'.format(repr(path)))
         self._data = None  # Ensure isn't reused for more than one doc
 
     def cache_cdi_path(self, item_id: Union[NodeID, str]):
@@ -249,7 +267,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             raise ValueError("Cannot specify absolute path.")
         return path + ".xml"
 
-    def startElement(self, name: str, attrs):
+    def startElement(self, name, attrs):
         """See xml.sax.handler.ContentHandler documentation."""
         # AttributesImpl[str] type hint fails on Python 3.8. For autocomplete:
         # attrs = AttributesImpl(attrs)
@@ -257,6 +275,8 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         if name is not None:
             if name.lower() in ("cdi", "fdi"):
                 self._top_tag = name.lower()
+            elif name.lower() == "acdi":
+                self.acdi = True
         print(tab, "Start: ", name)
         if attrs is not None and attrs :
             print(tab, "  Attributes: ", attrs.getNames())
@@ -267,19 +287,19 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         assert self._openEl is not None, "_openEl wasn't even set to etree yet"
 
         el = ET.SubElement(self._openEl, name, attrib)
-        # if self._tag_stack:
-        #     parent = self._tag_stack[-1]
-        event_d = {'name': name, 'end': False, 'attrs': attrs,
-                   'element': el}
+        parent_cm = None
+        if self._tag_stack:
+            parent_cm = self._tag_stack[-1]
+        cm = CDIMemo(name=name, element=el, parent=parent_cm)
         if self._onElement:
-            self._onElement(event_d)
+            self._onElement(cm)
 
         # self._callback_msg(
         #     "loaded: {}{}".format(tab, ET.tostring(el, encoding="unicode")))
-        self._tag_stack.append(el)
+        self._tag_stack.append(cm)
         self._openEl = el
 
-    def checkDone(self, event_d: dict):
+    def checkDone(self, cm: CDIMemo):
         """Notify the caller if parsing is over.
         Calls _onElement with `'done': True` in the argument if
         'name' is "cdi" or the detected self._top_tag
@@ -293,76 +313,99 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 also gets the dict if 'done'). 'done' is only True if
                 'name' is "cdi" or self._top_tag (case-insensitive).
         """
-        event_d['done'] = False
-        name = event_d.get('name')
-        if not name or name.lower() != self._top_tag:
+        cm.done = False
+        cm.name
+        if not cm.name or cm.name.lower() != self._top_tag:
             # Not </cdi> nor other detected self._top_tag, so not done
-            return event_d
-        event_d['done'] = True  # done: past conditional return above
+            return cm
+        cm.done = True  # done: past conditional return above
         if self._onElement:
-            self._onElement(event_d)
-        return event_d
+            self._onElement(cm)
+        return cm
 
     def endElement(self, name: str):
-        """See xml.sax.handler.ContentHandler documentation."""
+        """See xml.sax.handler.ContentHandler documentation.
+        Called on end tag or after startElement on self-closing tag.
+        """
         indent = len(self._tag_stack)
         tab = "  " * indent
-        top_el = self._tag_stack[-1]
-        if name != top_el.tag:
-            print(tab+"Warning: </{}> before </{}>".format(name, top_el.tag))
-        elif indent:  # top element found and indent not 0
+        # top_cm = self._tag_stack.pop()  # raises index error if empty
+        top_cm = self._tag_stack[-1] if len(self._tag_stack) else None
+        top_el = top_cm.element if top_cm is not None else None
+        if top_el is None:
+            pass  # see warning case further down
+        elif name != top_el.tag:
+            pass  # see warning case further down
+        elif indent > 0:  # top element found and indent not 0
             indent -= 1  # dedent since scope ended
         # print(tab, name, "content:", self._flushCharBuffer())
         print(tab, "End: ", name)
-        event_d = {'name': name, 'end': True}
+        cm = None
+        if top_cm is not None:
+            top_cm.name = name
+            cm = top_cm
+        else:
+            cm = CDIMemo(name=name)
+            cm.stray = True
+        cm.end = True
+
         if not self._tag_stack:
-            event_d['error'] = "</{}> before any start tag".format(name)
-            print(tab+"Warning: {}".format(event_d['error']))
-            self.checkDone(event_d)
+            cm.error = "</{}> before any start tag".format(name)
+            print(tab+"Warning: {}".format(cm.error))
+            self.checkDone(cm)
             return
-        if name != top_el.tag:
-            event_d['error'] = (
+        if (top_el is None):
+            cm.error = "stray </{}> before top element".format(name)
+            print(tab+"Warning: {}".format(cm.error))
+            self.checkDone(cm)
+            return
+        elif name != top_el.tag:
+            cm.error = (
                 "</{}> before top tag <{} ...> closed"
-                .format(name, top_el.tag))
-            print(tab+"Warning: {}".format(event_d['error']))
-            self.checkDone(event_d)
+                .format(name, top_el.tag if top_el else None))
+            print(tab+"Warning: {}".format(cm.error))
+            self.checkDone(cm)
             return
         del self._tag_stack[-1]
         if self._tag_stack:
-            self._openEl = self._tag_stack[-1]
+            self._openEl = self._tag_stack[-1].element
         else:
             self._openEl = self.etree
-        if self._tag_stack:
-            event_d['parent'] = self._tag_stack[-1]
-        event_d['element'] = top_el
-        result = self.checkDone(event_d)
+        if len(self._tag_stack) and cm.stray:
+            cm.parent = self._tag_stack[-1]
+            cm.element = top_el
+        # else parent & element should already have been set in startElement
+
+        result = self.checkDone(cm)
+        cm.content = self._flushCharBuffer()
         if not result.get('done'):
             # Notify downloadCDI's caller since it can potentially add
             #   UI widget(s) for at least one setting/segment/group
             #   using this 'element'.
             assert self._onElement is not None
-            self._onElement(event_d)
+            self._onElement(cm)
 
-    # def _flushCharBuffer(self):
-    #     """Decode the buffer, clear it, and return all content.
-    #     See xml.sax.handler.ContentHandler documentation.
+    def _flushCharBuffer(self):
+        """Decode the buffer, clear it, and return all content.
+        See xml.sax.handler.ContentHandler documentation.
+        - Use this in endElement so that the callback gets all content.
 
-    #     Returns:
-    #         str: The content of the bytes buffer decoded as utf-8.
-    #     """
-    #     s = ''.join(self._chunks)
-    #     self._chunks.clear()
-    #     return s
+        Returns:
+            str: The content of the bytes buffer decoded as utf-8.
+        """
+        s = ''.join(self._chunks)
+        self._chunks.clear()
+        return s
 
-    # def characters(self, data: Union[bytearray, bytes, List[int]]):
-    #     """Received characters handler.
-    #     See xml.sax.handler.ContentHandler documentation.
+    def characters(self, content: str):
+        """Received characters handler.
+        See xml.sax.handler.ContentHandler documentation.
 
-    #     Args:
-    #         data (Union[bytearray, bytes, list[int]]): any
-    #           data (any type accepted by bytearray extend).
-    #     """
-    #     if not isinstance(data, str):
-    #         raise TypeError(
-    #             "Expected str, got {}".format(type(data).__name__))
-    #     self._chunks.append(data)
+        Args:
+            content (str): any content (between tags)
+        """
+        # Union[bytearray, bytes, List[int]]
+        if not isinstance(content, str):
+            raise TypeError(
+                "Expected str, got {}".format(type(content).__name__))
+        self._chunks.append(content)

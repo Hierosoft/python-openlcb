@@ -25,6 +25,7 @@ from openlcb.canbus.canphysicallayergridconnect import (
     CanPhysicalLayerGridConnect,
 )
 from openlcb.canbus.canlink import CanLink
+from openlcb.cdimemo import CDIMemo
 from openlcb.datagramservice import DatagramReadMemo, DatagramService
 from openlcb.dataprocessor import DataFormat
 from openlcb.memoryservice import MemoryReadMemo, MemoryService, MemorySpace
@@ -53,7 +54,7 @@ class OpenLCBNetwork:
             is a MemorySpace)
     """
     def __init__(self, localNodeID: Union[str, bytearray, int, NodeID]):
-        self._onConnect: Callable[[dict], None] = None
+        self._onConnect: Union[Callable[[CDIMemo], None], None] = None
         self._port: PortInterface = None
         self.physicalLayer: CanPhysicalLayerGridConnect = None
         self.canLink: CanLink = None
@@ -92,7 +93,7 @@ class OpenLCBNetwork:
         self._memoryService = MemoryService(self._datagramService)
         self._dataProcessor: XMLDataProcessor = None
 
-    def setConnectHandler(self, handler: Callable):
+    def setConnectHandler(self, handler: Callable[[CDIMemo], None]):
         """Deprecated in favor of a Message handler,
         Since it is the socket loop's responsibility to call
         physicalLayerUp and physicalLayerDown, and those each trigger a
@@ -158,11 +159,27 @@ class OpenLCBNetwork:
                                  self._memoryReadSuccess)
         self._memoryService.requestMemoryRead(memMemo)
 
-    def _default_dl_callback(self, event_d: dict):
+    def _default_dl_callback(self, event_d: CDIMemo):
         print(f"[download default callback] {event_d}", file=sys.stderr)
 
     def download(self, farNodeID: str, space: MemorySpace,
                  dataProcessor: XMLDataProcessor, callback=None):
+        """Download data of any memory space from the remote node.
+
+        Args:
+            farNodeID (str): Any valid node ID.
+            space (MemorySpace): The memory space to read.
+            dataProcessor (XMLDataProcessor): An XMLProcessor or
+                subclass, such as cdi_form on downloadCDI in MainForm.
+            callback (Callable, optional): The element handler (set to
+                cdi_form.on_cdi_element on cdiRefreshClicked in
+                CDIForm for example). Defaults to _default_dl_callback.
+
+        Raises:
+            ValueError: No farNodeID
+            RuntimeError: No self._port
+            RuntimeError: No self.physicalLayer
+        """
         if not farNodeID or not farNodeID.strip():
             raise ValueError("No farNodeID specified.")
         self._farNodeID = farNodeID
@@ -176,11 +193,12 @@ class OpenLCBNetwork:
                 "No physicalLayer. Call startListening first.")
         assert isinstance(space, MemorySpace)
         self._dataProcessor = dataProcessor
-        self._dataProcessor._onElement = callback
+        self._dataProcessor.setElementHandler(callback)
         self._dataProcessor._space = space
         self._dataProcessor._stringTerminated = False
+
         self._startMemoryRead(farNodeID)
-        # ^ Each _memoryReadSuccess callback will
+        # ^ Following this, _memoryReadSuccess callback will
         #   trigger requestMemoryRead, completing a
         #   loop until end/fail.
 
@@ -277,12 +295,11 @@ class OpenLCBNetwork:
                     and (not self._dataProcessor._stringTerminated)):
                 # This boolean is managed by the memoryReadSuccess
                 # callback.
-                event_d = {  # same as self._event_listener here
-                    'error': formatted_ex(ex),
-                    'done': True,  # stop progress in gui/other main thread
-                }
+                cm = CDIMemo()
+                cm.error = formatted_ex(ex)
+                cm.done = True  # stop progress in gui/other main thread
                 if self._dataProcessor._onElement:
-                    self._dataProcessor._onElement(event_d)
+                    self._dataProcessor._onElement(cm)
                 raise  # re-raise since incomplete (prevent done OK state)
         finally:
             self.physicalLayer.physicalLayerDown()  # Link_Layer_Down, setState
@@ -290,15 +307,14 @@ class OpenLCBNetwork:
 
         # If we got here, the RuntimeError was ok since the
         #   null terminator '\0' was reached (otherwise re-raise occurs above)
-        event_d = {
-            'error': ("Listen loop stopped (caught_ex={})."
-                      .format(formatted_ex(caught_ex))),
-            'done': True,
-        }
-        if not (self._onConnect and self._onConnect(event_d)):
+        cm = CDIMemo()
+        cm.error = ("Listen loop stopped (caught_ex={})."
+                    .format(formatted_ex(caught_ex)))
+        cm.done = True
+        if not (self._onConnect and self._onConnect(cm)):
             # The message was not handled, so log it.
-            logger.error(event_d['error'])
-        return event_d  # return it in case running synchronously (no thread)
+            logger.error(cm.error)
+        return cm  # return it in case running synchronously (no thread)
 
     def _handleMessage(self, message: Message):
         """Handle a Message from the LCC network.
@@ -322,31 +338,30 @@ class OpenLCBNetwork:
         print("[_handleMessage]   message.mti={}".format(message.mti))
         if message.mti == MTI.Link_Layer_Down:
             if self._onConnect:
-                self._onConnect({
-                    'done': True,
-                    'error': "Disconnected",
-                    'message': message,
-                })
+                cm = CDIMemo()
+                cm.done = True
+                cm.error = "Disconnected"
+                cm.message = message
                 self._messageStart = None  # so _listen won't discard error
+                self._onConnect(cm)
                 return True
         elif message.mti == MTI.Link_Layer_Up:
             if self._onConnect:
-                self._onConnect({
-                    'done': True,  # 'done' without error indicates connected.
-                    'message': message,
-                })
+                cm = CDIMemo()
+                cm.done = True  # 'done' without error indicates connected.
+                cm.message = message
+                self._onConnect(cm)
                 return True
         return False
 
-    def _fireStatus(self, status, callback=None):
+    def _fireStatus(self, status,
+                    callback: Union[Callable[[CDIMemo], None], None] = None):
         """Fire status handlers with the given status."""
         if callback is None:
             callback = self._onConnect
         if callback:
             print("OpenLCBNetwork callback_msg({})".format(repr(status)))
-            callback({
-                'status': status,
-            })
+            callback(CDIMemo(status=status))
         else:
             logger.warning("No callback, but set status: {}".format(status))
 
@@ -389,9 +404,12 @@ class OpenLCBNetwork:
     def _memoryReadFail(self, memo: MemoryReadMemo):
         error = "memory read failed: {}".format(memo.data)
         if self._dataProcessor._onElement:
-            self._dataProcessor._onElement({
-                'error': error,
-                'done': True,  # stop progress in gui/other main thread
-            })
+            if len(self._dataProcessor._tag_stack):
+                cm = self._dataProcessor._tag_stack[-1]
+            else:
+                cm = CDIMemo()
+            cm.error = error
+            cm.done = True  # stop progress in gui/other main thread
+            self._dataProcessor._onElement(cm)
         else:
             logger.error(error)

@@ -38,6 +38,8 @@
 			"canphysicallayer",
 			"canphysicallayergridconnect",
 			"canphysicallayersimulation",
+			"cdiform",
+			"cdimemo",
 			"columnspan",
 			"controlframe",
 			"datagram",

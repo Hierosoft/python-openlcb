@@ -12,14 +12,24 @@ host|host:port            (optional) Set the address (or using a colon,
 '''
 # region same code as other examples
 import copy
-# from xml.sax.expatreader import AttributesImpl  # only for IDE autocomplete
+import sys
+import xml.sax
+import xml.sax.handler
+import xml.sax.xmlreader  # for static type hints, autocomplete in this case
+
+from logging import getLogger
+
 from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb import precise_sleep
+from openlcb.metadataprocessor import attrs_to_dict
 from openlcb.tcplink.tcpsocket import TcpSocket
 settings = Settings()
 
 if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
+    logger = getLogger(__file__)
+else:
+    logger = getLogger(__name__)
 # endregion same code as other examples
 
 from openlcb.canbus.canphysicallayergridconnect import (  # noqa:E402
@@ -125,6 +135,7 @@ def memoryReadSuccess(memo):
     if len(memo.data) == 64 and 0 not in memo.data:
         # save content
         resultingCDI += memo.data
+        logger.debug(f"[{memo.address}] successful read {MemoryService.arrayToString(memo.data, len(memo.data))}; next = address + 64")
         # update the address
         memo.address = memo.address+64
         # and read again
@@ -167,8 +178,6 @@ def memoryReadFail(memo):
 # in a row, we buffer up the characters until the `endElement`
 # call is invoked to indicate the text is complete
 
-import xml.sax  # noqa: E402
-
 
 class MyHandler(xml.sax.handler.ContentHandler):
     """XML SAX callbacks in a handler object
@@ -177,22 +186,59 @@ class MyHandler(xml.sax.handler.ContentHandler):
         _chunks (list[str]): Collects chunks of data.
             This is implementation-specific, and not
             required if streaming (parser.feed).
+        _tmp_address (int|None): Where we are in the memory space (starting
+            at origin, and calculated using offset and/or size of start
+            tags).
+        _tmp_space (int|None): What space we are currently on.
     """
 
     def __init__(self):
         self._chunks = []
+        self.stack = []
+        self.cursorCol = 0
+        self._tmp_space = None  # type: int|None
+        self._tmp_address = None  # type: int|None
 
-    def startElement(self, name: str, attrs):
+    def startElement(self, name: str, attrs: xml.sax.xmlreader.AttributesImpl):
         """See xml.sax.handler.ContentHandler documentation."""
-        print("Start: ", name)
-        if attrs is not None and attrs :
-            print("  Attributes: ", attrs.getNames())
+        self.stack.append(name)
+        if self.cursorCol != 0:
+            self.print()
+        self.write(name)
+        if attrs is not None and attrs:
+            self.print(" {}".format(attrs_to_dict(attrs)))
 
     def endElement(self, name: str):
         """See xml.sax.handler.ContentHandler documentation."""
-        print(name, "content:", self._flushCharBuffer())
-        print("End: ", name)
+        content = self._flushCharBuffer().strip()
+        if self.cursorCol != 0:
+            self.print()
+        if content:
+            self.print('/{} "{}"'.format(name, content))
+        else:
+            self.print('/{}'.format(name))
+        self.stack.pop()
+        # self.print("/", name)
         pass
+
+    def write(self, *args, **kwargs):
+        args = list(args)
+        if self.cursorCol == 0:
+            tab = len(self.stack)*"  "
+            self.cursorCol += len(tab)
+            args.insert(0, tab)  # prepend indent
+        for arg in args:
+            sys.stdout.write(arg)
+            self.cursorCol += len(arg)
+            sys.stdout.flush()
+
+    def print(self, *args, **kwargs):
+        if self.cursorCol == 0:  # No indent yet, so use write.
+            self.write(*args, **kwargs)
+            print()
+        else:
+            print(*args, **kwargs)
+        self.cursorCol = 0
 
     def _flushCharBuffer(self):
         """Decode the buffer, clear it, and return all content.
@@ -205,7 +251,7 @@ class MyHandler(xml.sax.handler.ContentHandler):
         self._chunks.clear()
         return s
 
-    def characters(self, data: str):
+    def characters(self, content: str):
         """Received characters handler.
         See xml.sax.handler.ContentHandler documentation.
 
@@ -213,9 +259,10 @@ class MyHandler(xml.sax.handler.ContentHandler):
             data (Union[bytearray, bytes, list[int]]): any
               data (any type accepted by bytearray extend).
         """
-        if not isinstance(data, str):
-            raise TypeError("Expected str, got {}".format(type(data).__name__))
-        self._chunks.append(data)
+        if not isinstance(content, str):
+            raise TypeError("Expected str, got {}"
+                            .format(type(content).__name__))
+        self._chunks.append(content)
 
 
 handler = MyHandler()
