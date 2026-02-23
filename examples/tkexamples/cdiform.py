@@ -119,7 +119,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         self.onStart()
         self._resetTree()
 
-    def on_cdi_element(self, cm: CDIMemo):
+    def _handle_cdi_memo(self, cm: CDIMemo):
         """Handler for incoming CDI tag
         Use this for callback in downloadCDI, which sets parser
         (_dataProcessor)'s _onElement.
@@ -139,11 +139,16 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         if show_status:
             self.root.after(0, self.setStatus, show_status)
         if cm.done:
-            return
-        if cm.end:
-            self.root.after(0, self._on_cdi_element_end, cm)
-        else:
-            self.root.after(0, self._on_cdi_element_start, cm)
+            return True
+        return False
+
+    def on_cdi_element_start(self, cm: CDIMemo):
+        self.root.after(0, self._on_cdi_element_start, cm)
+        self._handle_cdi_memo(cm)
+
+    def on_cdi_element_end(self, cm: CDIMemo):
+        self.root.after(0, self._on_cdi_element_end, cm)
+        self._handle_cdi_memo(cm)
 
     def getBranch(self) -> str:
         """Get the Treeview branch iid of the tag currently being parsed"""
@@ -185,11 +190,34 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                 # "name" applies to parent, such as "segment" or "string"
                 parent = self._treeview.item(
                     parentIID, text=cm.content.strip())
+            origin = cm.element.attrib.get('origin') if cm.element else None
             if cm.content:
-                self.print('/{} "{}"'.format(cm.name, cm.content))
+                if cm.name == "segment":
+                    # ^ Should be set (since element start tag's CDIMemo
+                    #   should be reused for end)
+                    self.print(f'/{cm.name} origin="{origin}" "{cm.content}"')
+                else:
+                    self.print('/{} "{}"'.format(cm.name, cm.content))
             else:
-                self.print('/{}'.format(cm.name))
+                parts = [f"/{cm.name}"]
+                if cm.element:
+                    origin = cm.element.attrib.get('origin')
+                    offset = cm.element.attrib.get('offset')
+                    if origin is not None:
+                        parts.append(f'origin="{origin}"')
+                    if offset is not None:
+                        parts.append(f'offset="{offset}"')
+                self.print(*parts)
         else:
+            parts = [f"/{cm.name}"]
+            if cm.element:
+                origin = cm.element.attrib.get('origin')
+                offset = cm.element.attrib.get('offset')
+                if origin is not None:
+                    parts.append(f'origin="{origin}"')
+                if offset is not None:
+                    parts.append(f'offset="{offset}"')
+            self.print(*parts)
             print(self.indent() + "Done ignoring {}".format(cm.name))
         return cm
 

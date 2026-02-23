@@ -85,9 +85,13 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             self.etree doesn't have awareness of whether end tag is
             finished (and therefore doesn't know which element is the
             parent of a new startElement).
-        _onElement (Callable): Called if an XML element is
-            received (including either a start or end tag).
-            Typically set as `callback` argument to downloadCDI.
+        _start_fn (Callable): Called if start element is
+            received. Typically set as argument to downloadCDI.
+        _end_fn (Callable): Called if start element is
+            received. Typically set as argument to downloadCDI.
+        _status_fn (Callable): Called if status of parsing changes
+            without affecting scope a.k.a. _tag_stack. Typically set as
+            argument to downloadCDI.
         _data (str): CDI document being collected from the
             network stream (successful read request memo handler). To
             ensure valid state:
@@ -95,7 +99,10 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
               failed download.
             - Assert is None at start of download, then set to
               bytearray().
-        _tmp_space (int|None): What space we are currently on.
+        _space (int): Space containing the CDI itself (not data
+            described by CDI).
+        _tmp_space (int|None): What space we are currently on
+            (of data described by Element(s), not of XML data itself)
         _tmp_address (int|None): Where we are in the memory space
             (starting at origin, and calculated using offset and/or size
             of start tags).
@@ -109,7 +116,9 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         self._openEl: Union[ET.Element, None] = None
         self._top_tag = "cdi"  # cdi or fdi (detected in startElement)
         self._myCacheDir = os.path.join(caches_dir, "python-openlcb")
-        self._onElement: Union[Callable[[CDIMemo], None], None] = None
+        self._start_fn: Union[Callable[[CDIMemo], None], None] = None
+        self._end_fn: Union[Callable[[CDIMemo], None], None] = None
+        self._status_fn: Union[Callable[[CDIMemo], None], None] = None
         self._tmp_space = None  # type: int|None
         self._tmp_address = None  # type: int|None
         assert isinstance(space, MemorySpace)
@@ -175,15 +184,33 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                     callback: Union[Callable[[CDIMemo], None], None] = None):
         """Fire status handlers with the given status."""
         if callback is None:
-            callback = self._onElement
+            callback = self._status_fn
         if callback:
             print("OpenLCBNetwork callback_msg({})".format(repr(status)))
             callback(CDIMemo(status=status))
         else:
             logger.warning("No callback, but set status: {}".format(status))
 
-    def setElementHandler(self, handler: Callable[[CDIMemo], None]):
-        self._onElement = handler
+    def setHandlers(self, start_fn: Callable[[CDIMemo], None],
+                    end_fn: Callable[[CDIMemo], None],
+                    status_fn: Callable[[CDIMemo], None]):
+        """Set parsing callbacks for live updates in the UI.
+
+        Args:
+            start_fn (Callable, optional): The start element handler
+                (set to cdi_form.on_cdi_element_start on
+                cdiRefreshClicked in CDIForm for example). Defaults to
+                _default_dl_callback.
+            end_fn (Callable, optional): The end element handler (set to
+                cdi_form.on_cdi_element_end on cdiRefreshClicked in
+                CDIForm for example). Defaults to _default_dl_callback.
+            status_fn (Callable, optional): The status handler (set to
+                cdi_form._handle_cdi_element on cdiRefreshClicked in
+                CDIForm for example). Defaults to _default_dl_callback.
+        """
+        self._start_fn = start_fn
+        self._end_fn = end_fn
+        self._status_fn = status_fn
 
     def _feedNext(self, memo: MemoryReadMemo):
         """Handle partial CDI XML (any packet except last)
@@ -234,10 +261,10 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             self.parse(cdiString)
             # ^ startElement, endElement, etc. all consecutive using parse
             # self._fireStatus("Done loading CDI.")
-            if self._onElement:
+            if self._status_fn:
                 cm = CDIMemo()
                 cm.done = True  # 'done' and not 'error' means got all
-                self._onElement(cm)
+                self._status_fn(cm)
         if self._realtime:
             self._parser.feed(partial_str)  # may call startElement/endElement
         # memo = MemoryReadMemo(memo)
@@ -267,21 +294,27 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             raise ValueError("Cannot specify absolute path.")
         return path + ".xml"
 
-    def startElement(self, name, attrs):
+    def startElement(self, name: str,
+                     attrs: xml.sax.xmlreader.AttributesImpl):
         """See xml.sax.handler.ContentHandler documentation."""
-        # AttributesImpl[str] type hint fails on Python 3.8. For autocomplete:
-        # attrs = AttributesImpl(attrs)
         tab = "  " * len(self._tag_stack)
         if name is not None:
             if name.lower() in ("cdi", "fdi"):
                 self._top_tag = name.lower()
             elif name.lower() == "acdi":
                 self.acdi = True
-        print(tab, "Start: ", name)
+        attrib = attrs_to_dict(attrs)
+        origin = attrib.get('origin')
+        offset = attrib.get('offset')
+        parts = [tab, "Start: ", name]
+        if origin is not None:
+            parts.append(f"origin={origin}")
+        if offset is not None:
+            parts.append(f"offset={offset}")
+        print(*parts)
         if attrs is not None and attrs :
             print(tab, "  Attributes: ", attrs.getNames())
         # el = ET.Element(name, attrs)
-        attrib = attrs_to_dict(attrs)
 
         # NOTE: self._openEl is root if this is the first tag.
         assert self._openEl is not None, "_openEl wasn't even set to etree yet"
@@ -291,17 +324,42 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         if self._tag_stack:
             parent_cm = self._tag_stack[-1]
         cm = CDIMemo(name=name, element=el, parent=parent_cm)
-        if self._onElement:
-            self._onElement(cm)
+        if name == "segment":
+            self._tmp_space = attrib.get('space')
+            self._tmp_address = int(attrib.get('origin', 0))
+            if self._tmp_space is None:
+                raise AttributeError("Node didn't specify space for segment")
+            else:
+                self._tmp_space = int(self._tmp_space)
+        else:
+            offset = attrib.get('offset')
+            if offset is not None:
+                offset = int(offset)
+                if self._tmp_address is None:
+                    raise AttributeError(
+                        f"Node specifies {name} offset before segment origin")
+                self._tmp_address += offset
+        cm.address = self._tmp_address  # May be None if after /segment
+
+        if self._start_fn:
+            self._start_fn(cm)
 
         # self._callback_msg(
         #     "loaded: {}{}".format(tab, ET.tostring(el, encoding="unicode")))
         self._tag_stack.append(cm)
         self._openEl = el
+        size = attrib.get('size')
+        if size is not None:
+            if name == "segment":
+                logger.warning("Node segment should not specify size.")
+            if self._tmp_address is None:
+                raise AttributeError(
+                    f"Node has {name} variable before segment origin")
+            self._tmp_address += int(size)
 
     def checkDone(self, cm: CDIMemo):
         """Notify the caller if parsing is over.
-        Calls _onElement with `'done': True` in the argument if
+        Calls _status_fn with `'done': True` in the argument if
         'name' is "cdi" or the detected self._top_tag
         (case-insensitive). That notifies the downloadCDI caller that
         parsing is over, so that caller should end progress bar/other
@@ -309,7 +367,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
 
         Returns:
             dict: Reserved for use without events (doesn't need to be
-                processed if self._onElement is set since that
+                processed if self._status_fn is set since that
                 also gets the dict if 'done'). 'done' is only True if
                 'name' is "cdi" or self._top_tag (case-insensitive).
         """
@@ -319,8 +377,8 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             # Not </cdi> nor other detected self._top_tag, so not done
             return cm
         cm.done = True  # done: past conditional return above
-        if self._onElement:
-            self._onElement(cm)
+        if self._status_fn:
+            self._status_fn(cm)
         return cm
 
     def endElement(self, name: str):
@@ -340,6 +398,9 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             indent -= 1  # dedent since scope ended
         # print(tab, name, "content:", self._flushCharBuffer())
         print(tab, "End: ", name)
+        if name == "segment":
+            self._tmp_space = None
+            self._tmp_address = None
         cm = None
         if top_cm is not None:
             top_cm.name = name
@@ -382,8 +443,8 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             # Notify downloadCDI's caller since it can potentially add
             #   UI widget(s) for at least one setting/segment/group
             #   using this 'element'.
-            assert self._onElement is not None
-            self._onElement(cm)
+            assert self._end_fn is not None
+            self._end_fn(cm)
 
     def _flushCharBuffer(self):
         """Decode the buffer, clear it, and return all content.

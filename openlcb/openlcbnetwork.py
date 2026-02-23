@@ -163,7 +163,8 @@ class OpenLCBNetwork:
         print(f"[download default callback] {event_d}", file=sys.stderr)
 
     def download(self, farNodeID: str, space: MemorySpace,
-                 dataProcessor: XMLDataProcessor, callback=None):
+                 dataProcessor: XMLDataProcessor, start_fn=None,
+                 end_fn=None, status_fn=None):
         """Download data of any memory space from the remote node.
 
         Args:
@@ -171,8 +172,15 @@ class OpenLCBNetwork:
             space (MemorySpace): The memory space to read.
             dataProcessor (XMLDataProcessor): An XMLProcessor or
                 subclass, such as cdi_form on downloadCDI in MainForm.
-            callback (Callable, optional): The element handler (set to
-                cdi_form.on_cdi_element on cdiRefreshClicked in
+            start_fn (Callable, optional): The start element handler
+                (set to cdi_form.on_cdi_element_start on
+                cdiRefreshClicked in CDIForm for example). Defaults to
+                _default_dl_callback.
+            end_fn (Callable, optional): The end element handler (set to
+                cdi_form.on_cdi_element_end on cdiRefreshClicked in
+                CDIForm for example). Defaults to _default_dl_callback.
+            status_fn (Callable, optional): The status handler (set to
+                cdi_form._handle_cdi_element on cdiRefreshClicked in
                 CDIForm for example). Defaults to _default_dl_callback.
 
         Raises:
@@ -183,8 +191,12 @@ class OpenLCBNetwork:
         if not farNodeID or not farNodeID.strip():
             raise ValueError("No farNodeID specified.")
         self._farNodeID = farNodeID
-        if callback is None:
-            callback = self._default_dl_callback
+        if start_fn is None:
+            start_fn = self._default_dl_callback
+        if end_fn is None:
+            end_fn = self._default_dl_callback
+        if status_fn is None:
+            status_fn = self._default_dl_callback
         if not self._port:
             raise RuntimeError(
                 "No port connection. Call startListening first.")
@@ -193,7 +205,7 @@ class OpenLCBNetwork:
                 "No physicalLayer. Call startListening first.")
         assert isinstance(space, MemorySpace)
         self._dataProcessor = dataProcessor
-        self._dataProcessor.setElementHandler(callback)
+        self._dataProcessor.setHandlers(start_fn, end_fn, status_fn)
         self._dataProcessor._space = space
         self._dataProcessor._stringTerminated = False
 
@@ -333,9 +345,9 @@ class OpenLCBNetwork:
             bool: If message was handled (always True in this
                 method)
         """
-        print("[_handleMessage] RM: {} from {}"
-              .format(message, message.source))
-        print("[_handleMessage]   message.mti={}".format(message.mti))
+        logger.debug("[_handleMessage] RM: {} from {}"
+                     .format(message, message.source))
+        logger.debug("[_handleMessage]   message.mti={}".format(message.mti))
         if message.mti == MTI.Link_Layer_Down:
             if self._onConnect:
                 cm = CDIMemo()

@@ -606,12 +606,18 @@ class MainForm(ttk.Frame):
         threading.Thread(
             target=self.downloadCDI,
             args=(farNodeID,),
-            kwargs={'callback': self.cdi_form.on_cdi_element},
+            kwargs={
+                'start_fn': self.cdi_form.on_cdi_element_start,
+                'end_fn': self.cdi_form.on_cdi_element_end,
+                'status_fn': self.cdi_form._handle_cdi_memo,
+            },
             daemon=True,
         ).start()
 
     def downloadCDI(self, farNodeID: str,
-                    callback: Union[Callable[[CDIMemo], None], None] = None):
+                    start_fn: Union[Callable[[CDIMemo], None], None] = None,
+                    end_fn: Union[Callable[[CDIMemo], None], None] = None,
+                    status_fn: Union[Callable[[CDIMemo], None], None] = None):
         """Download Configuration Description Information XML from the node.
 
         Args:
@@ -627,7 +633,9 @@ class MainForm(ttk.Frame):
         try:
             self.network.download(farNodeID, MemorySpace.CDI,
                                   self.cdi_form,
-                                  callback=callback)
+                                  start_fn=start_fn,
+                                  end_fn=end_fn,
+                                  status_fn=status_fn)
         except KeyError as ex:
             self.setStatus("The address was not correct: {}"
                            .format(formatted_ex(ex)))

@@ -9,6 +9,8 @@ class CDIMemo:
     """Store parsing state info as a tree (This is a tree node)
 
     Attributes:
+        content (str|None): string content (collected by parser from
+            between the start and end tag).
         done (bool): If True, downloadCDI is finished. Though document
             itself may be incomplete if 'error' is also set, stop
             tracking status of downloadCDI regardless.
@@ -18,11 +20,12 @@ class CDIMemo:
             which exits current scope (last created Treeview branch in
             this case, or top if getBranch() would be None).
         error (str): Message of failure (requires 'done' if stopped).
+        iid (str): Treeview branch id (no parent when top of Treeview)
         stray (bool): The end tag is misplaced (doesn't match a start
             tag) due to bad xml or incorrect parsing.
-        content (str|None): string content (collected by parser from
-            between the start and end tag).
-        iid (str): Treeview branch id (no parent when top of Treeview)
+        address (int, optional): Memory address of data element
+            (calculated from segment ancestor and size and/or offset
+            of previous elements and offset of this element).
     """
     def __init__(self, name: Union[str, None] = None,
                  element: Union[xml.etree.ElementTree.Element, None] = None,
@@ -39,6 +42,13 @@ class CDIMemo:
         self.content = None  # type: str|None
         self.message: Union[Message, None] = None  # type: Message|None
         self.iid = None  # type: str|None
+        self.address = None  # type: int|None
+
+    def copy(self):
+        cm = CDIMemo()
+        for k, v in self.__dict__.items():
+            setattr(cm, k, v)
+        return cm
 
     def getBranch(self, default=None) -> Union[str, None]:
         """Get tree branch widget iid if any."""
