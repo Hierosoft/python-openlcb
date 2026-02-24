@@ -9,6 +9,7 @@ This file is part of the python-openlcb project
 
 Contributors: Poikilos
 """
+import logging
 import os
 import sys
 import tkinter as tk
@@ -129,8 +130,6 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         Args:
             cm (CDIMemo): Document parsing state info
         """
-        if cm.element is None:
-            raise ValueError("No element for tag event")
         show_status = None
         if cm.error:
             show_status = cm.error
@@ -145,11 +144,15 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         return False
 
     def onPushScope(self, cm: CDIMemo) -> bool:
+        if cm.element is None:
+            raise ValueError("No element for push tag event")
         self.root.after(0, self._onPushScope, cm)
         self.onStatusMemo(cm)
         return True
 
     def onPopScope(self, cm: CDIMemo) -> bool:
+        if cm.element is None:
+            raise ValueError("No element for pop tag event")
         self.root.after(0, self._onPopScope, cm)
         self.onStatusMemo(cm)
         return True
@@ -181,8 +184,8 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             NotImplementedError: _description_
         """
         if self.cursorCol != 0:
-            self.print()
-        nameLower = cm.name.lower() if cm.name else None
+            self.debug()
+        nameLower = cm.tag.lower() if cm.tag else None
         assert nameLower is not None  # only None for done/fail events
         cm.content
         if nameLower == "name":
@@ -193,21 +196,21 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                 cm.content = cm.content.strip()
                 if cm.content is None:
                     logger.warning(
-                        self.indent() + f"content is None for /{cm.name}")
+                        self.indent() + f"content is None for /{cm.tag}")
                     cm.content = ""
                 # "name" applies to parent, such as "segment" or "string"
                 parent = self._treeview.item(
                     parentIID, text=cm.content.strip())
             origin = cm.element.attrib.get('origin') if cm.element else None
             if cm.content:
-                if cm.name == "segment":
+                if cm.tag == "segment":
                     # ^ Should be set (since element start tag's CDIMemo
                     #   should be reused for end)
-                    self.print(f'/{cm.name} origin="{origin}" "{cm.content}"')
+                    self.debug(f'/{cm.tag} origin="{origin}" "{cm.content}"')
                 else:
-                    self.print('/{} "{}"'.format(cm.name, cm.content))
+                    self.debug('/{} "{}"'.format(cm.tag, cm.content))
             else:
-                parts = [f"/{cm.name}"]
+                parts = [f"/{cm.tag}"]
                 if cm.element:
                     origin = cm.element.attrib.get('origin')
                     offset = cm.element.attrib.get('offset')
@@ -215,9 +218,9 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                         parts.append(f'origin="{origin}"')
                     if offset is not None:
                         parts.append(f'offset="{offset}"')
-                self.print(*parts)
+                self.debug(*parts)
         else:
-            parts = [f"/{cm.name}"]
+            parts = [f"/{cm.tag}"]
             if cm.element:
                 origin = cm.element.attrib.get('origin')
                 offset = cm.element.attrib.get('offset')
@@ -225,8 +228,8 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                     parts.append(f'origin="{origin}"')
                 if offset is not None:
                     parts.append(f'offset="{offset}"')
-            self.print(*parts)
-            print(self.indent() + "Done ignoring {}".format(cm.name))
+            self.debug(*parts)
+            logger.debug(self.indent() + "Done ignoring {}".format(cm.tag))
         return cm
 
     def write(self, *args, **kwargs):
@@ -240,6 +243,11 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             self.cursorCol += len(arg)
             sys.stdout.flush()
 
+    def debug_write(self, *args, **kwargs):
+        if logger.level < logging.DEBUG:
+            return
+        self.write(*args, **kwargs)
+
     def print(self, *args, **kwargs):
         if self.cursorCol == 0:  # No indent yet, so use write.
             self.write(*args, **kwargs)
@@ -247,6 +255,12 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         else:
             print(*args, **kwargs)
         self.cursorCol = 0
+
+    def debug(self, *args, **kwargs):
+        kwargs['file'] = sys.stderr
+        if logger.level < logging.DEBUG:
+            return
+        self.print(*args, **kwargs)
 
     def _onPushScope(self, cm: CDIMemo):
         """Handle start XML tag processed by XMLDataProcessor's superclass
@@ -282,10 +296,10 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         index = "end"  # "end" is at end of current branch (otherwise use int)
         name = cm.element.tag
         if self.cursorCol != 0:
-            self.print()
-        self.write(name)
+            self.debug()
+        self.debug_write(name)
         # if attrs is not None and attrs:
-        #     self.print(" {}".format(attrs_to_dict(attrs)))
+        #     self.debug(" {}".format(attrs_to_dict(attrs)))
 
         if tagLower in ("segment", "group"):
             content = ""  # Temporary (The visible text is set to content of

@@ -124,7 +124,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             raise NotImplementedError(
                 "This class only handles XML. Make a separate subclass for {}"
                 .format(self._format))
-        self._parser = xml.sax.make_parser()
+        self._parser = xml.sax.make_parser()  # type: xml.sax.xmlreader.XMLReader  # noqa: E501
         self._parser.setContentHandler(self)
         self._data: Union[bytearray, None] = None
 
@@ -199,7 +199,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         self._openEl = self.etree
 
     def _fireStatus(self, status,
-                    callback: Union[Callable[[CDIMemo], None], None] = None):
+                    callback: Union[Callable[[CDIMemo], bool], None] = None):
         """Fire status handlers with the given status."""
         if callback is None:
             callback = self.onStatusMemo
@@ -255,8 +255,12 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 terminate_i = min(null_i, terminate_i)
             cdiString = self._data[:terminate_i].decode("utf-8")
             # print (cdiString)
-            self.parse(cdiString)
+            # self.parse(cdiString)  # no such method
+            # self._parser.parse(cdiString)  # urllib.error.URLError
             # ^ startElement, endElement, etc. all consecutive using parse
+            # ^ urllib.error.URLError: <urlopen error unknown url type:
+            #   ?xml version="1.0" encoding="utf-8"?>
+            xml.sax.parseString(cdiString, self)
             # self._fireStatus("Done loading CDI.")
             cm = CDIMemo()
             cm.done = True  # 'done' and not 'error' means got all
@@ -307,9 +311,9 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             parts.append(f"origin={origin}")
         if offset is not None:
             parts.append(f"offset={offset}")
-        print(*parts)
+        logger.debug(*parts)
         if attrs is not None and attrs :
-            print(tab, "  Attributes: ", attrs.getNames())
+            logger.debug(tab, "  Attributes: ", attrs.getNames())
         # el = ET.Element(name, attrs)
 
         # NOTE: self._openEl is root if this is the first tag.
@@ -319,7 +323,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         parent_cm = None
         if self._tag_stack:
             parent_cm = self._tag_stack[-1]
-        cm = CDIMemo(name=name, element=el, parent=parent_cm)
+        cm = CDIMemo(tag=name, element=el, parent=parent_cm)
         if name == "segment":
             self._tmp_space = attrib.get('space')
             self._tmp_address = int(attrib.get('origin', 0))
@@ -364,8 +368,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             CDIMemo: Reserved for synchronous use.
         """
         cm.done = False
-        cm.name
-        if not cm.name or cm.name.lower() != self._top_tag:
+        if not cm.tag or cm.tag.lower() != self._top_tag:
             # Not </cdi> nor other detected self._top_tag, so not done
             return cm
         cm.done = True  # done: past conditional return above
@@ -388,16 +391,16 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         elif indent > 0:  # top element found and indent not 0
             indent -= 1  # dedent since scope ended
         # print(tab, name, "content:", self._flushCharBuffer())
-        print(tab, "End: ", name)
+        logger.debug(tab, "End: ", name)
         if name == "segment":
             self._tmp_space = None
             self._tmp_address = None
         cm = None
         if top_cm is not None:
-            top_cm.name = name
+            top_cm.tag = name
             cm = top_cm
         else:
-            cm = CDIMemo(name=name)
+            cm = CDIMemo(tag=name)
             cm.stray = True
         cm.end = True
 
@@ -427,8 +430,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             cm.parent = self._tag_stack[-1]
             cm.element = top_el
         # else parent & element should already have been set in startElement
-
-        result = self.checkDone(cm)
+        _ = self.checkDone(cm)
         cm.content = self._flushCharBuffer()
         self.onPopScope(cm)
 

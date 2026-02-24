@@ -9,6 +9,9 @@ class CDIMemo:
     """Store parsing state info as a tree (This is a tree node)
 
     Attributes:
+        address (int, optional): Memory address of data element
+            (calculated from segment ancestor and size and/or offset
+            of previous elements and offset of this element).
         content (str|None): string content (collected by parser from
             between the start and end tag).
         done (bool): If True, downloadCDI is finished. Though document
@@ -21,17 +24,16 @@ class CDIMemo:
             this case, or top if getBranch() would be None).
         error (str): Message of failure (requires 'done' if stopped).
         iid (str): Treeview branch id (no parent when top of Treeview)
+        name (str): Name (determined by `name` child element content).
         stray (bool): The end tag is misplaced (doesn't match a start
             tag) due to bad xml or incorrect parsing.
-        address (int, optional): Memory address of data element
-            (calculated from segment ancestor and size and/or offset
-            of previous elements and offset of this element).
     """
-    def __init__(self, name: Union[str, None] = None,
+    def __init__(self, tag: Union[str, None] = None,
                  element: Union[xml.etree.ElementTree.Element, None] = None,
                  status: Union[str, None] = None,
                  parent: Optional['CDIMemo'] = None):
-        self.name = name  # type: str|None
+        self.tag = tag  # type: str|None
+        # self.name = None  # type: str|None
         self.element = element  # type: xml.etree.ElementTree.Element|None
         self.status = status   # type: str|None
         self.error = None  # type: str|None
@@ -43,6 +45,11 @@ class CDIMemo:
         self.message: Union[Message, None] = None  # type: Message|None
         self.iid = None  # type: str|None
         self.address = None  # type: int|None
+
+    def getTag(self):
+        if self.element is None:
+            return self.tag  # May have been set manually (stray end tag)
+        return self.element.tag
 
     def copy(self):
         cm = CDIMemo()
