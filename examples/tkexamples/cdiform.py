@@ -71,6 +71,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             raise ValueError("at least one argument (parent) is required")
         self.parent = args[0]
         self.root = args[0]
+        self._status_callback = None
         if hasattr(self.parent, 'root'):
             self.root = self.parent.root
         self._container = self  # where to put visible widgets
@@ -111,7 +112,14 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
 
     def setStatus(self, message: str):
         # See also MainForm
+        if self._status_callback:
+            self._status_var.set("")
+            self._status_callback(message)
+            return
         self._status_var.set(message)
+
+    def setStatusCallback(self, callback: Callable):
+        self._status_callback = callback
 
     def getStatus(self):
         # See also MainForm

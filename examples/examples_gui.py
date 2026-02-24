@@ -493,6 +493,7 @@ class MainForm(ttk.Frame):
     def setupNetwork(self):
         self.network = OpenLCBNetwork(self.getValue('localNodeID'))
         self.cdi_form = CDIForm(self.network.canLink, self.cdi_tab)  # XMLDataProcessor subclass
+        self.cdi_form.setStatusCallback(self.setStatus)
         # ^ formerly OpenLCBNetwork() subclass
         # ^ CDIForm has ttk.Treeview etc.
         self.cdi_form.canLink.registerMessageReceivedListener(
