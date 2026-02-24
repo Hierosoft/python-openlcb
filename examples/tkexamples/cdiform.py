@@ -154,11 +154,14 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         self.onStatusMemo(cm)
         return True
 
-    def getBranch(self) -> str:
+    def getParentBranch(self, cm: CDIMemo) -> str:
         """Get the Treeview branch iid of the tag currently being parsed"""
-        if not len(self._tag_stack):
-            return ""
-        branch = self._tag_stack[-1].getBranch()
+        # if not len(self._tag_stack):
+        #     return ""
+        # branch = self._tag_stack[-1].getBranch()
+        # NOTE: ^ _tag_stack is unreliable due to race condition
+        #   (append/pop may occur before or after this call)!
+        branch = cm.getBranch()
         return branch if (branch is not None) else ""
 
     def _onPopScope(self, cm: CDIMemo):
@@ -183,7 +186,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         assert nameLower is not None  # only None for done/fail events
         cm.content
         if nameLower == "name":
-            parentIID = self.getBranch()
+            parentIID = self.getParentBranch(cm)
             assert parentIID is not None, "name must be in a branch"
             if parentIID:
                 assert cm.content is not None
@@ -301,13 +304,15 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             else:
                 raise NotImplementedError(tagLower)
             new_branch = self._treeview.insert(
-                self.getBranch(),
+                self.getParentBranch(cm),
                 index,
                 iid=self._current_iid,
                 text=content,
             )
-            self._tag_stack[-1].iid = new_branch
             # values=(), image=None
+            # self._tag_stack[-1].iid = new_branch
+            # NOTE: ^ _tag_stack is unreliable due to race condition!
+            cm.iid = new_branch
             self._current_iid += 1  # TODO: associate with SubElement
         elif tagLower == "acdi":
             pass  # handled by superclass (sets self.acdi)
@@ -320,13 +325,15 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                         content = ""
                     break
             new_branch = self._treeview.insert(
-                self.getBranch(),
+                self.getParentBranch(cm),
                 index,
                 iid=self._current_iid,
                 text=content,
             )
-            self._tag_stack[-1].iid = new_branch
             # values=(), image=None
+            # self._tag_stack[-1].iid = new_branch
+            # NOTE: ^ _tag_stack is unreliable due to race condition!
+            cm.iid = new_branch
             self._current_iid += 1  # TODO: associate with SubElement
             #  and/or set values keyword argument to create association(s)
 
