@@ -430,6 +430,8 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             cm.parent = self._tag_stack[-1]
             cm.element = top_el
         # else parent & element should already have been set in startElement
+        if cm.parent is not None:
+            cm.parent.children.append(cm)
         _ = self.checkDone(cm)
         cm.content = self._flushCharBuffer()
         self.onPopScope(cm)

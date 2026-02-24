@@ -1,6 +1,6 @@
 import xml.etree.ElementTree
 
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 from openlcb.message import Message
 
@@ -14,6 +14,9 @@ class CDIMemo:
             of previous elements and offset of this element).
         content (str|None): string content (collected by parser from
             between the start and end tag).
+        children (List[CDIMemo]): List of children (Therefore not
+            complete until onPopScope, but you can also check if .end is
+            True in asynchronous scopes).
         done (bool): If True, downloadCDI is finished. Though document
             itself may be incomplete if 'error' is also set, stop
             tracking status of downloadCDI regardless.
@@ -45,6 +48,7 @@ class CDIMemo:
         self.message: Union[Message, None] = None  # type: Message|None
         self.iid = None  # type: str|None
         self.address = None  # type: int|None
+        self.children = []  # type: List[CDIMemo]
 
     def getTag(self):
         if self.element is None:

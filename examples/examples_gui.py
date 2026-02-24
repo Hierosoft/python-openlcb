@@ -462,7 +462,8 @@ class MainForm(ttk.Frame):
 
         self.cdi_row += 1
         self.network = None
-        self.cdi_form = None
+        self.cdi_form = None  # type: CDIForm|None
+        # ^ CDIForm or other XMLDataProcessor subclass
 
         self.example_tab = ttk.Frame(self.notebook)
         self.example_tab.columnconfigure(index=0, weight=1)
@@ -492,7 +493,7 @@ class MainForm(ttk.Frame):
 
     def setupNetwork(self):
         self.network = OpenLCBNetwork(self.getValue('localNodeID'))
-        self.cdi_form = CDIForm(self.network.canLink, self.cdi_tab)  # XMLDataProcessor subclass
+        self.cdi_form = CDIForm(self.network.canLink, self.cdi_tab)
         self.cdi_form.setStatusCallback(self.setStatus)
         # ^ formerly OpenLCBNetwork() subclass
         # ^ CDIForm has ttk.Treeview etc.

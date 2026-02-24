@@ -238,6 +238,12 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                     parts.append(f'offset="{offset}"')
             self.debug(*parts)
             logger.debug(self.indent() + "Done ignoring {}".format(cm.tag))
+        if cm.iid:
+            # If in tree, check if it is an empty group (no name so remove it).
+            children = self._treeview.get_children(cm.iid)
+            if (cm.getTag() == "group") and (not children):
+                # self._treeview.detach(cm.iid)  # remove but don't destroy
+                self._treeview.delete(cm.iid)  # detach and destroy
         return cm
 
     def write(self, *args, **kwargs):
