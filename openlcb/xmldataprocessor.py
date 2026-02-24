@@ -85,13 +85,6 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             self.etree doesn't have awareness of whether end tag is
             finished (and therefore doesn't know which element is the
             parent of a new startElement).
-        _start_fn (Callable): Called if start element is
-            received. Typically set as argument to downloadCDI.
-        _end_fn (Callable): Called if start element is
-            received. Typically set as argument to downloadCDI.
-        _status_fn (Callable): Called if status of parsing changes
-            without affecting scope a.k.a. _tag_stack. Typically set as
-            argument to downloadCDI.
         _data (str): CDI document being collected from the
             network stream (successful read request memo handler). To
             ensure valid state:
@@ -116,9 +109,6 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         self._openEl: Union[ET.Element, None] = None
         self._top_tag = "cdi"  # cdi or fdi (detected in startElement)
         self._myCacheDir = os.path.join(caches_dir, "python-openlcb")
-        self._start_fn: Union[Callable[[CDIMemo], None], None] = None
-        self._end_fn: Union[Callable[[CDIMemo], None], None] = None
-        self._status_fn: Union[Callable[[CDIMemo], None], None] = None
         self._tmp_space = None  # type: int|None
         self._tmp_address = None  # type: int|None
         assert isinstance(space, MemorySpace)
@@ -163,6 +153,34 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         assert isinstance(self._space, MemorySpace)
         return self._space
 
+    def onStatusMemo(self, cm: CDIMemo) -> bool:
+        """Handle memo with status that doesn't affect tag stack/scope.
+        (Implement in subclass)
+        Returns:
+            bool: True if handled.
+        """
+        return False
+
+    def onPushScope(self, cm: CDIMemo) -> bool:
+        """Handle memo being added to _tag_stack
+        which may already be pushed if a thread is being used
+        for download but the UI is on the main thread.
+        (Implement in subclass)
+        Returns:
+            bool: True if handled.
+        """
+        return False
+
+    def onPopScope(self, cm: CDIMemo) -> bool:
+        """Handle memo being popped from _tag_stack
+        which may already be popped if a thread is being used
+        for download but the UI is on the main thread.
+        (Implement in subclass)
+        Returns:
+            bool: True if handled.
+        """
+        return False
+
     def onStart(self):
         # self._cdi_offset = 0  # Instead see memo.address (which is
         #   incremented on _memoryReadSuccess or custom memory read
@@ -184,33 +202,12 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                     callback: Union[Callable[[CDIMemo], None], None] = None):
         """Fire status handlers with the given status."""
         if callback is None:
-            callback = self._status_fn
+            callback = self.onStatusMemo
         if callback:
             print("OpenLCBNetwork callback_msg({})".format(repr(status)))
             callback(CDIMemo(status=status))
         else:
             logger.warning("No callback, but set status: {}".format(status))
-
-    def setHandlers(self, start_fn: Callable[[CDIMemo], None],
-                    end_fn: Callable[[CDIMemo], None],
-                    status_fn: Callable[[CDIMemo], None]):
-        """Set parsing callbacks for live updates in the UI.
-
-        Args:
-            start_fn (Callable, optional): The start element handler
-                (set to cdi_form.on_cdi_element_start on
-                cdiRefreshClicked in CDIForm for example). Defaults to
-                _default_dl_callback.
-            end_fn (Callable, optional): The end element handler (set to
-                cdi_form.on_cdi_element_end on cdiRefreshClicked in
-                CDIForm for example). Defaults to _default_dl_callback.
-            status_fn (Callable, optional): The status handler (set to
-                cdi_form._handle_cdi_element on cdiRefreshClicked in
-                CDIForm for example). Defaults to _default_dl_callback.
-        """
-        self._start_fn = start_fn
-        self._end_fn = end_fn
-        self._status_fn = status_fn
 
     def _feedNext(self, memo: MemoryReadMemo):
         """Handle partial CDI XML (any packet except last)
@@ -261,10 +258,9 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             self.parse(cdiString)
             # ^ startElement, endElement, etc. all consecutive using parse
             # self._fireStatus("Done loading CDI.")
-            if self._status_fn:
-                cm = CDIMemo()
-                cm.done = True  # 'done' and not 'error' means got all
-                self._status_fn(cm)
+            cm = CDIMemo()
+            cm.done = True  # 'done' and not 'error' means got all
+            self.onStatusMemo(cm)
         if self._realtime:
             self._parser.feed(partial_str)  # may call startElement/endElement
         # memo = MemoryReadMemo(memo)
@@ -341,8 +337,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 self._tmp_address += offset
         cm.address = self._tmp_address  # May be None if after /segment
 
-        if self._start_fn:
-            self._start_fn(cm)
+        self.onPushScope(cm)
 
         # self._callback_msg(
         #     "loaded: {}{}".format(tab, ET.tostring(el, encoding="unicode")))
@@ -359,17 +354,14 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
 
     def checkDone(self, cm: CDIMemo):
         """Notify the caller if parsing is over.
-        Calls _status_fn with `'done': True` in the argument if
+        Calls self.onStatusMemo with `'done': True` in the argument if
         'name' is "cdi" or the detected self._top_tag
         (case-insensitive). That notifies the downloadCDI caller that
         parsing is over, so that caller should end progress bar/other
         status tracking for downloadCDI in that case.
 
         Returns:
-            dict: Reserved for use without events (doesn't need to be
-                processed if self._status_fn is set since that
-                also gets the dict if 'done'). 'done' is only True if
-                'name' is "cdi" or self._top_tag (case-insensitive).
+            CDIMemo: Reserved for synchronous use.
         """
         cm.done = False
         cm.name
@@ -377,8 +369,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             # Not </cdi> nor other detected self._top_tag, so not done
             return cm
         cm.done = True  # done: past conditional return above
-        if self._status_fn:
-            self._status_fn(cm)
+        self.onStatusMemo(cm)
         return cm
 
     def endElement(self, name: str):
@@ -439,12 +430,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
 
         result = self.checkDone(cm)
         cm.content = self._flushCharBuffer()
-        if not result.get('done'):
-            # Notify downloadCDI's caller since it can potentially add
-            #   UI widget(s) for at least one setting/segment/group
-            #   using this 'element'.
-            assert self._end_fn is not None
-            self._end_fn(cm)
+        self.onPopScope(cm)
 
     def _flushCharBuffer(self):
         """Decode the buffer, clear it, and return all content.

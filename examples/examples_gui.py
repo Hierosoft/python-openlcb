@@ -537,6 +537,9 @@ class MainForm(ttk.Frame):
         # if event_d.get('command') == "connect":
         self.cdi_refresh_button.configure(state=tk.NORMAL)
         self.setStatus(ready_message)
+        if self.cdi_form is not None:
+            self.cdi_form.setStatus("")  # Set caption above CDI tree
+            #  (Not populated yet during _handleConnect).
         print(ready_message)
 
     def _connect(self):
@@ -606,25 +609,15 @@ class MainForm(ttk.Frame):
         threading.Thread(
             target=self.downloadCDI,
             args=(farNodeID,),
-            kwargs={
-                'start_fn': self.cdi_form.on_cdi_element_start,
-                'end_fn': self.cdi_form.on_cdi_element_end,
-                'status_fn': self.cdi_form._handle_cdi_memo,
-            },
+            # kwargs={},
             daemon=True,
         ).start()
 
-    def downloadCDI(self, farNodeID: str,
-                    start_fn: Union[Callable[[CDIMemo], None], None] = None,
-                    end_fn: Union[Callable[[CDIMemo], None], None] = None,
-                    status_fn: Union[Callable[[CDIMemo], None], None] = None):
+    def downloadCDI(self, farNodeID: str):
         """Download Configuration Description Information XML from the node.
 
         Args:
             farNodeID (str): Any valid node ID.
-            callback (Callable[[dict], None], optional): The element
-                handler (set to self.cdi_form.on_cdi_element in
-                cdiRefreshClicked). Defaults to None.
         """
         self.setStatus("Downloading CDI...")
         assert self.cdi_form is not None
@@ -632,10 +625,7 @@ class MainForm(ttk.Frame):
         self.cdi_form.onStartDownload()
         try:
             self.network.download(farNodeID, MemorySpace.CDI,
-                                  self.cdi_form,
-                                  start_fn=start_fn,
-                                  end_fn=end_fn,
-                                  status_fn=status_fn)
+                                  self.cdi_form)
         except KeyError as ex:
             self.setStatus("The address was not correct: {}"
                            .format(formatted_ex(ex)))

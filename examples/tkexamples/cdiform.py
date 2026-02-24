@@ -12,6 +12,8 @@ Contributors: Poikilos
 import os
 import sys
 import tkinter as tk
+import warnings
+
 from tkinter import ttk
 
 from collections import deque
@@ -119,7 +121,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         self.onStart()
         self._resetTree()
 
-    def _handle_cdi_memo(self, cm: CDIMemo):
+    def onStatusMemo(self, cm: CDIMemo) -> bool:
         """Handler for incoming CDI tag
         Use this for callback in downloadCDI, which sets parser
         (_dataProcessor)'s _onElement.
@@ -142,13 +144,15 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             return True
         return False
 
-    def on_cdi_element_start(self, cm: CDIMemo):
-        self.root.after(0, self._on_cdi_element_start, cm)
-        self._handle_cdi_memo(cm)
+    def onPushScope(self, cm: CDIMemo) -> bool:
+        self.root.after(0, self._onPushScope, cm)
+        self.onStatusMemo(cm)
+        return True
 
-    def on_cdi_element_end(self, cm: CDIMemo):
-        self.root.after(0, self._on_cdi_element_end, cm)
-        self._handle_cdi_memo(cm)
+    def onPopScope(self, cm: CDIMemo) -> bool:
+        self.root.after(0, self._onPopScope, cm)
+        self.onStatusMemo(cm)
+        return True
 
     def getBranch(self) -> str:
         """Get the Treeview branch iid of the tag currently being parsed"""
@@ -157,8 +161,9 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         branch = self._tag_stack[-1].getBranch()
         return branch if (branch is not None) else ""
 
-    def _on_cdi_element_end(self, cm: CDIMemo):
+    def _onPopScope(self, cm: CDIMemo):
         """Handle end XML tag processed by XMLDataProcessor's superclass
+        (accesses GUI, so must run on main thread)
 
         Args:
             cm (CDIMemo): XML element container from
@@ -240,8 +245,9 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             print(*args, **kwargs)
         self.cursorCol = 0
 
-    def _on_cdi_element_start(self, cm: CDIMemo):
+    def _onPushScope(self, cm: CDIMemo):
         """Handle start XML tag processed by XMLDataProcessor's superclass
+        (accesses GUI, so must run on main thread)
 
         Args:
             cm (CDIMemo): XML element container from
@@ -262,7 +268,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         """
         # NOTE: If it is self-closing such as
         #   `<group offset='4'/>`,
-        #   then _on_cdi_element_end will also run (see endElement such
+        #   then _onPopScope will also run (see endElement such
         #   as in python-openlcb's implementation of ContentHandler).
         assert cm.element is not None
         tag = cm.element.tag if cm.element is not None else None
@@ -279,8 +285,8 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         #     self.print(" {}".format(attrs_to_dict(attrs)))
 
         if tagLower in ("segment", "group"):
-            content = ""  # Temporary (The visible text is set to content of name
-            #   element in _on_cdi_element_end)
+            content = ""  # Temporary (The visible text is set to content of
+            #   name element in _onPopScope)
             # if not name:
             if tagLower == "segment":
                 space = cm.element.attrib['space']
@@ -323,3 +329,8 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             # values=(), image=None
             self._current_iid += 1  # TODO: associate with SubElement
             #  and/or set values keyword argument to create association(s)
+
+
+if __name__ == "__main__":
+    warnings.warn("You tried to run a module"
+                  " (Run your main script or import this instead).")
