@@ -459,8 +459,15 @@ class MainForm(ttk.Frame):
             state=tk.DISABLED,  # enabled on connect success callback
         )
         self.cdi_refresh_button.grid(row=self.cdi_row, column=1)
-
         self.cdi_row += 1
+
+        self.cdiSettingFrame = ttk.Frame(self.cdi_tab)
+        self.cdiSettingFrame.grid(row=self.cdi_row+1, column=1)
+        # NOTE: ^ See self.cdi_form.setSettingsContainer in setupNetwork
+        # ^ +1 to row so it is across from _treeview
+        #   below invisible status label in second row on left
+        self.cdi_row += 1
+
         self.network = None
         self.cdi_form = None  # type: CDIForm|None
         # ^ CDIForm or other XMLDataProcessor subclass
@@ -494,6 +501,7 @@ class MainForm(ttk.Frame):
     def setupNetwork(self):
         self.network = OpenLCBNetwork(self.getValue('localNodeID'))
         self.cdi_form = CDIForm(self.network.canLink, self.cdi_tab)
+        self.cdi_form.setSettingsContainer(self.cdiSettingFrame)
         self.cdi_form.setStatusCallback(self.setStatus)
         # ^ formerly OpenLCBNetwork() subclass
         # ^ CDIForm has ttk.Treeview etc.

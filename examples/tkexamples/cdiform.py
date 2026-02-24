@@ -15,12 +15,14 @@ import sys
 import tkinter as tk
 import warnings
 
-from tkinter import ttk
+from tkinter import EventType, ttk
 
 from collections import deque
 from logging import getLogger
 from typing import Any, Callable, Dict, Union
 from xml.etree import ElementTree as ET
+
+from openlcb.cdivar import CLASSNAME_TYPES, CDIVar
 
 
 if __name__ == "__main__":
@@ -75,9 +77,18 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         if hasattr(self.parent, 'root'):
             self.root = self.parent.root
         self._container = self  # where to put visible widgets
-        self._treeview = None  # type: ttk.Treeview
+        self._treeview = None  # type: ttk.Treeview|None
+        self._treeMemos = {}  # type: Dict[str, CDIMemo]
+
         self._gui(self._container)
         self.cursorCol = 0
+
+        self.cdiSettingWidgets = []  # type: list[tk.Widget]
+        self.cdiSettingRow = 0
+        self.cdiSettingFrame = None  # type: Union[ttk.Frame, tk.Frame, None]
+
+    def setSettingsContainer(self, container: Union[ttk.Frame, tk.Frame]):
+        self.cdiSettingFrame = container
 
     def _gui(self, container: tk.Widget):
         if self._top_widgets:
@@ -92,9 +103,93 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         self._top_widgets.append(self._overview)
         self._treeview = ttk.Treeview(container)
         self._treeview.grid(sticky=tk.NSEW, row=len(self._top_widgets))
+        self._treeview.bind("<<TreeviewSelect>>", self.onTreeSelect)
         self.rowconfigure(len(self._top_widgets), weight=1)  # weight=1: expand
         self._top_widgets.append(self._treeview)
         self._current_iid = 0   # id of Treeview element
+
+    def onTreeSelect(self, event: tk.Event):
+        # print(f"event={event}")
+        # print(f"dir(event)={dir(event)}")
+        # print(f"event.__dict__={event.__dict__}")
+        # ^ {'serial': 794, 'num': '??', 'height': '??', 'keycode':
+        #   '??', 'state': 0, 'time': 0, 'width': '??', 'x': 0, 'y': 0,
+        #   'char': '??', 'send_event': False, 'keysym': '??',
+        #   'keysym_num': '??', 'type': <EventType.VirtualEvent: '35'>,
+        #   'widget': <tkinter.ttk.Treeview object
+        #   .!mainform.!notebook.!frame.!cdiform.!treeview>, 'x_root':
+        #   0, 'y_root': 0, 'delta': 0}
+        for iid in event.widget.selection():
+            item = event.widget.item(iid)  # type: dict
+            # ^ such as {'text': 'Track Output', 'image': '',
+            #   'values': [CDIMemo], 'open': 0, 'tags': ''}
+            cm = self._treeMemos[iid]
+            # print(f"type(item)={type(item)}")
+            # raise NotImplementedError(item)
+            # print(f"cm={cm}")
+            self.clearSettingWidgets()
+            if cm.tag not in CLASSNAME_TYPES:
+                # Non-value (such as segment or group)
+                #   So there is nothing to do.
+                return
+
+            name = cm.getChildContent("name")
+            if name is None:
+                # self.setStatus("Selected element has no name.")
+                break
+
+            nameLabel = ttk.Label(self.cdiSettingFrame, text=name)
+            nameLabel.tip = cm.getChildContent("description")
+            nameLabel.grid(column=0, row=self.cdiSettingRow)
+            self.cdiSettingWidgets.append(nameLabel)
+            # self.cdiSettingRow += 1
+            cdivar = cm.toCDIVar()
+            tkvar = None
+            v_widget = None
+            if cdivar.max:
+                if cdivar.className == "int":
+                    tkvar = tk.IntVar(self.root)
+                elif cdivar.className == "float":
+                    tkvar = tk.DoubleVar(self.root)
+                else:
+                    raise TypeError("Device should not specify max for {}"
+                                    .format(cdivar.className))
+
+                v_widget = ttk.LabeledScale(self.cdiSettingFrame, variable=tkvar)
+                # ^ widget.scale is ttk.Scale, widget.label is ttk.Label
+                v_widget.scale.cdivar = cdivar
+                v_widget.scale.tip = nameLabel.tip
+            else:
+                tkvar = tk.StringVar(self.root)
+                v_widget = ttk.Entry(self.cdiSettingFrame, textvariable=tkvar)
+            v_widget.grid(column=1, row=self.cdiSettingRow)
+            self.cdiSettingRow += 1
+            self.cdiSettingWidgets.append(v_widget)
+            if cdivar.default is not None:
+                tkvar.set(cdivar.default)
+            v_widget.cdivar = cdivar
+            v_widget.tip = nameLabel.tip
+
+
+            address_str = ""
+            if address_str is not None:
+                address_str = str(cm.address)
+            a_widget = ttk.Label(self.cdiSettingFrame, text="(Address:")
+            a_widget.grid(column=0, row=self.cdiSettingRow, sticky=tk.W)
+            av_widget = ttk.Label(self.cdiSettingFrame, text=address_str + ")")
+            av_widget.grid(column=1, row=self.cdiSettingRow)
+            self.cdiSettingWidgets.append(a_widget)
+            self.cdiSettingWidgets.append(av_widget)
+            self.cdiSettingRow += 1
+
+            break
+
+    def clearSettingWidgets(self):
+        for widget in self.cdiSettingWidgets:
+            widget.grid_forget()
+            widget.destroy()
+        del self.cdiSettingWidgets[:]
+        self.cdiSettingRow = 0
 
     def clear(self):
         while self._top_widgets:
@@ -337,6 +432,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                 iid=self._current_iid,
                 text=content,
             )
+            self._treeMemos[new_branch] = cm
             # values=(), image=None
             # self._tag_stack[-1].iid = new_branch
             # NOTE: ^ _tag_stack is unreliable due to race condition!
@@ -358,6 +454,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                 iid=self._current_iid,
                 text=content,
             )
+            self._treeMemos[new_branch] = cm
             # values=(), image=None
             # self._tag_stack[-1].iid = new_branch
             # NOTE: ^ _tag_stack is unreliable due to race condition!
