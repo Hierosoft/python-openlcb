@@ -30,7 +30,7 @@ from openlcb.datagramservice import DatagramReadMemo, DatagramService
 from openlcb.dataprocessor import DataFormat
 from openlcb.memoryservice import MemoryReadMemo, MemoryService, MemorySpace
 from openlcb.message import Message
-from openlcb.metadataprocessor import XMLDataProcessor
+from openlcb.xmldataprocessor import XMLDataProcessor
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
 from openlcb.portinterface import PortInterface

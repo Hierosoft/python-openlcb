@@ -37,7 +37,7 @@ from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb.cdimemo import CDIMemo
 from openlcb.memoryservice import MemorySpace
 from openlcb.message import Message
-from openlcb.metadataprocessor import XMLDataProcessor
+from openlcb.xmldataprocessor import XMLDataProcessor
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
 from openlcb.openlcbnetwork import OpenLCBNetwork

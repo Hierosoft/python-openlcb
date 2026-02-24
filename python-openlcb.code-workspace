@@ -65,7 +65,7 @@
 			"MDNS",
 			"mdnsconventions",
 			"memoryservice",
-			"metadataprocessor",
+			"xmldataprocessor",
 			"metas",
 			"MSGLEN",
 			"nodeid",

@@ -21,7 +21,7 @@ from logging import getLogger
 
 from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb import precise_sleep
-from openlcb.metadataprocessor import attrs_to_dict
+from openlcb.xmldataprocessor import attrs_to_dict
 from openlcb.tcplink.tcpsocket import TcpSocket
 settings = Settings()
 

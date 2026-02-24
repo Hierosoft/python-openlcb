@@ -36,11 +36,11 @@ else:
         " since test running from repo but could not find openlcb in {}."
         .format(repr(REPO_DIR)))
 try:
-    from openlcb.metadataprocessor import XMLDataProcessor
+    from openlcb.xmldataprocessor import XMLDataProcessor
     from openlcb.cdimemo import CDIMemo
     from openlcb.linklayer import LinkLayer
     from openlcb.memoryservice import MemorySpace
-    from openlcb.metadataprocessor import element_to_dict
+    from openlcb.xmldataprocessor import element_to_dict
 except ImportError as ex:
     print("{}: {}".format(type(ex).__name__, ex), file=sys.stderr)
     print("* You must run this from a venv that has openlcb installed"
