@@ -573,7 +573,8 @@ class CanLink(LinkLayer):
     def handleGlobalAME(self, frame: CanFrame):
         """If no data, clear all except self from maps
         even if not in Permitted state
-        (CAN Frame Transfer Standard, 6.2.3).
+        (CAN Frame Transfer Standard, 6.2.3
+        Alias Map Enquiry).
         """
         if frame.data:  # not global
             return
@@ -589,9 +590,10 @@ class CanLink(LinkLayer):
             #     pass  # concurrent modification
             if otherNodeID == self.localNodeID:
                 continue
-            del self.nodeIdToAlias[otherNodeID]
-            # except KeyError:
-            #     pass  # concurrent modification
+            try:
+                del self.nodeIdToAlias[otherNodeID]
+            except KeyError:
+                pass  # concurrent modification?
             # TODO: clear matching _send_frames??
 
     def handleReceivedAME(self, frame: CanFrame):

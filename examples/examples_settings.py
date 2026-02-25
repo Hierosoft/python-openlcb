@@ -9,6 +9,7 @@ import shutil
 import sys
 
 from logging import getLogger
+
 if __name__ == "__main__":
     logger = getLogger(__file__)
 else:
@@ -26,10 +27,18 @@ else:
         .format(repr(REPO_DIR)))
 CONFIGS_DIR = os.path.dirname(os.path.realpath(__file__))
 
+from openlcb.conventions import generate_node_id_str  # noqa: E402
+
+range_prefix = "05.01.01"  # 05.01.01 is *only* for Bob Jacobsen's
+#   python-openlcb (or as otherwise assigned by OpenLCB Group which
+#   reserves 05.* range). See
+#   <https://registry.openlcb.org/uniqueidranges>.
+
 DEFAULT_SETTINGS = {
     "host": "192.168.16.212",
     "port": 12021,
-    "localNodeID": "05.01.01.01.03.01",   # Warning: *only for openlcb*:
+    # "localNodeID": "05.01.01.01.03.01",   # Warning: *only for openlcb*:
+    "localNodeID": generate_node_id_str(range_prefix),
     #   See localNodeID_comment in SETTINGS_COMMENTS.
     "farNodeID": "02.01.57.00.04.9C",  # Serialized if hardware:
     #   See farNodeID_comment in SETTINGS_COMMENTS.
@@ -256,6 +265,11 @@ class Settings:
             try:
                 with open(settings_path, 'r') as stream:
                     self._meta = json.load(stream)
+                    if 'localNodeID' in self._meta:
+                        del self._meta['localNodeID']
+                        # ^ Make sure it is unique on each run
+                        #   (unless set via load_cli_args,
+                        #   which isn't recommended).
             except json.decoder.JSONDecodeError:
                 self._meta = copy.deepcopy(DEFAULT_SETTINGS)
                 no_ext, dot_ext = os.path.splitext(settings_path)

@@ -97,7 +97,7 @@ def generate_node_id(id_range_prefix):
         id_range_prefix (str): NodeID prefix in dotted hex notation.
             Warning: 05.01.01 is *only* for Bob Jacobsen's
             python-openlcb (or as otherwise assigned by OpenLCB Group
-            which reserves 05.* range) See
+            which reserves 05.* range). See
             <https://registry.openlcb.org/uniqueidranges>.
     Returns:
         NodeID: A NodeID that is unique (very likely...).

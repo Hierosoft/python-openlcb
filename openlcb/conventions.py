@@ -175,9 +175,9 @@ def generate_node_id_str(id_range_prefix) -> str:
     Args:
         id_range_prefix (str): NodeID prefix in dotted hex notation
             (3 to 5. 3 at most recommended to make uniqueness more
-            likely) Warning: 05.01.01 is *only* for Bob Jacobsen's
+            likely) Warning: "05.01.01" is *only* for Bob Jacobsen's
             python-openlcb (or as otherwise assigned by OpenLCB Group
-            which reserves 05.* range) See
+            which reserves 05.* range). See
             <https://registry.openlcb.org/uniqueidranges>.
     Returns:
         str: Full 48-bit node ID in dotted hex string notation (Example:
