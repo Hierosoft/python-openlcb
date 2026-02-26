@@ -170,7 +170,6 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             v_widget.cdivar = cdivar
             v_widget.tip = nameLabel.tip
 
-
             address_str = ""
             if address_str is not None:
                 address_str = str(cm.address)
@@ -291,6 +290,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         nameLower = cm.tag.lower() if cm.tag else None
         assert nameLower is not None  # only None for done/fail events
         cm.content
+        assert self._treeview is not None
         if nameLower == "name":
             parentIID = self.getParentBranch(cm)
             assert parentIID is not None, "name must be in a branch"
@@ -302,7 +302,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                         self.indent() + f"content is None for /{cm.tag}")
                     cm.content = ""
                 # "name" applies to parent, such as "segment" or "string"
-                parent = self._treeview.item(
+                _ = self._treeview.item(
                     parentIID, text=cm.content.strip())
             origin = cm.element.attrib.get('origin') if cm.element else None
             if cm.content:
@@ -409,7 +409,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         self.debug_write(name)
         # if attrs is not None and attrs:
         #     self.debug(" {}".format(attrs_to_dict(attrs)))
-
+        assert self._treeview is not None
         if tagLower in ("segment", "group"):
             content = ""  # Temporary (The visible text is set to content of
             #   name element in _onPopScope)
@@ -417,9 +417,9 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             if tagLower == "segment":
                 space = cm.element.attrib['space']
                 content = space
-                origin = None
-                if 'origin' in cm.element.attrib:
-                    origin = cm.element.attrib['origin']
+                # origin = None
+                # if 'origin' in cm.element.attrib:
+                #     origin = cm.element.attrib['origin']
             elif tagLower == "group":
                 if 'offset' in cm.element.attrib:
                     content = cm.element.attrib['offset']

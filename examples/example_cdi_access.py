@@ -135,7 +135,10 @@ def memoryReadSuccess(memo):
     if len(memo.data) == 64 and 0 not in memo.data:
         # save content
         resultingCDI += memo.data
-        logger.debug(f"[{memo.address}] successful read {MemoryService.arrayToString(memo.data, len(memo.data))}; next = address + 64")
+        logger.debug(
+            f"[{memo.address}] successful read"
+            f" {MemoryService.arrayToString(memo.data, len(memo.data))}"
+            "; next = address + 64")
         # update the address
         memo.address = memo.address+64
         # and read again

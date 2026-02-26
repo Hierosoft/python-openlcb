@@ -790,9 +790,7 @@ class CanLink(LinkLayer):
                 try:
                     mapped = self.aliasToNodeID[destAlias]
                     destID = mapped
-                except KeyboardInterrupt:
-                    raise
-                except:
+                except KeyError:
                     destID = NodeID(self.nextInternallyAssignedNodeID)
                     self.nextInternallyAssignedNodeID += 1
                     logger.warning(
@@ -1378,7 +1376,10 @@ class CanLink(LinkLayer):
                     # self.physicalLayer.receiveAll(device)
                     try:
                         data = device.receive()  # If timeout, set non-blocking
-                        self.physicalLayer.handleData(data)
+                        if data is not None:
+                            self.physicalLayer.handleData(data)
+                        # else: None should never occur in non-blocking mode
+                        #    (See BlockingIOError instead)
                     except BlockingIOError:
                         # raised by receive if no data (non-blocking is
                         #   what we want, so fall through).
