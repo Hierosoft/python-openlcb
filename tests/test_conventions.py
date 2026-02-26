@@ -25,9 +25,12 @@ if __name__ == "__main__":
 
 from openlcb.conventions import (  # noqa: E402
     dotted_lcc_id_to_hex,
+    generate_last_three_octets,
+    increment_octets,
     is_dotted_lcc_id,
     is_hex_lcc_id,
     hex_to_dotted_lcc_id,
+    reset_octet_generator,
 )
 
 
@@ -92,6 +95,26 @@ class TestConventions(unittest.TestCase):
         except ValueError as ex:
             exception = ex
         self.assertIsInstance(exception, ValueError)
+
+    def test_increment_octets(self):
+        octets = bytearray([255, 255, 255])
+        self.assertEqual(increment_octets(octets), bytearray([0, 0, 0]))
+        octets = bytearray([0, 0, 255])
+        self.assertEqual(increment_octets(octets), bytearray([0, 1, 0]))
+        octets = bytearray([255, 255, 254])
+        self.assertEqual(increment_octets(octets), bytearray([255, 255, 255]))
+        octets = bytearray([254, 254, 254])
+        self.assertEqual(increment_octets(octets), bytearray([254, 254, 255]))
+        octets = bytearray([254, 255, 255])
+        self.assertEqual(increment_octets(octets), bytearray([255, 0, 0]))
+
+    def test_generate_last_three_octets(self):
+        reset_octet_generator()
+        octetsVirtual = generate_last_three_octets(increment=True)
+        octets = generate_last_three_octets()
+        self.assertNotEqual(octets, octetsVirtual)
+        octetsVirtual2 = generate_last_three_octets(increment=True)
+        self.assertNotEqual(octetsVirtual, octetsVirtual2)
 
 
 if __name__ == '__main__':

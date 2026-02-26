@@ -136,6 +136,7 @@ def get_local_ip() -> Optional[str]:
                                         socket.AF_INET):
             addr = iface[4][0]
             if not ipaddress.ip_address(addr).is_loopback:
+                assert isinstance(addr, str)
                 return addr
     except Exception:
         pass
@@ -143,8 +144,44 @@ def get_local_ip() -> Optional[str]:
     return "127.0.0.1"
 
 
-def generate_last_three_octets() -> bytearray:
+previous_three_octets = None
+initial_three_octets = None
+
+
+def increment_octets(octets: bytearray):
+    ints = list(octets)
+    ints[-1] += 1
+    for i in reversed(range(len(ints))):
+        if ints[i] > 255:
+            ints[i] = 0
+            if i > 0:
+                ints[i-1] += 1
+    if ints[0] > 255:
+        ints[0] = 0
+    return bytearray(ints)
+
+
+def reset_octet_generator():
+    """Reset the incrementing of octets such as for NodeID.
+    - Only affects virtual nodes, not the primary node (call to
+      generate_node_id_str leaving default increment=False).
+    - Should not be reset unless all virtual nodes are taken offline
+      (inhibited state) otherwise duplicate NodeID may occur
+      (infinite alias reservation loop is unavoidable in
+      this case).
+    - Usually unnecessary except for test cases.
+    """
+    global initial_three_octets
+    global previous_three_octets
+    initial_three_octets = None
+    previous_three_octets = None
+
+
+def generate_last_three_octets(increment: bool = False) -> bytearray:
     """Generate 3 hex octets from hash of (ip + pid)"""
+    # TODO: Check alias map to ensure uniqueness.
+    global initial_three_octets
+    global previous_three_octets
     ip = get_local_ip() or "127.0.0.1"
     pid = get_process_id()
 
@@ -155,19 +192,44 @@ def generate_last_three_octets() -> bytearray:
     h = abs(hash(seed)) & 0xFFFFFFFF
 
     # Extract 3 bytes
-    return bytearray([
+    octets = bytearray([
         (h >> 16) & 0xFF,
         (h >> 8)  & 0xFF,
         h         & 0xFF,
     ])
+    if increment:
+        if previous_three_octets is not None:
+            octets = increment_octets(previous_three_octets)
+        else:
+            octets = increment_octets(octets)
+        if initial_three_octets is not None:
+            if octets == initial_three_octets:
+                octets = increment_octets(octets)
+                oct_s = f"{octets[0]:02x}.{octets[1]:02x}.{octets[2]:02x}"
+                logger.warning(f"Unique NodeID Rollover: Using {oct_s} again!")
+        previous_three_octets = octets
+    elif initial_three_octets is None:
+        initial_three_octets = octets
+    return octets
 
 
-def generate_last_three_octets_str() -> str:
-    octets = generate_last_three_octets()
+def generate_last_three_octets_str(increment: bool = False) -> str:
+    """Get a string like FF.FF.FF
+    unique to the IP & process ID combination.
+    Args:
+        increment (bool): Make a new value (such as for creating
+            virtual nodes that only exist inside of the code utilizing
+            the openlcb module). Not guaranteed to be unique on rollover
+            (especially if fewer than all 3 are used by caller).
+            Not guaranteed to be unique on network if the
+            increment=False call (the local node id) is very close to
+            another's on the network (that is unlikely though).
+    """
+    octets = generate_last_three_octets(increment=increment)
     return f"{octets[0]:02x}.{octets[1]:02x}.{octets[2]:02x}"
 
 
-def generate_node_id_str(id_range_prefix) -> str:
+def generate_node_id_str(id_range_prefix: str, increment: bool = False) -> str:
     """Generate a unique NodeID string for the session to ensure each
     instance (even of python-openlcb on same device) or
     locally-generated virtual node is unique.
@@ -184,7 +246,7 @@ def generate_node_id_str(id_range_prefix) -> str:
             '05.01.01.4A.B7.19') that is unique (very likely...).
     """
 
-    lastParts = [f"{p:02X}" for p in generate_last_three_octets()]
+    lastParts = [f"{p:02X}" for p in generate_last_three_octets(increment=increment)]  # noqa: E501
     assert len(lastParts) == 3
     prefixParts = id_range_prefix.split(".")
     if len(prefixParts) < 3:
