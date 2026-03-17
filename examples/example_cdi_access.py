@@ -11,24 +11,36 @@ host|host:port            (optional) Set the address (or using a colon,
                           address and port.
 '''
 # region same code as other examples
+import copy
+import sys
+import xml.sax
+import xml.sax.handler
+import xml.sax.xmlreader  # for static type hints, autocomplete in this case
+
+from logging import getLogger
+
 from examples_settings import Settings  # do 1st to fix path if no pip install
+from openlcb import precise_sleep
+from openlcb.xmldataprocessor import attrs_to_dict
+from openlcb.tcplink.tcpsocket import TcpSocket
 settings = Settings()
 
 if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
+    logger = getLogger(__file__)
+else:
+    logger = getLogger(__name__)
 # endregion same code as other examples
 
-from openlcb.canbus.tcpsocket import TcpSocket
-
-from openlcb.canbus.canphysicallayergridconnect import (
+from openlcb.canbus.canphysicallayergridconnect import (  # noqa:E402
     CanPhysicalLayerGridConnect,
 )
-from openlcb.canbus.canlink import CanLink
-from openlcb.nodeid import NodeID
-from openlcb.datagramservice import (
+from openlcb.canbus.canlink import CanLink  # noqa:E402
+from openlcb.nodeid import NodeID  # noqa:E402
+from openlcb.datagramservice import (  # noqa:E402
     DatagramService,
 )
-from openlcb.memoryservice import (
+from openlcb.memoryservice import (  # noqa:E402
     MemoryReadMemo,
     MemoryService,
 )
@@ -42,18 +54,20 @@ from openlcb.memoryservice import (
 # farNodeID = "02.01.57.00.04.9C"
 # endregion moved to settings
 
-s = TcpSocket()
+sock = TcpSocket()
 # s.settimeout(30)
-s.connect(settings['host'], settings['port'])
+sock.connect(settings['host'], settings['port'])
 
 
 # print("RR, SR are raw socket interface receive and send;"
 #      " RL, SL are link interface; RM, SM are message interface")
 
 
-def sendToSocket(string):
-    # print("      SR: {}".format(string.strip()))
-    s.send(string)
+# def sendToSocket(frame: CanFrame):
+#     string = frame.encodeAsString()
+#     # print("      SR: {}".format(string.strip()))
+#     sock.sendString(string)
+#     physicalLayer.onFrameSent(frame)
 
 
 def printFrame(frame):
@@ -80,11 +94,10 @@ def printDatagram(memo):
     return False
 
 
-canPhysicalLayerGridConnect = CanPhysicalLayerGridConnect(sendToSocket)
-canPhysicalLayerGridConnect.registerFrameReceivedListener(printFrame)
+physicalLayer = CanPhysicalLayerGridConnect()
+physicalLayer.registerFrameReceivedListener(printFrame)
 
-canLink = CanLink(NodeID(settings['localNodeID']))
-canLink.linkPhysicalLayer(canPhysicalLayerGridConnect)
+canLink = CanLink(physicalLayer, NodeID(settings['localNodeID']))
 canLink.registerMessageReceivedListener(printMessage)
 
 datagramService = DatagramService(canLink)
@@ -100,6 +113,9 @@ resultingCDI = bytearray()
 
 # callbacks to get results of memory read
 
+complete_data = False
+read_failed = False
+
 
 def memoryReadSuccess(memo):
     """Handle a successful read
@@ -113,11 +129,16 @@ def memoryReadSuccess(memo):
     # print("successful memory read: {}".format(memo.data))
 
     global resultingCDI
+    global complete_data
 
     # is this done?
     if len(memo.data) == 64 and 0 not in memo.data:
         # save content
         resultingCDI += memo.data
+        logger.debug(
+            f"[{memo.address}] successful read"
+            f" {MemoryService.arrayToString(memo.data, len(memo.data))}"
+            "; next = address + 64")
         # update the address
         memo.address = memo.address+64
         # and read again
@@ -139,12 +160,15 @@ def memoryReadSuccess(memo):
 
         # and process that
         processXML(cdiString)
+        complete_data = True
 
         # done
 
 
 def memoryReadFail(memo):
+    global read_failed
     print("memory read failed: {}".format(memo.data))
+    read_failed = True
 
 
 #######################
@@ -157,58 +181,97 @@ def memoryReadFail(memo):
 # in a row, we buffer up the characters until the `endElement`
 # call is invoked to indicate the text is complete
 
-import xml.sax  # noqa: E402
-
 
 class MyHandler(xml.sax.handler.ContentHandler):
-    """XML SAX callbacks in a handler object"""
+    """XML SAX callbacks in a handler object
+
+    Attributes:
+        _chunks (list[str]): Collects chunks of data.
+            This is implementation-specific, and not
+            required if streaming (parser.feed).
+        _tmp_address (int|None): Where we are in the memory space (starting
+            at origin, and calculated using offset and/or size of start
+            tags).
+        _tmp_space (int|None): What space we are currently on.
+    """
+
     def __init__(self):
-        self._charBuffer = bytearray()
+        self._chunks = []
+        self.stack = []
+        self.cursorCol = 0
+        self._tmp_space = None  # type: int|None
+        self._tmp_address = None  # type: int|None
 
-    def startElement(self, name, attrs):
-        """_summary_
+    def startElement(self, name: str, attrs: xml.sax.xmlreader.AttributesImpl):
+        """See xml.sax.handler.ContentHandler documentation."""
+        self.stack.append(name)
+        if self.cursorCol != 0:
+            self.print()
+        self.write(name)
+        if attrs is not None and attrs:
+            self.print(" {}".format(attrs_to_dict(attrs)))
 
-        Args:
-            name (_type_): _description_
-            attrs (_type_): _description_
-        """
-        print("Start: ", name)
-        if attrs is not None and attrs :
-            print("  Attributes: ", attrs.getNames())
-
-    def endElement(self, name):
-        """_summary_
-
-        Args:
-            name (_type_): _description_
-        """
-        print(name, "content:", self._flushCharBuffer())
-        print("End: ", name)
+    def endElement(self, name: str):
+        """See xml.sax.handler.ContentHandler documentation."""
+        content = self._flushCharBuffer().strip()
+        if self.cursorCol != 0:
+            self.print()
+        if content:
+            self.print('/{} "{}"'.format(name, content))
+        else:
+            self.print('/{}'.format(name))
+        self.stack.pop()
+        # self.print("/", name)
         pass
+
+    def write(self, *args, **kwargs):
+        args = list(args)
+        if self.cursorCol == 0:
+            tab = len(self.stack)*"  "
+            self.cursorCol += len(tab)
+            args.insert(0, tab)  # prepend indent
+        for arg in args:
+            sys.stdout.write(arg)
+            self.cursorCol += len(arg)
+            sys.stdout.flush()
+
+    def print(self, *args, **kwargs):
+        if self.cursorCol == 0:  # No indent yet, so use write.
+            self.write(*args, **kwargs)
+            print()
+        else:
+            print(*args, **kwargs)
+        self.cursorCol = 0
 
     def _flushCharBuffer(self):
         """Decode the buffer, clear it, and return all content.
+        See xml.sax.handler.ContentHandler documentation.
 
         Returns:
             str: The content of the bytes buffer decoded as utf-8.
         """
-        s = self._charBuffer.decode("utf-8")
-        self._charBuffer.clear()
+        s = ''.join(self._chunks)
+        self._chunks.clear()
         return s
 
-    def characters(self, data):
-        """Received characters handler
+    def characters(self, content: str):
+        """Received characters handler.
+        See xml.sax.handler.ContentHandler documentation.
+
         Args:
             data (Union[bytearray, bytes, list[int]]): any
               data (any type accepted by bytearray extend).
         """
-        self._charBuffer.extend(data)
+        if not isinstance(content, str):
+            raise TypeError("Expected str, got {}"
+                            .format(type(content).__name__))
+        self._chunks.append(content)
 
 
 handler = MyHandler()
 
 
-def processXML(content) :
+def processXML(content: str) :
     """process the XML and invoke callbacks
 
     Args:
@@ -218,6 +281,11 @@ def processXML(content) :
     #   only called when there is a null terminator, which indicates the
     #   last packet was reached for the requested read.
     #   - See memoryReadSuccess comments for details.
+    with open("cached-cdi.xml", 'w') as stream:
+        # NOTE: Actual caching should key by all SNIP info that could
+        #   affect CDI/FDI: manufacturer, model, and version. Without
+        #   all 3 being present in SNIP, the cache may be incorrect.
+        stream.write(content)
     xml.sax.parseString(content, handler)
     print("\nParser done")
 
@@ -225,8 +293,25 @@ def processXML(content) :
 #######################
 
 # have the socket layer report up to bring the link layer up and get an alias
-# print("      SL : link up")
-canPhysicalLayerGridConnect.physicalLayerUp()
+print("      QUEUE frames : link up...")
+physicalLayer.physicalLayerUp()
+print("      QUEUED frames : link up...waiting...")
+while canLink.pollState() != CanLink.State.Permitted:
+    # provides incoming data to physicalLayer & sends queued:
+    physicalLayer.receiveAll(sock, verbose=True)
+    physicalLayer.sendAll(sock)
+
+    if canLink.getState() == CanLink.State.WaitForAliases:
+        # physicalLayer.receiveAll(sock, verbose=True)
+        physicalLayer.sendAll(sock)
+        # ^ prevent assertion error below, proceed to send.
+    if canLink.pollState() == CanLink.State.Permitted:
+        break
+    assert canLink.getWaitForAliasResponseStart() is not None, \
+        ("openlcb didn't send the 7,6,5,4 CID frames (state={})"
+         .format(canLink.getState()))
+    precise_sleep(.02)
+print("      SENT frames : link up")
 
 
 def memoryRead():
@@ -236,8 +321,16 @@ def memoryRead():
     to AME
     """
     import time
-    time.sleep(1)
-
+    time.sleep(.21)
+    # ^ 200ms: See section 6.2.1 of CAN Frame Transfer Standard
+    #   (CanLink.State.Permitted will only occur after that, but waiting
+    #   now will reduce output & delays below in this example).
+    while canLink.getState() != CanLink.State.Permitted:
+        print("Waiting for connection sequence to complete...")
+        # This delay could be .2 (per alias collision), but longer to
+        #   reduce console messages:
+        time.sleep(.5)
+    print("Requesting memory read. Please wait...")
     # read 64 bytes from the CDI space starting at address zero
     memMemo = MemoryReadMemo(NodeID(settings['farNodeID']), 64, 0xFF, 0,
                              memoryReadFail, memoryReadSuccess)
@@ -247,10 +340,30 @@ def memoryRead():
 import threading  # noqa E402
 thread = threading.Thread(target=memoryRead)
 thread.start()
-
+previous_nodes = copy.deepcopy(canLink.nodeIdToAlias)
 # process resulting activity
-while True:
-    received = s.receive()
-    # print("      RR: {}".format(received.strip()))
-    # pass to link processor
-    canPhysicalLayerGridConnect.receiveString(received)
+print()
+print("This example will exit on failure or complete data.")
+while not complete_data and not read_failed:
+    # In this example, requests are initiate by the
+    #   memoryRead thread, and receiveAll actually
+    #   receives the data from the requested memory space (CDI in this
+    #   case) and offset (incremental position in the file/data,
+    #   incremented by this example's memoryReadSuccess handler).
+    count = 0
+    count += physicalLayer.receiveAll(sock)
+    count += physicalLayer.sendAll(sock)
+    if canLink.nodeIdToAlias != previous_nodes:
+        print("nodeIdToAlias updated: {}".format(canLink.nodeIdToAlias))
+    if count < 1:
+        precise_sleep(.01)
+    # else skip sleep to avoid latency (port already delayed)
+    if canLink.nodeIdToAlias != previous_nodes:
+        previous_nodes = copy.deepcopy(canLink.nodeIdToAlias)
+
+physicalLayer.physicalLayerDown()
+
+if read_failed:
+    print("Read complete (FAILED)")
+else:
+    print("Read complete (OK)")

@@ -90,6 +90,14 @@ class TestNodeClass(unittest.TestCase):
         n2 = Node(NodeID(13), snip)
         self.assertTrue(n2.snip.modelName == "modelX")
 
+    def testEnum(self):
+        usedValues = set()
+        # ensure values are unique:
+        for entry in Node.State:
+            self.assertNotIn(entry.value, usedValues)
+            usedValues.add(entry.value)
+            # print('{} = {}'.format(entry.name, entry.value))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -2,14 +2,26 @@ import os
 import sys
 import unittest
 
+from logging import getLogger
+if __name__ == "__main__":
+    logger = getLogger(__file__)
+else:
+    logger = getLogger(__name__)
+
 if __name__ == "__main__":
     # Allow importing repo copy of openlcb if running tests from repo manually.
     TESTS_DIR = os.path.dirname(os.path.realpath(__file__))
     REPO_DIR = os.path.dirname(TESTS_DIR)
-    sys.path.insert(0, REPO_DIR)
+    if os.path.isfile(os.path.join(REPO_DIR, "openlcb", "__init__.py")):
+        sys.path.insert(0, REPO_DIR)
+    else:
+        logger.warning(
+            "Reverting to installed copy if present (or imports will fail),"
+            " since test running from repo but could not find openlcb in {}."
+            .format(repr(REPO_DIR)))
 
 
-from openlcb.tcplink.mdnsconventions import id_from_tcp_service_name
+from openlcb.tcplink.mdnsconventions import id_from_tcp_service_name  # noqa: E402,E501
 
 
 class TestMDNSConventions(unittest.TestCase):

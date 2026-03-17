@@ -10,14 +10,19 @@ Usually connected to a TCP socket connection.
 Assembles messages parts, but does not break messages into parts.
 
 '''
+import logging
+import time
+
+from typing import (
+    List,  # in case list doesn't support `[` in this Python version
+    Union,  # in case `|` doesn't support 'type' in this Python version
+)
 
 from openlcb.linklayer import LinkLayer
 from openlcb.message import Message
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
-
-import logging
-import time
+from openlcb.physicallayer import PhysicalLayer
 
 
 class TcpLink(LinkLayer):
@@ -31,32 +36,47 @@ class TcpLink(LinkLayer):
         localNodeID (NodeID): The node ID of the Configuration Tool or other
             software-defined node connecting to the LCC network via TCP.
     """
+    class State:
+        Disconnected = 0
+        Connected = 1
 
-    def __init__(self, localNodeID):
+    DisconnectedState = State.Disconnected
+
+    def __init__(self, physicalLayer: PhysicalLayer, localNodeID: NodeID):
+        LinkLayer.__init__(self, physicalLayer, localNodeID)
         # See class docstring for argument(s) and attributes.
-        self.localNodeID = localNodeID
-        self.linkCall = None
+        self.physicalLayer = physicalLayer
         self.accumulatedParts = {}
         self.nextInternallyAssignedNodeID = 1
         self.accumulatedData = bytearray()
+        self.physicalLayer = physicalLayer  # formerly linkCall
+        self.localNodeID = localNodeID  # unused here
 
-    def linkPhysicalLayer(self, lpl):
-        """Register the handler for when the layer is up.
+    # def linkPhysicalLayer(self, lpl):
+    #     """Register the handler for when the layer is up.
 
-        Args:
-            lpl (Callable): A handler that accepts a bytes object, usually a
-                socket connection send() method.
-        """
-        self.linkCall = lpl
+    #     Args:
+    #         lpl (Callable): A handler that accepts a bytes object, usually a
+    #             socket connection send() method.
+    #     """
+    #     raise NotImplementedError(
+    #         "Instead, we should just call linkLayerUp and linkLayerDown."
+    #         " Constructors should construct the openlcb stack.")
+    #     self.physicalLayer = lpl
 
-    def receiveListener(self, inputData):  # [] input
+    def _onStateChanged(self, oldState, newState):
+        print(f"[TcpLink] _onStateChanged from {oldState} to {newState}"
+              " (nothing to do since TcpLink)")
+
+    def handleFrameReceived(self, frame: Union[bytes, bytearray]):
         """Receives bytes from lower level
         and accumulates them into individual message parts.
 
         Args:
             inputData ([int]) : next chunk of the input stream
         """
-        self.accumulatedData.extend(inputData)
+        assert isinstance(frame, (bytes, bytearray))
+        self.accumulatedData.extend(frame)
         # Now check it if has one or more complete message.
         while len(self.accumulatedData) > 0 :
             # first, see if entire prefix is present
@@ -87,13 +107,14 @@ class TcpLink(LinkLayer):
             self.accumulatedData = self.accumulatedData[5+length:]
             # and repeat
 
-    def receivedPart(self, messagePart, flags, length):
-        """Receives message parts from receiveListener
+    def receivedPart(self, messagePart: bytearray, flags: int, length: int):
+        """Receives message parts from handleFrameReceived
         and groups them into single OpenLCB messages as needed
 
         Args:
-            messagePart (bytearray) : Raw message data. A single TCP-level message,
-                which may include all or part of a single OpenLCB message.
+            messagePart (bytearray) : Raw message data. A single
+                TCP-level message, which may include all or part of a
+                single OpenLCB message.
         """
         # set the source NodeID from the data
         gatewayNodeID = NodeID(messagePart[5:11])
@@ -128,13 +149,13 @@ class TcpLink(LinkLayer):
         # wait for next part
         return
 
-    def forwardMessage(self, messageBytes, gatewayNodeID) :  # not sure why gatewayNodeID useful here...  # noqa: E501
+    def forwardMessage(self, messageBytes: Union[bytearray, List[int]], gatewayNodeID: NodeID) :  # TODO: not sure why gatewayNodeID useful here...  # noqa: E501
         """
-        Receives single message from receivedPart, converts
-        it in a Message object, and forwards to listeners
+        Receives single message from receivedPart, converts it in a
+        Message object, and forwards to Message received listeners.
 
         Args:
-            messageBytes ([int]) : the bytes making up a
+            messageBytes (Union[bytearray, list[int]]) : the bytes making up a
                 single OpenLCB message, starting with the MTI
         """
         # extract MTI
@@ -150,41 +171,44 @@ class TcpLink(LinkLayer):
         # and finally create the message
         message = Message(mti, sourceNodeID, destNodeID, data)
         # forward to listeners
-        self.fireListeners(message)
+        self.fireMessageReceived(message)
 
     def linkUp(self):
         """
         Link started,  notify upper layers
         """
         msg = Message(MTI.Link_Layer_Up, NodeID(0), None, bytearray())
-        self.fireListeners(msg)
+        self.fireMessageReceived(msg)
 
     def linkRestarted(self):
         """
         Send a LinkRestarted message upstream.
         """
         msg = Message(MTI.Link_Layer_Restarted, NodeID(0), None, bytearray())
-        self.fireListeners(msg)
+        self.fireMessageReceived(msg)
 
     def linkDown(self):
         """
         Link dropped,  notify upper layers
         """
         msg = Message(MTI.Link_Layer_Down, NodeID(0), None, bytearray())
-        self.fireListeners(msg)
+        self.fireMessageReceived(msg)
 
-    def sendMessage(self, message):
+    def sendMessage(self, msg: Message, verbose=False):
         """
         The message level calls this with an OpenLCB
         message.  That is then converted to a byte
         stream and forwarded to the TCP socket layer.
+        Args:
+            message (Message): A message.
+            verbose (bool, optional): Ignored (Reserved for subclass).
         """
 
-        mti = message.mti
+        mti = msg.mti
 
         outputBytes = bytearray([0x80, 0x00])  # flags
 
-        length = 12+2+6+len(message.data)
+        length = 12+2+6+len(msg.data)
         if mti.addressPresent() : length = length+6
 
         l0 = (length & 0xFF0000) >> 16
@@ -207,11 +231,13 @@ class TcpLink(LinkLayer):
         m1 = (mti.value & 0xFF)
         outputBytes.extend([m0, m1])
 
-        outputBytes.extend(message.source.toArray())
+        outputBytes.extend(msg.source.toArray())
 
         if mti.addressPresent() :
-            outputBytes.extend(message.destination.toArray())
+            outputBytes.extend(msg.destination.toArray())
 
-        outputBytes.extend(message.data)
+        outputBytes.extend(msg.data)
 
-        self.linkCall(outputBytes)
+        self.physicalLayer.sendDataAfter(outputBytes, verbose=verbose)
+        # ^ The physical layer should be one with "Raw" in the name
+        # since takes bytes. See example_tcp_message_interface.

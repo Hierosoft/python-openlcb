@@ -50,6 +50,8 @@ If using VSCode (or fully open-source VSCodium):
   - (recommended, reduces commit diffs) **Trailing Spaces** by Shardul Mahadik
   - (recommended) **autoDocstring**: Type `"""` below a method or class and it will create a Sphinx-style template for you.
     - The workspace file has `"autoDocstring.docstringFormat": "google"` set since Google style is widely used and comprehensive (documents types etc).
+  - (recommended) ms-python (VSCode will recommend it when opening and/or running a Python workspace or file typically):
+    - You must install ms-python extension version 2025.0.0 or earlier of you are actually using Python 3.8, otherwise you will need a later version of Python.
 
 #### Documentation
 The sources for building documentation are:

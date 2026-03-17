@@ -14,6 +14,10 @@ node elsewhere" a.k.a an image node.
 '''
 
 from enum import Enum
+from typing import Set, Union
+
+from openlcb.nodeid import NodeID
+from openlcb.pip import PIP
 from openlcb.snip import SNIP
 from openlcb.localeventstore import LocalEventStore
 
@@ -38,11 +42,12 @@ class Node:
         events (LocalEventStore): The store for local events associated
             with the node.
     """
-    def __init__(self, nodeID, snip=None, pipSet=None):
-        self.id = nodeID
-        self.snip = snip
+    def __init__(self, nodeID: NodeID, snip: Union[SNIP, None] = None,
+                 pipSet: Union[Set[PIP], None] = None):
+        self.id: NodeID = nodeID
+        self.snip: SNIP = snip  # type: ignore
         if snip is None : self.snip = SNIP()
-        self.pipSet = pipSet
+        self.pipSet: Set[PIP] = pipSet  # type: ignore
         if pipSet is None : self.pipSet = set([])
         self.state = Node.State.Uninitialized
         self.events = LocalEventStore()
@@ -50,7 +55,7 @@ class Node:
     def __str__(self):
         return "Node ("+str(self.id)+")"
 
-    def name(self):
+    def name(self) -> str:
         return self.snip.userProvidedNodeName
 
     class State(Enum):
@@ -67,7 +72,7 @@ class Node:
         return hash(self.id)
 
     def __gt__(lhs, rhs):
-        return lhs.id.nodeId > rhs.id.nodeId
+        return lhs.id.value > rhs.id.value
 
     def __lt__(lhs, rhs):
-        return lhs.id.nodeId < rhs.id.nodeId
+        return lhs.id.value < rhs.id.value

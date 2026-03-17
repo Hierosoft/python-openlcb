@@ -11,33 +11,35 @@ host|host:port            (optional) Set the address (or using a colon,
                           address and port.
 '''
 # region same code as other examples
+from timeit import default_timer
 from examples_settings import Settings  # do 1st to fix path if no pip install
+from openlcb import precise_sleep
 settings = Settings()
 
 if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-from openlcb.canbus.canphysicallayergridconnect import (
+from openlcb.canbus.canphysicallayergridconnect import (  # noqa:E402
     CanPhysicalLayerGridConnect,
 )
-# from openlcb.canbus.canframe import CanFrame
-from openlcb.canbus.canlink import CanLink
-# from openlcb.canbus.controlframe import ControlFrame
-from openlcb.canbus.tcpsocket import TcpSocket
+# from openlcb.canbus.canframe import CanFrame  # noqa:E402
+from openlcb.canbus.canlink import CanLink  # noqa:E402
+# from openlcb.canbus.controlframe import ControlFrame  # noqa:E402
+from openlcb.tcplink.tcpsocket import TcpSocket  # noqa:E402
 
-from openlcb.node import Node
-from openlcb.nodeid import NodeID
-from openlcb.message import Message
-from openlcb.mti import MTI
-from openlcb.localnodeprocessor import LocalNodeProcessor
-from openlcb.pip import PIP
-from openlcb.remotenodeprocessor import RemoteNodeProcessor
-from openlcb.remotenodestore import RemoteNodeStore
-from openlcb.snip import SNIP
+from openlcb.node import Node  # noqa:E402
+from openlcb.nodeid import NodeID  # noqa:E402
+from openlcb.message import Message  # noqa:E402
+from openlcb.mti import MTI  # noqa:E402
+from openlcb.localnodeprocessor import LocalNodeProcessor  # noqa:E402
+from openlcb.pip import PIP  # noqa:E402
+from openlcb.remotenodeprocessor import RemoteNodeProcessor  # noqa:E402
+from openlcb.remotenodestore import RemoteNodeStore  # noqa:E402
+from openlcb.snip import SNIP  # noqa:E402
 
-from queue import Queue
-from queue import Empty
+from queue import Queue  # noqa:E402
+from queue import Empty  # noqa:E402
 
 # specify default connection information
 # region replaced by settings
@@ -48,26 +50,28 @@ from queue import Empty
 # timeout = 0.5
 # endregion replaced by settings
 
-s = TcpSocket()
+sock = TcpSocket()
 # s.settimeout(30)
-s.connect(settings['host'], settings['port'])
+sock.connect(settings['host'], settings['port'])
 
 if settings['trace'] :
     print("RR, SR are raw socket interface receive and send;"
           " RL, SL are link (frame) interface")
 
 
-def sendToSocket(string) :
-    if settings['trace'] : print("   SR: "+string.strip())
-    s.send(string)
+# def sendToSocket(frame: CanFrame) :
+    # string = frame.encodeAsString()
+    # if settings['trace'] : print("   SR: "+string.strip())
+    # sock.sendString(string)
+    # physicalLayer.onFrameSent(frame)
 
 
 def receiveFrame(frame) :
     if settings['trace']: print("RL: "+str(frame))
 
 
-canPhysicalLayerGridConnect = CanPhysicalLayerGridConnect(sendToSocket)
-canPhysicalLayerGridConnect.registerFrameReceivedListener(receiveFrame)
+physicalLayer = CanPhysicalLayerGridConnect()
+physicalLayer.registerFrameReceivedListener(receiveFrame)
 
 
 def printMessage(msg):
@@ -75,8 +79,7 @@ def printMessage(msg):
     readQueue.put(msg)
 
 
-canLink = CanLink(NodeID(settings['localNodeID']))
-canLink.linkPhysicalLayer(canPhysicalLayerGridConnect)
+canLink = CanLink(physicalLayer, NodeID(settings['localNodeID']))
 canLink.registerMessageReceivedListener(printMessage)
 
 # create a node and connect it update
@@ -100,24 +103,57 @@ canLink.registerMessageReceivedListener(
     remoteNodeStore.processMessageFromLinkLayer
 )
 
-
 readQueue = Queue()
 
+_frameReceivedListeners = physicalLayer._frameReceivedListeners
+assert len(_frameReceivedListeners) == 1, \
+    "{} listener(s) unexpectedly".format(len(_frameReceivedListeners))
 
-def receiveLoop() :
+# bring the CAN level up
+
+print("* QUEUE Message: link up...")
+physicalLayer.physicalLayerUp()
+print("  QUEUED Message: link up...waiting for alias reservation...")
+
+# These checks are for debugging. See other examples for simpler pollState loop
+cidSequenceStart = default_timer()
+previousState = canLink.getState()
+print("[main] CanLink previousState={}".format(previousState))
+while True:
+    # Wait for ready (See also waitForReady)
+    state = canLink.getState()
+    if state == CanLink.State.Permitted:
+        break
+    physicalLayer.receiveAll(sock, verbose=True)
+    physicalLayer.sendAll(sock, verbose=True)
+
+
+if state != previousState:
+    print("[main] CanLink state changed from {} to {}"
+          .format(previousState, state))
+elif state == CanLink.State.Initial:
+    raise NotImplementedError("The CanLink state is still {}".format(state))
+else:
+    print("[main] CanLink state is still {} before moving on."
+          .format(state))
+
+print("nodeIdToAlias: {}".format(canLink.nodeIdToAlias))
+
+
+def socketLoop():
     """put the read on a separate thread"""
-    # bring the CAN level up
-    if settings['trace'] : print("      SL : link up")
-    canPhysicalLayerGridConnect.physicalLayerUp()
     while True:
-        input = s.receive()
-        if settings['trace'] : print("   RR: "+input.strip())
-        # pass to link processor
-        canPhysicalLayerGridConnect.receiveString(input)
+        count = 0
+        count += physicalLayer.sendAll(sock, verbose=True)
+        count += physicalLayer.receiveAll(sock, verbose=True)
+        if count < 1:
+            precise_sleep(.01)
+        # else no sleep (socket already delayed)
+    print("Stopped receiving.")
 
 
 import threading  # noqa E402
-thread = threading.Thread(daemon=True, target=receiveLoop)
+thread = threading.Thread(daemon=True, target=socketLoop)
 
 
 def result(arg1, arg2=None, arg3=None, result=True) :
@@ -169,19 +205,33 @@ message = Message(MTI.Verify_NodeID_Number_Global,
 if settings['trace'] : print("SM: {}".format(message))
 canLink.sendMessage(message)
 
-# pull the received messages
-while True :
-    try :
-        received = readQueue.get(True, settings['timeout'])
-        if settings['trace'] : print("received: ", received)
-    except Empty:
-        break
+# physicalLayer.sendAll(sock, verbose=True)  # can't use port on 2 threads!
+# (moved to socketLoop)
 
+# pull the received messages
+# Commented since using verbose=True for receiveAll
+# while True :
+#     # physicalLayer.sendAll(sock, verbose=True)
+#     try :
+#         received = readQueue.get(True, settings['timeout'])
+#         if settings['trace']:
+#             print("received: ", received)
+#     except Empty:
+#         break
 # print the resulting node store contents
+print("\nWaiting for SNIP requests and responses...")
+precise_sleep(2)  # Wait for approximately all SNIP info to arrive.
 print("\nDiscovered nodes:")
 
 for node in remoteNodeStore.asArray() :
-    print(node, node.snip.manufacturerName, "/",
-          node.snip.userProvidedNodeName)
-
+    print(node, repr(node.snip.manufacturerName), "/",
+          repr(node.snip.userProvidedNodeName))
+    # 0-5: manufacturerName, modelName, hardwareVersion,
+    #   softwareVersion, userProvidedNodeName, userProvidedDescription
+    for i in range(6):
+        print('  [{}] = {}'.format(i, repr(node.snip.getStringN(i))))
 # this ends here, which takes the local node offline
+
+# For explicitness (to make this example match use in non-linear
+#   application), notify openlcb of disconnect:
+physicalLayer.physicalLayerDown()

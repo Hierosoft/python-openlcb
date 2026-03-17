@@ -23,30 +23,48 @@ Handles link quiesce/restart so that higher level services don't have to.
 '''
 
 from enum import Enum
-import logging
+from logging import getLogger
+from typing import (
+    Any,
+    Callable,
+    List,  # in case list doesn't support `[` in this Python version
+    Union,  # in case `|` doesn't support 'type' in this Python version
+)
 
+from openlcb.linklayer import LinkLayer
 from openlcb.message import Message
 from openlcb.mti import MTI
+from openlcb.nodeid import NodeID
+
+logger = getLogger(__name__)
 
 
-def defaultIgnoreReply(memo):
+def defaultIgnoreReply(memo: Union[Any, None]):
+    # ^ DatagramWriteMemo is the type, but that is not defined yet
     '''default handling of reply does nothing'''
     pass
 
 
 class DatagramWriteMemo:
-    '''Immutable memo carrying write request and two reply callbacks.
+    '''Immutable memo carrying write request and two reply callbacks
+    (In this context "Write" means sent to other node, even if
+    associated with a MemoryReadMemo).
     Source is automatically this node.
     '''
-    def __init__(self, destID, data, okReply=defaultIgnoreReply,
+    def __init__(self, destID: NodeID, data,
+                 okReply=defaultIgnoreReply,
                  rejectedReply=defaultIgnoreReply):
+        # type: (NodeID, bytearray, Callable[[Union[DatagramWriteMemo, None]], None], Callable[[Union[DatagramWriteMemo, None]], None]) -> None  # noqa: E501
+        assert isinstance(destID, NodeID)
         self.destID = destID
+        # NOTE: No srcID since always from this node ("Write" means send
+        #   to other node, even if carrying a memory read request)
         if not isinstance(data, bytearray):
             raise TypeError("Expected bytearray (formerly list[int]), got {}"
                             .format(type(data).__name__))
-        self.data = data
-        self.okReply = okReply
-        self.rejectedReply = rejectedReply
+        self.data: bytearray = data
+        self.okReply: Callable[[Union[DatagramWriteMemo, None]], None] = okReply  # noqa: E501
+        self.rejectedReply: Callable[[Union[DatagramWriteMemo, None]], None] = rejectedReply  # noqa: E501
 
     def __eq__(lhs, rhs):
         if lhs.destID != rhs.destID:
@@ -57,12 +75,16 @@ class DatagramWriteMemo:
 
 
 class DatagramReadMemo:
-    '''Immutable memo carrying read result.
+    '''Immutable memo carrying read result
+    (In this context "Read" means received from other node,
+    *not* associated with a MemoryReadMemo which, however, may be what
+    the sender is doing, but in that context "Read" means something
+    different).
     Destination of operations is automatically this node.
     '''
-    def __init__(self, srcID, data):
-        self.srcID = srcID
-        self.data = data
+    def __init__(self, srcID: NodeID, data: bytearray):
+        self.srcID: NodeID = srcID
+        self.data: bytearray = data
 
     def __eq__(lhs, rhs):
         if lhs.srcID != rhs.srcID:
@@ -92,18 +114,18 @@ class DatagramService:
 
         Unrecognized    = 0xFF  # Not formally assigned
 
-    def __init__(self, linkLayer):
-        self.linkLayer = linkLayer
-        self.quiesced = False
-        self.currentOutstandingMemo = None
-        self.pendingWriteMemos = []
-        self.listeners = []
+    def __init__(self, linkLayer: LinkLayer):
+        self.linkLayer: LinkLayer = linkLayer
+        self.quiesced: bool = False
+        self.currentOutstandingMemo: Union[DatagramWriteMemo, None] = None  # noqa: E501
+        self.pendingWriteMemos: List[DatagramWriteMemo] = []
+        self._datagramReceivedListeners: List[Callable[[DatagramReadMemo], bool]] = []  # noqa: E501
 
-    def datagramType(self, data):
+    def datagramType(self, data: Union[bytearray, List[int]]):
         """Determine the protocol type of the content of the datagram.
 
         Args:
-            data (list[int]): datagram payload
+            data (bytearray): datagram payload
 
         Returns:
             DatagramService.ProtocolID: A detected protocol ID, or
@@ -123,15 +145,16 @@ class DatagramService:
         else:
             return DatagramService.ProtocolID.Unrecognized
 
-    def checkDestID(self, message, nodeID):
+    def checkDestID(self, message, nodeID: NodeID):
         '''check whether a message is addressed to a specific nodeID
 
         Returns:
             bool: Global messages return False: Not specifically addressed
         '''
+        assert isinstance(nodeID, NodeID)
         return message.destination == nodeID
 
-    def sendDatagram(self, memo):
+    def sendDatagram(self, memo: DatagramWriteMemo):
         '''Queue a ``DatagramWriteMemo`` to send a datagram to another node
         on the network.
         '''
@@ -143,14 +166,15 @@ class DatagramService:
         if len(self.pendingWriteMemos) == 1:
             self.sendDatagramMessage(memo)
 
-    def sendDatagramMessage(self, memo):
+    def sendDatagramMessage(self, memo: DatagramWriteMemo):
         '''Send datagram message'''
         message = Message(MTI.Datagram, self.linkLayer.localNodeID,
                           memo.destID, memo.data)
         self.linkLayer.sendMessage(message)
         self.currentOutstandingMemo = memo
 
-    def registerDatagramReceivedListener(self, listener):
+    def registerDatagramReceivedListener(
+            self, listener: Callable[[DatagramReadMemo], bool]):
         '''Register a listener to be notified when each datagram arrives.
 
         One and only one listener should reply positively or negatively to the
@@ -160,11 +184,18 @@ class DatagramService:
             listener (Callable): A function that accepts a DatagramReadMemo
                 as an argument.
         '''
-        self.listeners.append(listener)
+        logger.debug(
+            "REGISTERING registerDatagramReceivedListener listener"
+            f" {len(self._datagramReceivedListeners) + 1}")
+        self._datagramReceivedListeners.append(listener)
 
-    def fireListeners(self, dg):  # internal for testing
+    def fireDatagramReceived(self, dg: DatagramReadMemo):  # internal for tests
+        """Fire *datagram received* listeners."""
+        logger.debug(
+            f"FIRING listeners for datagram from {dg.srcID},"
+            f" size={len(dg.data)}")
         replied = False
-        for listener in self.listeners:
+        for listener in self._datagramReceivedListeners:
             replied = listener(dg) or replied
             # ^ order matters on that: Need to always make the call
         # If none of the listeners replied by now, send a negative reply
@@ -172,8 +203,15 @@ class DatagramService:
             self.negativeReplyToDatagram(dg, 0x1042)
             # "Not implemented, datagram type unknown" - permanent error
 
-    def process(self, message):
+    def process(self, message: Message):
         '''Processor entry point.
+        Args:
+            message (Message): Message that could be from anywhere,
+                internal or from the network, since this method is
+                typically called by CanLink's fireMessageReceived (If
+                registered by instantiating DatagramService
+                automatically using OpenLCBNetwork or calling
+                canLink.registerMessageReceivedListener manually).
 
         Returns:
             bool: Always False; a datagram doesn't mutate the node, it's the
@@ -196,21 +234,21 @@ class DatagramService:
             self.handleLinkRestarted(message)
         return False
 
-    def handleDatagram(self, message):
+    def handleDatagram(self, message: Message):
         '''create a read memo and pass to listeners'''
         memo = DatagramReadMemo(message.source, message.data)
-        self.fireListeners(memo)
+        self.fireDatagramReceived(memo)
         # ^ destination listener calls back to
         #   positiveReplyToDatagram/negativeReplyToDatagram before returning
 
-    def handleDatagramReceivedOK(self, message):
+    def handleDatagramReceivedOK(self, message: Message):
         '''OK reply to write'''
         # match to the memo and remove from queue
-        memo = self.matchToWriteMemo(message)
+        memo = self.matchToWriteMemo(message)  # type: DatagramWriteMemo|None
 
         # check of tracking logic
         if self.currentOutstandingMemo != memo:
-            logging.error(
+            logger.error(
                 "Outstanding and replied-to memos don't match on OK reply"
             )
 
@@ -221,14 +259,14 @@ class DatagramService:
 
         self.sendNextDatagramFromQueue()
 
-    def handleDatagramRejected(self, message):
+    def handleDatagramRejected(self, message: Message):
         '''Not OK reply to write'''
         # match to the memo and remove from queue
         memo = self.matchToWriteMemo(message)
 
         # check of tracking logic
         if self.currentOutstandingMemo != memo:
-            logging.error(
+            logger.error(
                 "Outstanding and replied-to memos don't match on rejected"
             )
 
@@ -239,18 +277,18 @@ class DatagramService:
 
         self.sendNextDatagramFromQueue()
 
-    def handleLinkQuiesce(self, message):
+    def handleLinkQuiesce(self, message: Message):
         '''Link quiesced before outage: stop operation'''
         self.quiesced = True
 
-    def handleLinkRestarted(self, message):
+    def handleLinkRestarted(self, message: Message):
         '''Link restarted after outage:
         if write datagram(s) pending reply, resend them
         '''
         self.quiesced = False
         if self.currentOutstandingMemo is not None:
             # there's a current outstanding memo to repeat
-            logging.info("Retrying datagram after restart")
+            logger.info("Retrying datagram after restart")
             self.sendDatagramMessage(self.currentOutstandingMemo)
             return
         else:
@@ -258,7 +296,7 @@ class DatagramService:
             if len(self.pendingWriteMemos) > 0:
                 self.sendNextDatagramFromQueue()
 
-    def matchToWriteMemo(self, message):
+    def matchToWriteMemo(self, message: Message):
         for memo in self.pendingWriteMemos:
             if memo.destID != message.source:
                 continue  # keep looking
@@ -269,8 +307,8 @@ class DatagramService:
             return memo
 
         # did not find one
-        logging.error("Did not match memo to message {}"
-                      "".format(message))
+        logger.error("Did not match memo to message {}"
+                     .format(message))
         return None  # this will prevent further processing
 
     def sendNextDatagramFromQueue(self):
@@ -280,7 +318,7 @@ class DatagramService:
             memo = self.pendingWriteMemos[0]
             self.sendDatagramMessage(memo)
 
-    def positiveReplyToDatagram(self, dg, flags=0):
+    def positiveReplyToDatagram(self, dg: DatagramReadMemo, flags: int = 0):
         """Send a positive reply to a received datagram.
 
         Args:
@@ -292,7 +330,7 @@ class DatagramService:
                           dg.srcID, bytearray([flags]))
         self.linkLayer.sendMessage(message)
 
-    def negativeReplyToDatagram(self, dg, err):
+    def negativeReplyToDatagram(self, dg: DatagramReadMemo, err: int):
         """Send a negative reply to a received datagram.
 
         Args:

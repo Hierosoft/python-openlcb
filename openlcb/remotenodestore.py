@@ -1,13 +1,15 @@
 '''
 Store for seen remote (not implemented here) nodes
 '''
-
-from openlcb.nodestore import NodeStore
+# from logging import getLogger
 
 from openlcb.message import Message
 from openlcb.mti import MTI
 from openlcb.node import Node
 from openlcb.nodeid import NodeID
+from openlcb.nodestore import NodeStore
+
+# logger = getLogger(__name__)
 
 
 class RemoteNodeStore(NodeStore) :
@@ -24,7 +26,7 @@ class RemoteNodeStore(NodeStore) :
         '''
         return "RemoteNodeStore w {}".format(self.nodes.count)
 
-    def checkForNewNode(self, message) :
+    def checkForNewNode(self, message: Message) :
         '''Check if the message is to a new node.
         Returns:
             bool: True if the message is to a new node, so that
@@ -43,7 +45,7 @@ class RemoteNodeStore(NodeStore) :
             return False
         return True
 
-    def createNewRemoteNode(self, message) :
+    def createNewRemoteNode(self, message: Message) :
         '''
         A new node was found by checkForNewNode, so this
         mutates the store to add this.  This should only be called
@@ -61,12 +63,17 @@ class RemoteNodeStore(NodeStore) :
         for processor in self.processors :
             processor.process(new_message, node)
 
-    def processMessageFromLinkLayer(self, message) :
+    def processMessageFromLinkLayer(self, message: Message) :
         '''Process an incoming message
         across all the nodes in the remote node store.
 
         Args:
             message (Message): Incoming message to process
+
+        Raises:
+            IndexError: (raised by process via invokeProcessorsOnNodes)
+                If source or destination is wrong (See NodeStore or
+                RemoteNodeStore `process` method documentation).
 
         Returns:
             bool: True is any of the nodes indicated a significant change.

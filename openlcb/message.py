@@ -2,6 +2,11 @@
 based on Message.swift
 Created by Bob Jacobsen on 6/1/22.
 '''
+from typing import Union
+
+from openlcb import emit_cast
+from openlcb.mti import MTI
+from openlcb.nodeid import NodeID
 
 
 class Message:
@@ -15,20 +20,35 @@ class Message:
             empty bytearray().
     """
 
-    def __init__(self, mti, source, destination, data=bytearray()):
+    def __init__(self, mti, source: NodeID,
+                 destination: Union[NodeID, None], data=None):
         # For args, see class docstring.
+        if data is None:
+            data = bytearray()
         self.mti = mti
         self.source = source
-        self.destination = destination
+        self.destination = destination  # Union[NodeID, None]
+        self.originalMTI = None  # type: Union[int, None]
+        self.assertTypes()
         if not isinstance(data, bytearray):
             raise TypeError("Expected bytearray, got {}"
                             .format(type(data).__name__))
         self.data = data
 
-    def isGlobal(self):
+    def assertTypes(self):
+        assert isinstance(self.mti, MTI)
+        assert isinstance(self.source, NodeID), \
+            "expected NodeID, got {}".format(emit_cast(self.source))
+        if self.destination is not None:
+            assert isinstance(self.destination, NodeID), \
+                "expected NodeID, got {}".format(emit_cast(self.destination))
+        # allowed to be None. See linkUp in tcplink.py
+        # TODO: Only allow in certain conditions?
+
+    def isGlobal(self) -> bool:
         return self.mti.value & 0x0008 == 0
 
-    def isAddressed(self):
+    def isAddressed(self) -> bool:
         return self.mti.value & 0x0008 != 0
 
     def __str__(self):
@@ -37,12 +57,19 @@ class Message:
     def __eq__(lhs, rhs):
         if rhs is None:
             return False
+        lhs.assertTypes()
+        rhs.assertTypes()
         if rhs.mti != lhs.mti:
             return False
         if rhs.source != lhs.source:
             return False
         if rhs.destination != lhs.destination:
             return False
+        if not isinstance(rhs.data, type(lhs.data)):
+            raise TypeError(
+                "Tried to compare a {} to a {}"
+                " (expected bytearray for Message().data)"
+                .format(type(lhs.data).__name__, type(rhs.data).__name__))
         if rhs.data != lhs.data:
             return False
         return True

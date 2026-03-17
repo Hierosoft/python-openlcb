@@ -5,15 +5,31 @@ from openlcb.localnodeprocessor import LocalNodeProcessor
 from openlcb.linklayer import LinkLayer
 from openlcb.mti import MTI
 from openlcb.message import Message
+from openlcb.physicallayer import PhysicalLayer
 from openlcb.pip import PIP
 from openlcb.node import Node
+
+
+class MockPhysicalLayer(PhysicalLayer):
+    pass
 
 
 class LinkMockLayer(LinkLayer):
     sentMessages = []
 
-    def sendMessage(self, message):
-        LinkMockLayer.sentMessages.append(message)
+    class State:
+        Initial = 0
+        Disconnected = 1
+        Permitted = 2
+
+    DisconnectedState = State.Disconnected
+
+    def sendMessage(self, msg, verbose=False):
+        LinkMockLayer.sentMessages.append(msg)
+
+    def _onStateChanged(self, oldState, newState):
+        print(f"[TcpLink] _onStateChanged from {oldState} to {newState}"
+              " (nothing to clean up since LinkMockLayer)")
 
 
 class TestLocalNodeProcessorClass(unittest.TestCase):
@@ -21,7 +37,10 @@ class TestLocalNodeProcessorClass(unittest.TestCase):
     def setUp(self):
         self.node21 = Node(NodeID(21))
         LinkMockLayer.sentMessages = []
-        self.processor = LocalNodeProcessor(LinkMockLayer(NodeID(100)))
+        self.processor = LocalNodeProcessor(
+            LinkMockLayer(MockPhysicalLayer(), NodeID(100)),
+            self.node21,
+        )
 
     def testLinkUp(self):
         self.node21.state = Node.State.Uninitialized

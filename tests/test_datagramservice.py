@@ -9,18 +9,36 @@ from openlcb.linklayer import LinkLayer
 from openlcb.mti import MTI
 from openlcb.nodeid import NodeID
 from openlcb.message import Message
+from openlcb.physicallayer import PhysicalLayer
+
+
+class MockPhysicalLayer(PhysicalLayer):
+    pass
 
 
 class LinkMockLayer(LinkLayer):
     sentMessages = []
 
-    def sendMessage(self, message):
-        LinkMockLayer.sentMessages.append(message)
+    class State:
+        Initial = 0
+        Disconnected = 1
+        Permitted = 2
+
+    DisconnectedState = State.Disconnected
+
+    def sendMessage(self, msg, verbose=False):
+        LinkMockLayer.sentMessages.append(msg)
+
+    def _onStateChanged(self, oldState, newState):
+        print(f"[TcpLink] _onStateChanged from {oldState} to {newState}"
+              " (nothing to clean up since LinkMockLayer)")
 
 
 class DatagramServiceTest(unittest.TestCase):
     def setUp(self):
-        self.service = DatagramService(LinkMockLayer(NodeID(12)))
+        self.service = DatagramService(
+            LinkMockLayer(MockPhysicalLayer(), NodeID(12))
+        )
         LinkMockLayer.sentMessages = []
         self.received = False
         self.readMemos = []
@@ -31,13 +49,13 @@ class DatagramServiceTest(unittest.TestCase):
         self.readMemos.append(msg)
         return True
 
-    def testFireListeners(self):
+    def testFireDatagramReceived(self):
         msg = DatagramReadMemo(NodeID(12), bytearray())
         receiver = self.receiveListener
 
         self.service.registerDatagramReceivedListener(receiver)
 
-        self.service.fireListeners(msg)
+        self.service.fireDatagramReceived(msg)
 
         self.assertTrue(self.received)
 
@@ -166,6 +184,14 @@ class DatagramServiceTest(unittest.TestCase):
 
         # check message came through
         self.assertEqual(len(LinkMockLayer.sentMessages), 1)
+
+    def testEnum(self):
+        usedValues = set()
+        # ensure values are unique:
+        for entry in DatagramService.ProtocolID:
+            self.assertNotIn(entry.value, usedValues)
+            usedValues.add(entry.value)
+            # print('{} = {}'.format(entry.name, entry.value))
 
 
 if __name__ == '__main__':

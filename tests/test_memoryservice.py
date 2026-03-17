@@ -4,33 +4,63 @@ import struct
 import sys
 import unittest
 
+from logging import getLogger
+
+from openlcb.physicallayer import PhysicalLayer
+if __name__ == "__main__":
+    logger = getLogger(__file__)
+else:
+    logger = getLogger(__name__)
+
 if __name__ == "__main__":
     # Allow importing repo copy of openlcb if running tests from repo manually.
     TESTS_DIR = os.path.dirname(os.path.realpath(__file__))
     REPO_DIR = os.path.dirname(TESTS_DIR)
-    sys.path.insert(0, REPO_DIR)
+    if os.path.isfile(os.path.join(REPO_DIR, "openlcb", "__init__.py")):
+        sys.path.insert(0, REPO_DIR)
+    else:
+        logger.warning(
+            "Reverting to installed copy if present (or imports will fail),"
+            " since test running from repo but could not find openlcb in {}."
+            .format(repr(REPO_DIR)))
 
-from openlcb.nodeid import NodeID
-from openlcb.linklayer import LinkLayer
-from openlcb.mti import MTI
-from openlcb.message import Message
-from openlcb.memoryservice import (
+from openlcb.nodeid import NodeID  # noqa: E402
+from openlcb.linklayer import LinkLayer  # noqa: E402
+from openlcb.mti import MTI  # noqa: E402
+from openlcb.message import Message  # noqa: E402
+from openlcb.memoryservice import (  # noqa: E402
     MemoryReadMemo,
     MemoryWriteMemo,
     MemoryService,
 )
-from openlcb.datagramservice import (
+from openlcb.datagramservice import (  # noqa: E402
     # DatagramWriteMemo,
     # DatagramReadMemo,
     DatagramService,
 )
 
 
+class MockPhysicalLayer(PhysicalLayer):
+    pass
+
+
 class LinkMockLayer(LinkLayer):
+
+    class State:
+        Initial = 0
+        Disconnected = 1
+        Permitted = 2
+
+    DisconnectedState = State.Disconnected
+
     sentMessages = []
 
-    def sendMessage(self, message):
-        LinkMockLayer.sentMessages.append(message)
+    def sendMessage(self, msg, verbose=False):
+        LinkMockLayer.sentMessages.append(msg)
+
+    def _onStateChanged(self, oldState, newState):
+        print(f"State changed from {oldState} to {newState}"
+              " (nothing to clean up since LinkMockLayer).")
 
 
 class TestMemoryServiceClass(unittest.TestCase):
@@ -45,7 +75,9 @@ class TestMemoryServiceClass(unittest.TestCase):
         LinkMockLayer.sentMessages = []
         self.returnedMemoryReadMemo = []
         self.returnedMemoryWriteMemo = []
-        self.dService = DatagramService(LinkMockLayer(NodeID(12)))
+        self.dService = DatagramService(
+            LinkMockLayer(MockPhysicalLayer(), NodeID(12))
+        )
         self.mService = MemoryService(self.dService)
 
     def testReturnCyrillicStrings(self):

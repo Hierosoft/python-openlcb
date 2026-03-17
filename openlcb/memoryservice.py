@@ -5,7 +5,7 @@ Created by Bob Jacobsen on 6/1/22.
 
 TODO: Read requests are serialized, but write requests are not yet
 
-Datagram retry handles the link being queisced/restarted, so it's not
+Datagram retry handles the link being quiesced/restarted, so it's not
 explicitly handled here.
 
 Does memory read and write requests.
@@ -21,12 +21,39 @@ To do memory read:
 - Wait for either dataReply or rejectedReply call back.
 '''
 
-import logging
+from enum import Enum
+from logging import getLogger
+from typing import (
+    Callable,
+    List,  # in case list doesn't support `[` in this Python version
+    Union,  # in case `|` doesn't support 'type' in this Python version
+)
+
 from openlcb.datagramservice import (
     # DatagramReadMemo,
+    DatagramReadMemo,
     DatagramWriteMemo,
     DatagramService,
 )
+
+logger = getLogger(__name__)
+
+
+class MemorySpace(Enum):
+    """The memory space to read.
+    In practice, XMLDataProcessor (or a non-XML parser if necessary)
+    uses this to track what data type and format is to be assumed in a
+    received Message. It is assumed to have the same space as the
+    request (MemoryReadMemo).
+
+    Attributes:
+        Uninitialized: No data (memory read request response) is expected.
+        CDI: The data expected from the memory read is CDI XML.
+        FDI: The data expected from the memory read is FDI XML.
+    """
+    Uninitialized = -1
+    CDI = 0xFF  # decodes to 0x03
+    FDI = 0xFA
 
 
 class MemoryReadMemo:
@@ -38,17 +65,19 @@ class MemoryReadMemo:
         space (int): Encoded memory space identifier, where values:
             - 0xFF to 0xFD are special spaces, and only the least significant
               2 bits are relevant.
+              - 0xFF is CDI (decodes to 0x03)
             - 0x00 to 0xFC represent standard memory spaces directly.
+              - 0xFA is FDI
         address (int): The address in memory where the read operation
             should be performed.
         rejectedReply (Callable[MemoryReadMemo]): Callback function to handle
             rejected read responses.
             The callback will receive this MemoryReadMemo instance.
-        dataReply (Callable[MemoryReadMemo]): Callback function to handle successful
-            read responses (called after okReply which is handled by
-            MemoryService). The callback will receive the data read from
-            memory. This is passed as a MemoryReadMemo object with the
-            data member set
+        dataReply (Callable[MemoryReadMemo]): Callback function to
+            handle successful read responses (called after okReply which
+            is handled by MemoryService). The callback will receive the
+            data read from memory. This is passed as a MemoryReadMemo
+            object with the data member set.
 
     Attributes:
         data(bytearray): The data that was read.
@@ -106,11 +135,11 @@ class MemoryService:
         service (DatagramService): See DatagramService.
     """
 
-    def __init__(self, service):
-        self.service = service
-        self.readMemos = []
-        self.writeMemos = []
-        self.spaceLengthCallback = None
+    def __init__(self, service: DatagramService):
+        self.service: DatagramService = service
+        self.readMemos: List[MemoryReadMemo] = []
+        self.writeMemos: List[MemoryWriteMemo] = []
+        self.spaceLengthCallback: Union[Callable[[int], None], None] = None
 
         # register to DatagramService to hear arriving datagrams
         self.service.registerDatagramReceivedListener(
@@ -141,6 +170,7 @@ class MemoryService:
         return (True, space)
 
     def requestMemoryRead(self, memo):
+        # type: (MemoryReadMemo) -> None
         '''Request a read operation start.
 
         - If okReply in the memo is triggered, it will be followed by a
@@ -158,6 +188,7 @@ class MemoryService:
             self.requestMemoryReadNext(memo)
 
     def requestMemoryReadNext(self, memo):
+        # type: (MemoryReadMemo) -> None
         """send the read request
 
         Args:
@@ -178,17 +209,20 @@ class MemoryService:
         if byte6:
             data.extend([(memo.space & 0xFF)])
         data.extend([memo.size])
+        logger.debug(
+            "[requestMemoryReadNext] creating DatagramWriteMemo"
+            f" to destID={memo.nodeID} with data={list(data)}")
         dgWriteMemo = DatagramWriteMemo(memo.nodeID, data,
                                         self.receivedOkReplyToWrite)
         self.service.sendDatagram(dgWriteMemo)
 
-    def receivedOkReplyToWrite(self, memo):
+    def receivedOkReplyToWrite(self, memo: Union[DatagramWriteMemo, None]):
         '''Wait for following response to be returned via listener.
         This is normal.
         '''
         pass
 
-    def datagramReceivedListener(self, dmemo):
+    def datagramReceivedListener(self, dmemo: DatagramReadMemo) -> bool:
         '''Process a datagram.
 
         Sends the positive reply and returns true if this is from our service.
@@ -200,8 +234,8 @@ class MemoryService:
 
         # datagram must has a command value
         if len(dmemo.data) < 2:
-            logging.error("Memory service datagram too short:"
-                          " {}".format(dmemo.data.count))
+            logger.error("Memory service datagram too short: {}"
+                         .format(dmemo.data.count))
             # TODO: ^ more necessary to show same output as Swift? Formerly:
             #   " \(dmemo.data.count, privacy: .public)")
             self.service.negativeReplyToDatagram(dmemo, 0x1041)
@@ -217,7 +251,7 @@ class MemoryService:
             # memo, then reply
             for index in range(0, len(self.readMemos)):
                 if self.readMemos[index].nodeID == dmemo.srcID:
-                    tMemoryMemo = self.readMemos[index]
+                    tMemoryMemo = self.readMemos[index]  # type: MemoryReadMemo
                     del self.readMemos[index]
                     # decode type of operation, hence offset for start of
                     # data
@@ -232,6 +266,10 @@ class MemoryService:
                     # fill data for call-back to requestor
                     if len(dmemo.data) > offset:
                         tMemoryMemo.data = dmemo.data[offset:]
+                        logger.debug(
+                            f"[datagramReceivedListener] got read reply"
+                            f" data={list(tMemoryMemo.data)} offset={offset}"
+                            f", requested @{tMemoryMemo.address}")
 
                     # check for read or read error reply
                     if (dmemo.data[1] & 0x08 == 0):
@@ -246,17 +284,17 @@ class MemoryService:
             # memo, then reply
             for index in range(0, len(self.writeMemos)):
                 if self.writeMemos[index].nodeID == dmemo.srcID:
-                    tMemoryMemo = self.writeMemos[index]
+                    writeMemo = self.writeMemos[index]  # type: MemoryWriteMemo
                     del self.writeMemos[index]
                     if dmemo.data[1] & 0x08 == 0 :
-                        tMemoryMemo.okReply(tMemoryMemo)
+                        writeMemo.okReply(writeMemo)
                     else:
-                        tMemoryMemo.rejectedReply(tMemoryMemo)
+                        writeMemo.rejectedReply(writeMemo)
                     break
         elif dmemo.data[1] in (0x86, 0x87):  # Address Space Information Reply
             if self.spaceLengthCallback is None:
-                logging.error("Address Space Information Reply"
-                              " received with no callback")
+                logger.error("Address Space Information Reply"
+                             " received with no callback")
                 return True
             if dmemo.data[1] == 0x86:
                 # not present
@@ -271,12 +309,12 @@ class MemoryService:
             self.spaceLengthCallback(address)
             self.spaceLengthCallback = None
         else:
-            logging.error("Did not expect reply of type 0x{:02X}"
-                          "".format(dmemo.data[1]))
+            logger.error("Did not expect reply of type 0x{:02X}"
+                         .format(dmemo.data[1]))
 
         return True
 
-    def requestMemoryWrite(self, memo):
+    def requestMemoryWrite(self, memo: MemoryWriteMemo):
         """Request memory write.
 
         Args:
@@ -310,8 +348,8 @@ class MemoryService:
             space (int): Encoded memory space identifier. This can be a
                 value within a specific range, as defined in the
                 `spaceDecode` method.
-            nodeID (NodeID): ID of remote node from which the memory space length is
-                requested.
+            nodeID (NodeID): ID of remote node from which the memory
+                space length is requested.
             callback (Callable): Callback function that will receive the
                 response. The callback will receive an integer address
                 as a parameter, representing the address of the
@@ -321,17 +359,21 @@ class MemoryService:
             None
         '''
         if self.spaceLengthCallback is not None:
-            logging.error("Overlapping calls to requestSpaceLength")
+            logger.error("Overlapping calls to requestSpaceLength")
             return
         self.spaceLengthCallback = callback
         # send request
         dgReqMemo = DatagramWriteMemo(
             nodeID,
-            [DatagramService.ProtocolID.MemoryOperation.value, 0x84, space]
+            bytearray([
+                DatagramService.ProtocolID.MemoryOperation.value,
+                0x84,
+                space
+            ])
         )
         self.service.sendDatagram(dgReqMemo)
 
-    def arrayToInt(self, data):
+    def arrayToInt(self, data: Union[bytes, bytearray, List[int]]) -> int:
         """Convert an array in MSB-first order to an integer
 
         Args:
@@ -420,7 +462,7 @@ class MemoryService:
                 ((value >> 24) & 0xff), ((value >> 16) & 0xff),
                 ((value >> 8) & 0xff), (value & 0xff)
             ])
-        logging.error("integer length {} is not implemented.".format(length))
+        logger.error("integer length {} is not implemented.".format(length))
         return bytearray()
 
     @staticmethod
@@ -441,7 +483,7 @@ class MemoryService:
         contentPart = bytearray(strToUInt8[:byteCount])
         if len(contentPart) >= length:
             if len(contentPart) > length:
-                logging.warning(
+                logger.warning(
                     "MemoryService stringToArray: len(value)=={}"
                     " exceeds length {}".format(len(value), length))
                 # TODO: Truncate (or is any length ok for the caller)?

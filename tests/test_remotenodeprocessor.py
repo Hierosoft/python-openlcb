@@ -1,5 +1,6 @@
 import unittest
 
+from openlcb.physicallayer import PhysicalLayer
 from openlcb.remotenodeprocessor import RemoteNodeProcessor
 
 from openlcb.canbus.canlink import CanLink
@@ -11,11 +12,23 @@ from openlcb.mti import MTI
 from openlcb.pip import PIP
 
 
+class MockPhysicalLayer(PhysicalLayer):
+    def physicalLayerDown(self):
+        # Usually this would trigger LinkLayerDown using a CanFrame,
+        #   but limit test to RemoteNodeProcessor as much as possible
+        pass
+
+
 class TesRemoteNodeProcessorClass(unittest.TestCase):
 
     def setUp(self) :
         self.node21 = Node(NodeID(21))
-        self.processor = RemoteNodeProcessor(CanLink(NodeID(100)))
+        self.physicalLayer = MockPhysicalLayer()
+        self.canLink = CanLink(self.physicalLayer, NodeID(100))
+        self.processor = RemoteNodeProcessor(self.canLink)
+
+    def tearDown(self):
+        self.physicalLayer.physicalLayerDown()
 
     def testInitializationComplete(self) :
         # not related to node
@@ -156,7 +169,8 @@ class TesRemoteNodeProcessorClass(unittest.TestCase):
 
     def testNewNodeSeen(self) :
         self.node21.state = Node.State.Initialized
-        msg = Message(MTI.New_Node_Seen, NodeID(21), bytearray())
+        msg = Message(MTI.New_Node_Seen, NodeID(21), NodeID(0),
+                      data=bytearray())
         self.processor.process(msg, self.node21)
 
 

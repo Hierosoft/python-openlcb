@@ -11,7 +11,7 @@ from tests.test_node import *
 
 from tests.test_canframe import *
 
-from tests.test_physicallayer import *
+# from tests.test_physicallayer import *  # commented: test was empty file
 from tests.test_canphysicallayer import *
 from tests.test_canphysicallayergridconnect import *
 

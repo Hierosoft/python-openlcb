@@ -1,5 +1,6 @@
 
 import logging
+from typing import Union
 
 
 class SNIP:
@@ -27,12 +28,18 @@ class SNIP:
             location.
     '''
 
-    def __init__(self, mfgName="",
-                 model="",
-                 hVersion="",
-                 sVersion="",
-                 uName="",
-                 uDesc=""):
+    def __init__(self, mfgName: str = "",
+                 model: str = "",
+                 hVersion: str = "",
+                 sVersion: str = "",
+                 uName: str = "",
+                 uDesc: str = ""):
+        assert isinstance(mfgName, str)
+        assert isinstance(model, str)
+        assert isinstance(hVersion, str)
+        assert isinstance(sVersion, str)
+        assert isinstance(uName, str)
+        assert isinstance(uDesc, str)
         self.manufacturerName = mfgName
         self.modelName = model
         self.hardwareVersion = hVersion
@@ -46,12 +53,11 @@ class SNIP:
         self.updateSnipDataFromStrings()
         self.index = 0
 
-    # OLCB Strings are fixed length null terminated.
+    # OpenLCB Strings are fixed length null terminated.
     # We don't (yet) support later versions with e.g. larger strings, etc.
 
-    def getStringN(self, n):
-        '''
-        Get the desired string by string number in the data.
+    def getStringN(self, n: int) -> str:
+        '''Get the desired string by string number in the data.
 
         Args:
             n (int):  0-based number of the String
@@ -74,38 +80,40 @@ class SNIP:
             return ""
         return self.getString(start, length)
 
-    def findString(self, n):
-        '''
-        Find start index of the nth string.
-
-        Zero indexed.
+    def findString(self, n: int) -> int:
+        '''Find start index of the nth string.
         Is aware of the 2nd version code byte.
-        Logs and returns -1 if the string isn't found within the buffer
+
+        Args:
+            n (int): Zero indexed.
+        Returns:
+            int: 0, or logs and returns -1 if the string isn't found
+                within the buffer
         '''
 
         if n == 0:
             return 1  # first one is automatic
-        retval = 1
-        stringCount = 0
+        currentStart = 1
+        stringsFound = 0
         # scan over the buffer
         for i in range(1, 252):
             # checking for an end-of-string mark
             if self.data[i] == 0:
                 # found one - this ends the stringCount string
                 # if that's the request, return start
-                if stringCount == n:
-                    return retval
+                if stringsFound == n:
+                    return currentStart
                 # if not, the _next_ character starts the next string
-                retval = i+1
-                stringCount += 1
+                currentStart = i+1
+                stringsFound += 1
                 # special case for the 5th string
-                if stringCount == 4:
+                if stringsFound == 4:
                     i += 1
-                    retval += 1
+                    currentStart += 1
         # fell out without finding
         return 0
 
-    def getString(self, first, maxLength):
+    def getString(self, first: int, maxLength: int) -> str:
         """Get the string at index `first`
         ending with either a null or having maxLength,
         whichever comes first.
@@ -124,10 +132,8 @@ class SNIP:
         # terminate_i should point at the first zero or exclusive end
         return self.data[first:terminate_i].decode("utf-8")
 
-
-    def addData(self, in_data):
-        '''
-        Add additional bytes of SNIP data
+    def addData(self, in_data: Union[bytearray, bytes]):
+        '''Add additional bytes of SNIP data
         '''
         for i in range(0, len(in_data)):
             # protect against overlapping requests causing an overflow
@@ -139,8 +145,7 @@ class SNIP:
         self.updateStringsFromSnipData()
 
     def updateStringsFromSnipData(self):
-        '''
-        Load strings from current SNIP accumulated data
+        '''Load strings from current SNIP accumulated data
         '''
         self.manufacturerName = self.getStringN(0)
         self.modelName = self.getStringN(1)
@@ -151,8 +156,7 @@ class SNIP:
         self.userProvidedDescription = self.getStringN(5)
 
     def updateSnipDataFromStrings(self):
-        '''
-        Store strings into SNIP accumulated data
+        '''Store strings into SNIP accumulated data
         '''
         # clear string
         self.data = bytearray([0]*253)
@@ -168,7 +172,7 @@ class SNIP:
                 self.data[self.index] = mfgArray[i]
                 self.index += 1
 
-        self.data[self.index] = 0
+        self.data[self.index] = 0  # null terminator
         self.index += 1
 
         # mdlArray = Data(modelName.utf8.prefix(40))
@@ -178,7 +182,7 @@ class SNIP:
                 self.data[self.index] = mdlArray[i]
                 self.index += 1
 
-        self.data[self.index] = 0
+        self.data[self.index] = 0  # null terminator
         self.index += 1
 
         # hdvArray = Data(hardwareVersion.utf8.prefix(20))
@@ -188,7 +192,7 @@ class SNIP:
                 self.data[self.index] = hdvArray[i]
                 self.index += 1
 
-        self.data[self.index] = 0
+        self.data[self.index] = 0  # null terminator
         self.index += 1
 
         # sdvArray = Data(softwareVersion.utf8.prefix(20))
@@ -198,10 +202,11 @@ class SNIP:
                 self.data[self.index] = sdvArray[i]
                 self.index += 1
 
-        self.data[self.index] = 0
+        self.data[self.index] = 0  # null terminator
         self.index += 1
 
         self.data[self.index] = 2
+        # TODO: ^ comment what 2 means
         self.index += 1
 
         # upnArray = Data(userProvidedNodeName.utf8.prefix(62))
@@ -211,7 +216,7 @@ class SNIP:
                 self.data[self.index] = upnArray[i]
                 self.index += 1
 
-        self.data[self.index] = 0
+        self.data[self.index] = 0  # null terminator
         self.index += 1
 
         # updArray = Data(userProvidedDescription.utf8.prefix(63))
@@ -222,10 +227,10 @@ class SNIP:
                 self.data[self.index] = updArray[i]
                 self.index += 1
 
-        self.data[self.index] = 0
+        self.data[self.index] = 0  # null terminator
         self.index += 1
 
-    def returnStrings(self):
+    def returnStrings(self) -> bytearray:
         '''copy out until the 6th zero byte'''
         stop = self.findString(6)
         retval = bytearray([0]*stop)

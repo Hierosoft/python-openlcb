@@ -1,4 +1,16 @@
+# from logging import getLogger
+from typing import (
+    Dict,
+    List,  # in case list doesn't support `[` in this Python version
+    Union,  # in case `|` doesn't support 'type' in this Python version
+)
+
+from openlcb.message import Message
+from openlcb.node import Node
 from openlcb.nodeid import NodeID
+from openlcb.processor import Processor
+
+# logger = getLogger(__name__)
 
 
 class NodeStore :
@@ -10,13 +22,13 @@ class NodeStore :
     '''
 
     def __init__(self) :
-        self.byIdMap = {}
-        self.nodes = []
-        self.processors = []
+        self.byIdMap: Dict[NodeID, Node] = {}
+        self.nodes: List[Node] = []
+        self.processors: List[Processor] = []
 
     # Store a new node or replace an existing stored node
     # - Parameter node: new Node content
-    def store(self, node) :
+    def store(self, node: Node) :
         self.byIdMap[node.id] = node
         self.nodes.append(node)
 
@@ -26,10 +38,10 @@ class NodeStore :
         self.nodes.sort(key=lambda x: x.snip.userProvidedNodeName,
                         reverse=True)
 
-    def isPresent(self, nodeID) :
+    def isPresent(self, nodeID: NodeID) -> bool:
         return self.byIdMap.get(nodeID) is not None
 
-    def asArray(self) :
+    def asArray(self) -> List[Node]:
         return [self.byIdMap[i] for i in self.byIdMap]
 
     # Retrieve a Node's content from the store
@@ -37,10 +49,10 @@ class NodeStore :
     #     userProvidedDescription: string to match SNIP content
     #     nodeID: for direct lookup
     # - Returns: None if the there's no match
-    def lookup(self, parm) :
+    def lookup(self, parm: Union[NodeID, str]) -> Union[Node, None]:
         if isinstance(parm, NodeID) :
             if parm not in self.byIdMap :
-                self.byIdMap[parm] = None
+                self.byIdMap[parm] = None  # TODO: delete line and return None?
             return self.byIdMap[parm]
         # assume parm is string
         for node in self.byIdMap.values() :
@@ -48,9 +60,20 @@ class NodeStore :
                 return node
         return None
 
-    # Process a message across all nodes
-    def invokeProcessorsOnNodes(self, message) :
-        publish = False  # has any processor returned True?
+    def invokeProcessorsOnNodes(self, message: Message) -> bool:
+        """Process a message across all nodes
+
+        Args:
+            message (Message): Any Message.
+
+        Raises:
+            IndexError: If source or destination is wrong (See NodeStore
+                or RemoteNodeStore `process` method documentation).
+
+        Returns:
+            bool: True if any processor returned True.
+        """
+        publish = False
         for processor in self.processors :
             for node in self.byIdMap.values() :
                 publish = processor.process(message, node) or publish  # always invoke Processor on node first  # noqa: E501

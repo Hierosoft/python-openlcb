@@ -18,12 +18,13 @@ if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-from openlcb.canbus.tcpsocket import TcpSocket
-from openlcb.canbus.canphysicallayergridconnect import (
+from openlcb import precise_sleep  # noqa: E402
+from openlcb.tcplink.tcpsocket import TcpSocket  # noqa: E402
+from openlcb.canbus.canphysicallayergridconnect import (  # noqa: E402
     CanPhysicalLayerGridConnect,
 )
-from openlcb.canbus.canframe import CanFrame
-from openlcb.canbus.controlframe import ControlFrame
+from openlcb.canbus.canframe import CanFrame  # noqa: E402
+from openlcb.canbus.controlframe import ControlFrame  # noqa: E402
 
 # specify connection information
 # region replaced by settings
@@ -31,34 +32,53 @@ from openlcb.canbus.controlframe import ControlFrame
 # port = 12021
 # endregion replaced by settings
 
-s = TcpSocket()
+sock = TcpSocket()
 # s.settimeout(30)
-s.connect(settings['host'], settings['port'])
+sock.connect(settings['host'], settings['port'])
 
 print("RR, SR are raw socket interface receive and send;"
       " RL, SL are link (frame) interface")
 
 
-def sendToSocket(string):
+def sendToSocket(frame: CanFrame):
+    string = frame.encodeAsString()
     print("   SR: {}".format(string.strip()))
-    s.send(string)
+    sock.sendString(string)
+    physicalLayer.onFrameSent(frame)
+
+
+def handleFrameSent(frame):
+    # No state to manage since no link layer
+    physicalLayer._sentFramesCount += 1
+
+
+def handleFrameReceived(frame):
+    # No state to manage since no link layer
+    pass
 
 
 def printFrame(frame):
     print("RL: {}".format(frame))
 
 
-canPhysicalLayerGridConnect = CanPhysicalLayerGridConnect(sendToSocket)
-canPhysicalLayerGridConnect.registerFrameReceivedListener(printFrame)
+physicalLayer = CanPhysicalLayerGridConnect()
+
+# NOTE: Normally the required handlers are set by link layer
+#   constructor, but this example doesn't use a link layer:
+physicalLayer.onFrameSent = handleFrameSent
+physicalLayer.onFrameReceived = handleFrameReceived
+
+physicalLayer.registerFrameReceivedListener(printFrame)
 
 # send an AME frame with arbitrary alias to provoke response
 frame = CanFrame(ControlFrame.AME.value, 1, bytearray())
 print("SL: {}".format(frame))
-canPhysicalLayerGridConnect.sendCanFrame(frame)
+physicalLayer.sendFrameAfter(frame)
+physicalLayer.sendAll(sock, verbose=True)
 
 # display response - should be RID from nodes
 while True:
-    received = s.receive()
-    print("   RR: {}".format(received.strip()))
-    # pass to link processor
-    canPhysicalLayerGridConnect.receiveString(received)
+    count = physicalLayer.receiveAll(sock, verbose=True)
+    if count < 1:
+        precise_sleep(.01)
+    # else skip sleep to avoid latency (port already delayed)

@@ -11,21 +11,22 @@ host|host:port            (optional) Set the address (or using a colon,
 '''
 # region same code as other examples
 from examples_settings import Settings  # do 1st to fix path if no pip install
+from openlcb import precise_sleep
 settings = Settings()
 
 if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-import threading
+import threading  # noqa:E402
 
-from openlcb.canbus.tcpsocket import TcpSocket
-from openlcb.canbus.canphysicallayergridconnect import (
+from openlcb.tcplink.tcpsocket import TcpSocket  # noqa:E402
+from openlcb.canbus.canphysicallayergridconnect import (  # noqa:E402
     CanPhysicalLayerGridConnect,
 )
-from openlcb.canbus.canlink import CanLink
-from openlcb.nodeid import NodeID
-from openlcb.datagramservice import (
+from openlcb.canbus.canlink import CanLink  # noqa:E402
+from openlcb.nodeid import NodeID  # noqa:E402
+from openlcb.datagramservice import (  # noqa:E402
     DatagramService,
     DatagramWriteMemo,
 )
@@ -36,35 +37,36 @@ from openlcb.datagramservice import (
 # port = 12021
 # endregion replaced by settings
 
-localNodeID = "05.01.01.01.03.01"
-farNodeID = "09.00.99.03.00.35"
-s = TcpSocket()
+# localNodeID = "05.01.01.01.03.01"
+# farNodeID = "09.00.99.03.00.35"
+sock = TcpSocket()
 # s.settimeout(30)
-s.connect(settings['host'], settings['port'])
+sock.connect(settings['host'], settings['port'])
 
 print("RR, SR are raw socket interface receive and send;"
       " RL, SL are link interface; RM, SM are message interface")
 
 
-def sendToSocket(string):
-    print("      SR: "+string.strip())
-    s.send(string)
+# def sendToSocket(frame: CanFrame):
+#     string = frame.encodeAsString()
+#     print("      SR: "+string.strip())
+#     sock.sendString(string)
+#     physicalLayer.onFrameSent(frame)
 
 
 def printFrame(frame):
     print("   RL: "+str(frame))
 
 
-canPhysicalLayerGridConnect = CanPhysicalLayerGridConnect(sendToSocket)
-canPhysicalLayerGridConnect.registerFrameReceivedListener(printFrame)
+physicalLayer = CanPhysicalLayerGridConnect()
+physicalLayer.registerFrameReceivedListener(printFrame)
 
 
 def printMessage(message):
     print("RM: {} from {}".format(message, message.source))
 
 
-canLink = CanLink(NodeID(localNodeID))
-canLink.linkPhysicalLayer(canPhysicalLayerGridConnect)
+canLink = CanLink(physicalLayer, NodeID(settings['localNodeID']))
 canLink.registerMessageReceivedListener(printMessage)
 
 datagramService = DatagramService(canLink)
@@ -95,8 +97,16 @@ datagramService.registerDatagramReceivedListener(datagramReceiver)
 #######################
 
 # have the socket layer report up to bring the link layer up and get an alias
+print("      SL : link up...")
+physicalLayer.physicalLayerUp()
+print("      SL : link up...waiting...")
+physicalLayer.physicalLayerUp()
 print("      SL : link up")
-canPhysicalLayerGridConnect.physicalLayerUp()
+
+while canLink.pollState() != CanLink.State.Permitted:
+    physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    physicalLayer.sendAll(sock)
+    precise_sleep(.02)
 
 
 def datagramWrite():
@@ -109,8 +119,8 @@ def datagramWrite():
     time.sleep(1)
 
     writeMemo = DatagramWriteMemo(
-        NodeID(farNodeID),
-        [0x20, 0x43, 0x00, 0x00, 0x00, 0x00, 0x14],
+        NodeID(settings['farNodeID']),
+        bytearray([0x20, 0x43, 0x00, 0x00, 0x00, 0x00, 0x14]),
         writeCallBackCheck
     )
     datagramService.sendDatagram(writeMemo)
@@ -121,7 +131,11 @@ thread.start()
 
 # process resulting activity
 while True:
-    received = s.receive()
-    print("      RR: {}".format(received.strip()))
-    # pass to link processor
-    canPhysicalLayerGridConnect.receiveString(received)
+    count = 0
+    count += physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    count += physicalLayer.sendAll(sock)
+    if count < 1:
+        precise_sleep(.01)
+    # else skip sleep to avoid latency (port already delayed)
+
+physicalLayer.physicalLayerDown()

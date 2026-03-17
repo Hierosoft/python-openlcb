@@ -5,52 +5,104 @@ expects prior setting of host and port variables
 # https://docs.python.org/3/howto/sockets.html
 import socket
 
+from typing import Union
 
-class TcpSocket:
-    def __init__(self, sock=None):
-        if sock is None:
-            self.sock = socket.socket(
-                socket.AF_INET,
-                socket.SOCK_STREAM,
-            )
-        else:
-            self.sock = sock
+from openlcb.portinterface import PortInterface
+from logging import getLogger
 
-    def settimeout(self, seconds):
+logger = getLogger(__name__)
+
+
+class TcpSocket(PortInterface):
+    """TCP socket implementation
+
+    NOTE: This will probably not work in a browser (compiled web
+    assembly) since most/all socket features are not in
+    WebAssembly System Interface (WASI):
+    <https://docs.python.org/3/library/socket.html>
+
+    Args:
+        sock (socket.socket, optional): A socket such as from Python's
+            builtin socket module. Defaults to a new socket.socket
+            instance.
+    """
+    def __init__(self):
+        super(TcpSocket, self).__init__()
+
+    def _settimeout(self, seconds: float):
         """Set the timeout for connect and transfer.
 
         Args:
             seconds (float): The number of seconds to wait before
                 a timeout error occurs.
         """
-        self.sock.settimeout(seconds)
+        self._device.settimeout(seconds)
 
-    def connect(self, host, port):
-        self.sock.connect((host, port))
+    def _connect(self, host: str, port: int, device=None):
+        # public connect (do not overload) asserts no overlapping call
+        if device is None:
+            self._device = socket.socket(
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+            )
+        else:
+            self._device = device
 
-    def send(self, data):
-        '''Send a single message, provided as an [int]
-        '''
-        msg = bytes(data)
+        self._device.connect((host, port))
+        # ^ `port` here is only remote port. OS automatically assigns a
+        #   random local ephemeral port (obtainable in
+        #   sock.getsockname() tuple) for send and receive unless `bind`
+        #   is used.
+        self._device.setblocking(False)
+        # ^ False: Make sure listen thread can also send so 2 threads
+        #   don't access port (part of missing implementation discussed
+        #   in issue #62). This requires a loop with both send and recv
+        #   (sleep on BlockingIOError to use less CPU).
+        logger.warning("You must call physicalLayerUp after this")
+
+    def _send(self, data: Union[bytes, bytearray]):
+        """Send a single message (bytes)
+        Args:
+            data (Union[bytes, bytearray]): (list[int] is equivalent
+                but not explicitly valid in int range)
+        """
+        # public send (do not overload) asserts no overlapping call
+        # assert isinstance(data, (bytes, bytearray)) # See type hint instead
         total_sent = 0
-        while total_sent < len(msg[total_sent:]):
-            sent = self.sock.send(msg[total_sent:])
+        while total_sent < len(data[total_sent:]):
+            sent = self._device.send(data[total_sent:])
             if sent == 0:
+                self.setOpen(False)
                 raise RuntimeError("socket connection broken")
             total_sent = total_sent + sent
 
-    def receive(self):
+    def _receive(self) -> Union[bytes, None]:
         '''Receive one or more bytes and return as an [int]
         Blocks until at least one byte is received, but may return more.
+
+        See also public receive method: Do not overload that, since
+        asserts no overlapping _receive call!
 
         Returns:
             list(int): one or more bytes, converted to a list of ints.
         '''
-        chunk = self.sock.recv(128)
-        if chunk == b'':
-            raise RuntimeError("socket connection broken")
-        return list(chunk)  # convert from bytes
+        # MSGLEN = 35 feature is only a convenience for CLI, so was
+        #   moved to GridConnectObserver (use ";" not len 35 though).
 
-    def close(self):
-        self.sock.close()
-        return
+        try:
+            data = self._device.recv(128)
+        except BlockingIOError:
+            # None is only expected allowed in non-blocking mode
+            return None
+        # ^ For block/fail scenarios (based on options previously set) see
+        #   <https://manpages.debian.org/bookworm/manpages-dev/recv.2.en.html>
+        #   as cited at
+        #   <https://docs.python.org/3/library/socket.html#socket.socket.recv>
+        if data == b'':
+            self.setOpen(False)
+            raise RuntimeError("socket connection broken")
+        return data
+
+    def _close(self):
+        self._device.close()
+        return None

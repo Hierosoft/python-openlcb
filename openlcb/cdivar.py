@@ -1,0 +1,176 @@
+
+import struct
+
+from openlcb import emit_cast
+from typing import List, Type, Union
+
+from openlcb.eventid import EventID
+from openlcb.openlcbaction import OpenLCBAction
+
+
+NUM_TYPES = {'int': int, 'float': float}  # type: dict[str, Type]
+# Assumes "IEEE" in LCC CDI Standard means IEEE 754-2008:
+FLOAT_MAXIMUMS = {16: 65504.0, 32: 3.40e38, 64: 1.80e308}  # type: dict[int, float]  # noqa: E501
+CLASSNAME_TYPES = {'int': int, 'float': float, 'string': str,
+                   'blob': bytearray, 'eventid': EventID,
+                   'action': OpenLCBAction}
+SUBTYPE_FORMATS = {
+    'int8': "b", 'uint8': "B",
+    'int16': ">h", 'uint16': ">H",
+    'int32': ">i", 'uint32': ">I",
+    'int64': ">q", 'uint64': ">Q",
+    'float16': ">e",
+    'float32': ">f",
+    'float64': ">d",
+}
+STANDARD_SIZES = {
+    'int': (1, 2, 4, 8),
+    'float': (2, 4, 8),
+}
+
+
+class CDIVar:
+    """A byte array representing a single configuration variable.
+    Arguments:
+        _default (bytearray): An array with length matching size.
+        _min (int): Minimum value (only for int/float className. <0 sets
+            .signed = True)
+        _max (int): Maximum value (only for int/float className)
+        _size (int): Size of int/float (not allowed for other className).
+
+    Attributes:
+        className (str): An OpenLCB CDI type. Must be a key in
+            CLASSNAME_TYPES.
+        floatFormat (str): Optional printf-style format
+            (for className == "float").
+        signed (bool): Whether the value is signed (False unless min is
+            negative). Defaults to True.
+            See LCC "Configuration Description Information" Standard.
+        _data (bytes): The value read from the device or ready to
+            write. Only None if not read yet, otherwise length
+            must be .size.
+    """
+    TYPED_KEYS = ['min', 'max', 'default']
+
+    def __init__(self, className, _min=None, _max=None,
+                 _size=None, _default=None):
+        assert isinstance(className, str), \
+            f"Expected {CLASSNAME_TYPES.keys()} got {emit_cast(className)}"
+        assert className, f"Expected {CLASSNAME_TYPES.keys()} got {className}"
+        assert className in CLASSNAME_TYPES, \
+            f"Expected {list(CLASSNAME_TYPES.keys())} got {className}"
+        self.className = className  # type: str
+        self.data = None  # type: bytes|None
+        self.min = _min  # type: int|float|None
+        self.signed = False  # type: bool
+        if self.min and self.min < 0:
+            self.signed = True
+        self.max = _max  # type: int|float|None
+        self.default = _default  # type: bytearray|None
+        self.size = _size  # type: int|None
+        if self.size is None:
+            if self.default is not None:
+                self.size = len(self.default)
+        if self.className in ("int", "float"):
+            self.assertNumberFormat()
+        self.floatFormat = None  # type: str|None
+
+    def isNumber(self):
+        return self.className in ("int", "float")
+
+    def standardSizes(self) -> Union[List[int], None]:
+        return STANDARD_SIZES.get(self.className)
+
+    def assertNumberFormat(self, assertWhat=""):
+        if self.className == "int":
+            assert self.size in (1, 2, 4, 8)
+        elif self.className == "float":
+            assert self.size in (2, 4, 8)
+        else:
+            if not assertWhat:
+                assertWhat = f"Expected float/int size {STANDARD_SIZES}"
+            raise TypeError(
+                f"{assertWhat}"
+                f", but cdivar is {self.className} size={self.size}")
+
+    def bitDepth(self) -> int:
+        self.assertNumberFormat(assertWhat="Only float/int has bitDepth")
+        return self.size * 8  # type:ignore (assert precludes bad size)
+
+    def subtype(self) -> str:
+        """Get the number subtype in C++-like notation.
+
+        Returns:
+            str: Key for SUBTYPE_FORMATS.
+
+        Raises:
+            TypeError: (raised by bitDepth) if not int 8-64 bit, and not
+                float 16-64 bit.
+        """
+        prefix = ""
+        if self.className == "int" and not self.signed:
+            prefix = "u"
+        return f"{prefix}{self.className}{self.bitDepth()}"
+
+    def packFormat(self) -> str:
+        assert self.className in ("int", "float"), \
+            f"Can only pack if isNumber, but this cdivar is {self.className}"
+        return SUBTYPE_FORMATS[self.subtype()]
+
+    def intToData(self, value: int) -> bytes:
+        assert self.className == "int"
+        assert isinstance(value, int)
+        return struct.pack(self.packFormat(), value)
+
+    def setInt(self, value: int):
+        self.data = self.intToData(value)
+
+    def floatToData(self, value: float) -> bytes:
+        assert self.className == "float"
+        assert isinstance(value, float)
+        return struct.pack(self.packFormat(), value)
+
+    def setFloat(self, value: float):
+        self.data = self.floatToData(value)
+
+    def stringToData(self, value: str) -> bytes:
+        assert self.className == "string"
+        assert isinstance(value, str)
+        return value.encode("utf-8")
+
+    def setString(self, value: str):
+        self.data = self.stringToData(value)
+        self.size = len(self.data)
+
+    def dataToInt(self, data) -> Union[int, None]:
+        assert self.className == "int"
+        if (data is None) or (len(data) < 1):
+            return None
+        assert self.size == len(data)
+        # [0] since always returns list (and there is only one as per
+        #   Standard and the assertion above):
+        return struct.unpack(self.packFormat(), data)[0]
+
+    def getInt(self) -> Union[int, None]:
+        return self.dataToInt(self.data)
+
+    def dataToFloat(self, data) -> Union[float, None]:
+        assert self.className == "float"
+        if (data is None) or (len(data) < 1):
+            return None
+        assert self.size == len(data)
+        # [0] since always returns list (and there is only one as per
+        #   Standard and the assertion above):
+        return struct.unpack(self.packFormat(), data)[0]
+
+    def getFloat(self) -> Union[float, None]:
+        return self.dataToFloat(self.data)
+
+    def dataToString(self, data) -> Union[str, None]:
+        assert self.className == "string"
+        if (data is None) or (len(data) < 1):
+            return None
+        return data.decode("utf-8")
+
+    def getString(self) -> Union[str, None]:
+        return self.dataToString(self.data)

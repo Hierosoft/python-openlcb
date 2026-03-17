@@ -1,14 +1,33 @@
 import os
 import sys
+import time
 import unittest
+
+from logging import getLogger
+if __name__ == "__main__":
+    logger = getLogger(__file__)
+else:
+    logger = getLogger(__name__)
 
 if __name__ == "__main__":
     TESTS_DIR = os.path.dirname(os.path.realpath(__file__))
     REPO_DIR = os.path.dirname(TESTS_DIR)
-    sys.path.insert(0, REPO_DIR)
+    if os.path.isfile(os.path.join(REPO_DIR, "openlcb", "__init__.py")):
+        sys.path.insert(0, REPO_DIR)
+    else:
+        logger.warning(
+            "Reverting to installed copy if present (or imports will fail),"
+            " since test running from repo but could not find openlcb in {}."
+            .format(repr(REPO_DIR)))
 
-from openlcb import (
+import openlcb  # noqa: E402
+
+# for brevity:
+from openlcb import (  # noqa: E402
     emit_cast,
+    formatted_ex,
+    from_all_hex_bytes,
+    from_hex_bytes,
     list_type_names,
     only_hex_pairs,
 )
@@ -19,13 +38,18 @@ class TestConventions(unittest.TestCase):
         self.assertTrue(only_hex_pairs("02015700049C"))
         self.assertTrue(only_hex_pairs("02015700049c"))
         self.assertTrue(only_hex_pairs("02"))
+        self.assertTrue(only_hex_pairs(b"19170365"))
+        self.assertTrue(only_hex_pairs(b"02015700049c"))
+        self.assertTrue(only_hex_pairs(bytearray(b'19490365')))
 
-        self.assertFalse(only_hex_pairs("02.01.57.00.04.9C"))  # contains separator
-        # ^ For the positive test (& allowing elements not zero-padded) see test_conventions.py
-        self.assertFalse(only_hex_pairs("02015700049C."))  # contains end character
+        self.assertFalse(only_hex_pairs("02.01.57.00.04.9C"))  # contains separator  # noqa:E501
+        self.assertFalse(only_hex_pairs(b"02.01.57.00.04.9C"))  # contains separator  # noqa:E501
+        # ^ For the positive test (& allowing elements not zero-padded) see test_conventions.py  # noqa:E501
+        self.assertFalse(only_hex_pairs("02015700049C."))  # contains end character  # noqa:E501
         self.assertFalse(only_hex_pairs("0"))  # not a full pair
-        self.assertFalse(only_hex_pairs("_02015700049C"))  # contains start character
-        self.assertFalse(only_hex_pairs("org_product_02015700049C"))  # service name not split
+        self.assertFalse(only_hex_pairs("_02015700049C"))  # contains start character  # noqa:E501
+        self.assertFalse(only_hex_pairs("org_product_02015700049C"))  # service name not split  # noqa:E501
+
 
     def test_list_type_names(self):
         self.assertEqual(list_type_names({"a": 1, "b": "B"}),
@@ -50,6 +74,42 @@ class TestConventions(unittest.TestCase):
 
     def test_emit_cast(self):
         self.assertEqual(emit_cast(1), "int(1)")
+
+    def test_precise_sleep(self):
+        start = time.perf_counter()
+        openlcb.precise_sleep(0.2)
+        # NOTE: Using .3 in both assertions below only asserts accuracy
+        #   down to 100ms increments (when using the values .2 then .1),
+        #   though OS-level calls (used internally in precise_sleep) are
+        #   probably far more accurate (though that may depend on the OS
+        #   and scenario).
+        self.assertLess(
+            time.perf_counter() - start,
+            .3
+        )
+        openlcb.precise_sleep(0.1)
+        self.assertGreaterEqual(
+            time.perf_counter() - start,
+            .3
+        )
+
+    def test_formatted_ex(self):
+        self.assertEqual(
+            formatted_ex(ValueError("hello")),
+            "ValueError: hello"
+        )
+
+    def test_from_hex_bytes(self):
+        with self.assertRaises(IndexError):
+            from_hex_bytes(b"00A", 0, 3)  # odd not allowed
+        with self.assertRaises(ValueError):
+            from_hex_bytes(b"0G", 0, 2)  # character not allowed
+        self.assertEqual(from_all_hex_bytes(b"0A"), bytearray([0x0A]))
+        with self.assertRaises(IndexError):
+            from_hex_bytes(b"0A", 0, 4)  # out of range
+        self.assertEqual(from_all_hex_bytes(b"0D0A"), bytearray([0x0D, 0x0A]))
+        self.assertEqual(from_all_hex_bytes(b"0D000A"), bytearray([0x0D, 0x00, 0x0A]))
+        self.assertEqual(from_all_hex_bytes(b"00"), bytearray([0x00]))
 
 
 if __name__ == '__main__':

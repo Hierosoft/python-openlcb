@@ -4,7 +4,10 @@ import unittest
 
 from logging import getLogger
 
-logger = getLogger(__name__)
+if __name__ == "__main__":
+    logger = getLogger(__file__)
+else:
+    logger = getLogger(__name__)
 
 
 if __name__ == "__main__":
@@ -22,9 +25,12 @@ if __name__ == "__main__":
 
 from openlcb.conventions import (  # noqa: E402
     dotted_lcc_id_to_hex,
+    generate_last_three_octets,
+    increment_octets,
     is_dotted_lcc_id,
     is_hex_lcc_id,
     hex_to_dotted_lcc_id,
+    reset_octet_generator,
 )
 
 
@@ -44,8 +50,8 @@ class TestConventions(unittest.TestCase):
         self.assertFalse(is_hex_lcc_id("02.01.57.00.04.9C"))  # not converted
         self.assertFalse(is_hex_lcc_id("02015700049C."))
         self.assertFalse(is_hex_lcc_id("0"))
-        self.assertFalse(is_hex_lcc_id("_02015700049C"))  # contains start character
-        self.assertFalse(is_hex_lcc_id("org_product_02015700049C"))  # service name not split
+        self.assertFalse(is_hex_lcc_id("_02015700049C"))  # contains start character  # noqa: E501
+        self.assertFalse(is_hex_lcc_id("org_product_02015700049C"))  # service name not split  # noqa: E501
 
     def test_dotted_lcc_id_to_hex(self):
         self.assertEqual(dotted_lcc_id_to_hex("2.1.57.0.4.9C"),
@@ -56,14 +62,14 @@ class TestConventions(unittest.TestCase):
                          "02015700049C")  # converted to uppercase OK
 
         self.assertNotEqual(dotted_lcc_id_to_hex("02.01.57.00.04.9c"),
-                            "02015700049c")  # function should convert to uppercase
+                            "02015700049c")  # function should convert to uppercase  # noqa: E501
         self.assertIsNone(dotted_lcc_id_to_hex("02015700049C"))
         self.assertIsNone(dotted_lcc_id_to_hex("02015700049c"))
-        self.assertIsNone(dotted_lcc_id_to_hex("02"))  # only_hex_pairs yet too short
+        self.assertIsNone(dotted_lcc_id_to_hex("02"))  # only_hex_pairs yet too short  # noqa: E501
         self.assertIsNone(dotted_lcc_id_to_hex("02015700049C."))
         self.assertIsNone(dotted_lcc_id_to_hex("0"))
-        self.assertIsNone(dotted_lcc_id_to_hex("_02015700049C"))  # contains start character
-        self.assertIsNone(dotted_lcc_id_to_hex("org_product_02015700049C"))  # service name not split
+        self.assertIsNone(dotted_lcc_id_to_hex("_02015700049C"))  # contains start character  # noqa: E501
+        self.assertIsNone(dotted_lcc_id_to_hex("org_product_02015700049C"))  # service name not split  # noqa: E501
 
     def test_is_dotted_lcc_id(self):
         self.assertTrue(is_dotted_lcc_id("02.01.57.00.04.9C"))
@@ -89,6 +95,26 @@ class TestConventions(unittest.TestCase):
         except ValueError as ex:
             exception = ex
         self.assertIsInstance(exception, ValueError)
+
+    def test_increment_octets(self):
+        octets = bytearray([255, 255, 255])
+        self.assertEqual(increment_octets(octets), bytearray([0, 0, 0]))
+        octets = bytearray([0, 0, 255])
+        self.assertEqual(increment_octets(octets), bytearray([0, 1, 0]))
+        octets = bytearray([255, 255, 254])
+        self.assertEqual(increment_octets(octets), bytearray([255, 255, 255]))
+        octets = bytearray([254, 254, 254])
+        self.assertEqual(increment_octets(octets), bytearray([254, 254, 255]))
+        octets = bytearray([254, 255, 255])
+        self.assertEqual(increment_octets(octets), bytearray([255, 0, 0]))
+
+    def test_generate_last_three_octets(self):
+        reset_octet_generator()
+        octetsVirtual = generate_last_three_octets(increment=True)
+        octets = generate_last_three_octets()
+        self.assertNotEqual(octets, octetsVirtual)
+        octetsVirtual2 = generate_last_three_octets(increment=True)
+        self.assertNotEqual(octetsVirtual, octetsVirtual2)
 
 
 if __name__ == '__main__':

@@ -18,7 +18,9 @@ if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-from openlcb.canbus.tcpsocket import TcpSocket
+from openlcb import precise_sleep  # noqa: E402
+from openlcb.canbus.gridconnectobserver import GridConnectObserver  # noqa:E402
+from openlcb.tcplink.tcpsocket import TcpSocket  # noqa: E402
 
 # specify connection information
 # region replaced by settings
@@ -26,18 +28,33 @@ from openlcb.canbus.tcpsocket import TcpSocket
 # port = 12021
 # endregion replaced by settings
 
-s = TcpSocket()
+sock = TcpSocket()
 # s.settimeout(30)
-s.connect(settings['host'], settings['port'])
+sock.connect(settings['host'], settings['port'])
 
 #######################
 
 # send a AME frame in GridConnect string format with arbitrary source alias to
 # elicit response
-AME = ":X10702001N;"
-s.send(AME)
-print("SR: {}".format(AME.strip()))
+AME_packet_str = ":X10702001N;"
+sock.sendString(AME_packet_str)
+print("SR: {}".format(AME_packet_str.strip()))
+
+observer = GridConnectObserver()
 
 # display response - should be RID from node(s)
 while True:  # have to kill this manually
-    print("RR: {}".format(s.receive().strip()))
+    # Normally the receive call and case can be replaced by
+    #   physicalLayer.receiveAll, but we have no physicalLayer in this
+    #   example.
+    count = 0
+    received = sock.receive()
+    if received is not None:
+        observer.push(received)
+        if observer.hasNext():
+            packet_str = observer.next()
+            print("   RR: "+packet_str.strip())
+        count += 1
+    if count < 1:
+        precise_sleep(.01)
+    # else skip sleep to avoid latency (port already delayed)

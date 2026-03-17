@@ -1,5 +1,7 @@
 '''
-Demo of using the datagram service to send and receive a datagram
+Demo of creating a virtual node to represent the application
+(other local nodes are possible, but at least one is necessary
+for the application to announce itself and provide SNIP info).
 
 Usage:
 python3 example_node_implementation.py [host|host:port]
@@ -19,22 +21,23 @@ if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-from openlcb.canbus.tcpsocket import TcpSocket
+from openlcb import precise_sleep  # noqa: E402
+from openlcb.tcplink.tcpsocket import TcpSocket  # noqa: E402
 
-from openlcb.canbus.canphysicallayergridconnect import (
+from openlcb.canbus.canphysicallayergridconnect import (  # noqa: E402
     CanPhysicalLayerGridConnect,
 )
-from openlcb.canbus.canlink import CanLink
-from openlcb.nodeid import NodeID
-from openlcb.datagramservice import DatagramService
-from openlcb.memoryservice import MemoryService
-from openlcb.message import Message
-from openlcb.mti import MTI
+from openlcb.canbus.canlink import CanLink  # noqa: E402
+from openlcb.nodeid import NodeID  # noqa: E402
+from openlcb.datagramservice import DatagramService  # noqa: E402
+from openlcb.memoryservice import MemoryService  # noqa: E402
+from openlcb.message import Message  # noqa: E402
+from openlcb.mti import MTI  # noqa: E402
 
-from openlcb.localnodeprocessor import LocalNodeProcessor
-from openlcb.pip import PIP
-from openlcb.snip import SNIP
-from openlcb.node import Node
+from openlcb.localnodeprocessor import LocalNodeProcessor  # noqa: E402
+from openlcb.pip import PIP  # noqa: E402
+from openlcb.snip import SNIP  # noqa: E402
+from openlcb.node import Node  # noqa: E402
 
 # specify connection information
 # region moved to settings
@@ -44,10 +47,10 @@ from openlcb.node import Node
 # farNodeID = "09.00.99.03.00.35"
 # endregion moved to settings
 
-s = TcpSocket()
+sock = TcpSocket()
 # s.settimeout(30)
 try:
-    s.connect(settings['host'], settings['port'])
+    sock.connect(settings['host'], settings['port'])
 except socket.gaierror:
     print("Failure accessing {}:{}"
           .format(settings.get('host'), settings.get('port')))
@@ -57,25 +60,26 @@ print("RR, SR are raw socket interface receive and send;"
       " RL, SL are link interface; RM, SM are message interface")
 
 
-def sendToSocket(string):
-    print("      SR: {}".format(string.strip()))
-    s.send(string)
+# def sendToSocket(frame: CanFrame):
+#     string = frame.encodeAsString()
+#     print("      SR: {}".format(string.strip()))
+#     sock.sendString(string)
+#     physicalLayer.onFrameSent(frame)
 
 
 def printFrame(frame):
     print("   RL: {}".format(frame))
 
 
-canPhysicalLayerGridConnect = CanPhysicalLayerGridConnect(sendToSocket)
-canPhysicalLayerGridConnect.registerFrameReceivedListener(printFrame)
+physicalLayer = CanPhysicalLayerGridConnect()
+physicalLayer.registerFrameReceivedListener(printFrame)
 
 
 def printMessage(message):
     print("RM: {} from {}".format(message, message.source))
 
 
-canLink = CanLink(NodeID(settings['localNodeID']))
-canLink.linkPhysicalLayer(canPhysicalLayerGridConnect)
+canLink = CanLink(physicalLayer, NodeID(settings['localNodeID']))
 canLink.registerMessageReceivedListener(printMessage)
 
 datagramService = DatagramService(canLink)
@@ -143,9 +147,15 @@ canLink.registerMessageReceivedListener(displayOtherNodeIds)
 #######################
 
 # have the socket layer report up to bring the link layer up and get an alias
-print("      SL : link up")
-canPhysicalLayerGridConnect.physicalLayerUp()
 
+print("      SL : link up...")
+physicalLayer.physicalLayerUp()
+print("      SL : link up...waiting...")
+while canLink.pollState() != CanLink.State.Permitted:
+    physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    physicalLayer.sendAll(sock, verbose=True)
+    precise_sleep(.02)
+print("      SL : link up")
 # request that nodes identify themselves so that we can print their node IDs
 message = Message(MTI.Verify_NodeID_Number_Global,
                   NodeID(settings['localNodeID']), None)
@@ -153,7 +163,11 @@ canLink.sendMessage(message)
 
 # process resulting activity
 while True:
-    input = s.receive()
-    print("      RR: "+input.strip())
-    # pass to link processor
-    canPhysicalLayerGridConnect.receiveString(input)
+    count = 0
+    count += physicalLayer.sendAll(sock, verbose=True)
+    count += physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    if count < 1:
+        precise_sleep(.01)
+    # else skip sleep to avoid latency (port already delayed)
+
+physicalLayer.physicalLayerDown()

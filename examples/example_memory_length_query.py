@@ -17,20 +17,21 @@ if __name__ == "__main__":
     settings.load_cli_args(docstring=__doc__)
 # endregion same code as other examples
 
-from openlcb.canbus.tcpsocket import TcpSocket
+from openlcb import precise_sleep  # noqa: E402
+from openlcb.tcplink.tcpsocket import TcpSocket  # noqa: E402
 
-from openlcb.canbus.canphysicallayergridconnect import (
+from openlcb.canbus.canphysicallayergridconnect import (  # noqa: E402
     CanPhysicalLayerGridConnect,
 )
-from openlcb.canbus.canlink import CanLink
-from openlcb.nodeid import NodeID
-from openlcb.datagramservice import (
+from openlcb.canbus.canlink import CanLink  # noqa: E402
+from openlcb.nodeid import NodeID  # noqa: E402
+from openlcb.datagramservice import (  # noqa: E402
     # DatagramWriteMemo,
     # DatagramReadMemo,
     DatagramService,
 )
-from openlcb.memoryservice import (
-    MemoryReadMemo,
+from openlcb.memoryservice import (  # noqa: E402
+    # MemoryReadMemo,
     # MemoryWriteMemo,
     MemoryService,
 )
@@ -43,33 +44,34 @@ localNodeID = "05.01.01.01.03.01"
 farNodeID = "09.00.99.03.00.35"
 # endregion replaced by settings
 
-s = TcpSocket()
+sock = TcpSocket()
 # s.settimeout(30)
-s.connect(settings['host'], settings['port'])
+sock.connect(settings['host'], settings['port'])
 
 print("RR, SR are raw socket interface receive and send;"
       " RL, SL are link interface; RM, SM are message interface")
 
 
-def sendToSocket(string):
-    print("      SR: {}".format(string.strip()))
-    s.send(string)
+# def sendToSocket(frame: CanFrame):
+#     string = frame.encodeAsString()
+#     print("      SR: {}".format(string.strip()))
+#     sock.sendString(string)
+#     physicalLayer.onFrameSent(frame)
 
 
 def printFrame(frame):
     print("   RL: {}".format(frame))
 
 
-canPhysicalLayerGridConnect = CanPhysicalLayerGridConnect(sendToSocket)
-canPhysicalLayerGridConnect.registerFrameReceivedListener(printFrame)
+physicalLayer = CanPhysicalLayerGridConnect()
+physicalLayer.registerFrameReceivedListener(printFrame)
 
 
 def printMessage(message):
     print("RM: {} from {}".format(message, message.source))
 
 
-canLink = CanLink(NodeID(settings['localNodeID']))
-canLink.linkPhysicalLayer(canPhysicalLayerGridConnect)
+canLink = CanLink(physicalLayer, NodeID(settings['localNodeID']))
 canLink.registerMessageReceivedListener(printMessage)
 
 datagramService = DatagramService(canLink)
@@ -108,14 +110,26 @@ memoryService = MemoryService(datagramService)
 # def memoryReadFail(memo):
 #     print("memory read failed: {}".format(memo.data))
 
+
 def memoryLengthReply(address) :
-    print ("memory length reply: "+str(address))
+    print("memory length reply: "+str(address))
+
 
 #######################
 
 # have the socket layer report up to bring the link layer up and get an alias
+
+print("      SL : link up...")
+physicalLayer.physicalLayerUp()
+print("      SL : link up...waiting...")
+physicalLayer.physicalLayerUp()
+
+
+while canLink.pollState() != CanLink.State.Permitted:
+    physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    physicalLayer.sendAll(sock, verbose=True)
+    precise_sleep(.02)
 print("      SL : link up")
-canPhysicalLayerGridConnect.physicalLayerUp()
 
 
 def memoryRequest():
@@ -131,7 +145,8 @@ def memoryRequest():
 #     memMemo = MemoryReadMemo(NodeID(settings['farNodeID']),
 #                              64, 0xFF, 0, memoryReadFail,
 #                              memoryReadSuccess)
-    memoryService.requestSpaceLength(0xFF, NodeID(settings['farNodeID']), memoryLengthReply)
+    memoryService.requestSpaceLength(0xFF, NodeID(settings['farNodeID']),
+                                     memoryLengthReply)
 
 
 import threading  # noqa E402
@@ -140,7 +155,11 @@ thread.start()
 
 # process resulting activity
 while True:
-    received = s.receive()
-    print("      RR: {}".format(received.strip()))
-    # pass to link processor
-    canPhysicalLayerGridConnect.receiveString(received)
+    count = 0
+    count += physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    count += physicalLayer.sendAll(sock, verbose=True)
+    if count < 1:
+        precise_sleep(.01)
+    # else skip sleep to avoid latency (port already delayed)
+
+physicalLayer.physicalLayerDown()
