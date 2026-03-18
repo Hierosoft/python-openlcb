@@ -21,6 +21,7 @@ from logging import getLogger
 
 from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb import precise_sleep
+from openlcb.convert import Convert
 from openlcb.xmldataprocessor import attrs_to_dict
 from openlcb.tcplink.tcpsocket import TcpSocket
 settings = Settings()
@@ -137,7 +138,7 @@ def memoryReadSuccess(memo):
         resultingCDI += memo.data
         logger.debug(
             f"[{memo.address}] successful read"
-            f" {MemoryService.arrayToString(memo.data, len(memo.data))}"
+            f" {Convert.arrayToString(memo.data, len(memo.data))}"
             "; next = address + 64")
         # update the address
         memo.address = memo.address+64
