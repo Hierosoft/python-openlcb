@@ -18,12 +18,15 @@ class TestCDIVar(unittest.TestCase):
         self.assertEqual(cdivar_float.max, 100.0)
         self.assertEqual(cdivar_float.size, 4)
 
+        maxSize = 100
         cdivar_string = CDIVar(className='string',
-                               _default=bytearray(b'Hello'))
+                               _default=bytearray(b'Hello'),
+                               _size=maxSize)
         self.assertEqual(cdivar_string.className, 'string')
         self.assertEqual(cdivar_string.default, bytearray(b'Hello'))
         assert cdivar_string.default is not None
-        self.assertEqual(cdivar_string.size, len(cdivar_string.default))
+        # self.assertEqual(cdivar_string.size, len(cdivar_string.default))
+        self.assertEqual(cdivar_string.size, maxSize)
 
     def test_initialization_invalid_classname(self):
         with self.assertRaises(AssertionError):
@@ -60,7 +63,7 @@ class TestCDIVar(unittest.TestCase):
         self.assertAlmostEqual(got, 3.14, places=6)
 
     def test_set_get_string(self):
-        cdivar_string = CDIVar(className='string')
+        cdivar_string = CDIVar(className='string', _size=100)
         cdivar_string.setString("Hello")
         self.assertEqual(cdivar_string.getString(), "Hello")
 
@@ -75,8 +78,8 @@ class TestCDIVar(unittest.TestCase):
             cdivar_float.setFloat("not a float")  # type:ignore (assertRaises)
 
     def test_invalid_set_string(self):
-        cdivar_string = CDIVar(className='string')
-        with self.assertRaises(AssertionError):
+        cdivar_string = CDIVar(className='string', _size=100)
+        with self.assertRaises(AttributeError):  # number has no attribute 'encode'
             cdivar_string.setString(12345)  # type:ignore (assertRaises)
 
 

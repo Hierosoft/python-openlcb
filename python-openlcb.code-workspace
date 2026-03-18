@@ -75,6 +75,7 @@
 			"offvalue",
 			"onvalue",
 			"openlcb",
+			"openlcbaction",
 			"openlcbnetwork",
 			"padx",
 			"pady",

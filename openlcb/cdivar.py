@@ -1,15 +1,17 @@
 
 import struct
 
-from openlcb import emit_cast
+from logging import getLogger
 from typing import List, Type, Union
 
+from openlcb import emit_cast
 from openlcb.eventid import EventID
 from openlcb.openlcbaction import OpenLCBAction
 
+logger = getLogger(__name__)
 
 NUM_TYPES = {'int': int, 'float': float}  # type: dict[str, Type]
-# Assumes "IEEE" in LCC CDI Standard means IEEE 754-2008:
+# Assumes "IEEE" in OpenLCB CDI Standard means IEEE 754-2008:
 FLOAT_MAXIMUMS = {16: 65504.0, 32: 3.40e38, 64: 1.80e308}  # type: dict[int, float]  # noqa: E501
 CLASSNAME_TYPES = {'int': int, 'float': float, 'string': str,
                    'blob': bytearray, 'eventid': EventID,
@@ -45,7 +47,7 @@ class CDIVar:
             (for className == "float").
         signed (bool): Whether the value is signed (False unless min is
             negative). Defaults to True.
-            See LCC "Configuration Description Information" Standard.
+            See OpenLCB "Configuration Description Information" Standard.
         _data (bytes): The value read from the device or ready to
             write. Only None if not read yet, otherwise length
             must be .size.
@@ -139,8 +141,13 @@ class CDIVar:
         return value.encode("utf-8")
 
     def setString(self, value: str):
-        self.data = self.stringToData(value)
-        self.size = len(self.data)
+        # self.data = self.stringToData(value)
+        # self.size = len(self.data)
+        # assert self.className == "string"
+        encoded = value.encode("utf-8")
+        assert self.size is not None
+        assert len(encoded) + 1 <= self.size  # size is max *only* if "string"
+        self.data = encoded + b"\x00"  # null-terminated for OpenLCB network
 
     def dataToInt(self, data) -> Union[int, None]:
         assert self.className == "int"
@@ -173,4 +180,17 @@ class CDIVar:
         return data.decode("utf-8")
 
     def getString(self) -> Union[str, None]:
-        return self.dataToString(self.data)
+        # return self.dataToString(self.data)
+        if self.data is None or len(self.data) == 0:
+            return None
+        # Return content up to (but not including) first null
+        null_pos = self.data.find(b"\x00")
+        if null_pos == -1:
+            logger.error(f"No null terminator in {repr(self.data)}")
+            content = self.data
+        else:
+            content = self.data[:null_pos]
+        # try:
+        return content.decode("utf-8")
+        # except UnicodeDecodeError:
+        #     return None  # or raise
