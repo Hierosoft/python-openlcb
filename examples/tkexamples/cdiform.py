@@ -226,8 +226,9 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
 
     def onStatusMemo(self, cm: CDIMemo) -> bool:
         """Handler for incoming CDI tag
-        Use this for callback in downloadCDI, which sets parser
-        (_dataProcessor)'s _onElement.
+        Use this for callback in downloadCDI
+        (onStatusMemo replaces _dataProcessor's _onElement
+        formerly set by downloadCDI).
 
         Args:
             cm (CDIMemo): Document parsing state info

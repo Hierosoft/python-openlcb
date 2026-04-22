@@ -93,6 +93,10 @@ class OpenLCBNetwork:
         self._memoryService = MemoryService(self._datagramService)
         self._dataProcessor: XMLDataProcessor = None
 
+    @property
+    def memoryService(self):
+        return self._memoryService
+
     def setConnectHandler(self, handler: Callable[[CDIMemo], None]):
         """Deprecated in favor of a Message handler,
         Since it is the socket loop's responsibility to call
@@ -292,8 +296,8 @@ class OpenLCBNetwork:
                 cm = CDIMemo()
                 cm.error = formatted_ex(ex)
                 cm.done = True  # stop progress in gui/other main thread
-                if self._dataProcessor._onElement:
-                    self._dataProcessor._onElement(cm)
+                if self._dataProcessor.onStatusMemo:
+                    self._dataProcessor.onStatusMemo(cm)
                 raise  # re-raise since incomplete (prevent done OK state)
         finally:
             self.physicalLayer.physicalLayerDown()  # Link_Layer_Down, setState
