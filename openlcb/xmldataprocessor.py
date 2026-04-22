@@ -199,6 +199,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 "A previous downloadCDI operation is in progress"
                 " or failed (Set _data to None first if failed)")
         self._data = bytearray()
+        self.progress_count = 0
 
     def onStop(self):
         self._format = DataFormat.EOF  # no data expected
@@ -213,10 +214,21 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         if callback is None:
             callback = self.onStatusMemo
         if callback:
-            print("OpenLCBNetwork callback_msg({})".format(repr(status)))
+            logger.info("OpenLCBNetwork callback_msg({})".format(repr(status)))
             callback(CDIMemo(status=status))
         else:
             logger.warning("No callback, but set status: {}".format(status))
+
+    def _fireStatusMemo(self, statusMemo,
+                        callback: Union[Callable[[CDIMemo], bool], None] = None):  # noqa: E501
+        """Fire status handlers with the given status."""
+        if callback is None:
+            callback = self.onStatusMemo
+        if callback:
+            logger.info(f"OpenLCBNetwork callback_msg({statusMemo})")
+            callback(statusMemo)
+        else:
+            logger.warning(f"No callback, but set status: {statusMemo}")
 
     def _feedNext(self, memo: MemoryReadMemo):
         """Handle partial CDI XML (any packet except last)
@@ -229,9 +241,14 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         """
         assert self._data is not None
         self._data += memo.data
+        self.progress_count = len(self._data)
         partial_str = memo.data.decode("utf-8")
         if self._realtime:
             self._parser.feed(partial_str)  # may call startElement/endElement
+        cm = CDIMemo()
+        cm.progress_count = self.progress_count
+        cm.expected_size = self.expected_size
+        self.onStatusMemo(cm)
 
     def _feedLast(self, memo: MemoryReadMemo):
         """Handle end of CDI XML (last packet)
@@ -255,6 +272,13 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             if null_i > -1:
                 terminate_i = min(null_i, terminate_i)
             partial_str = memo.data[:terminate_i].decode("utf-8")
+            assert self.progress_count is not None
+            self.progress_count += terminate_i
+            cm = CDIMemo()
+            cm.done = True  # 'done' and not 'error' means got all
+            cm.progress_count = self.progress_count
+            cm.expected_size = self.expected_size
+            self.onStatusMemo(cm)
         else:
             # *not* realtime (but got to end, so parse all at once)
             cdiString = ""
@@ -263,6 +287,9 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             if null_i > -1:
                 terminate_i = min(null_i, terminate_i)
             cdiString = self._data[:terminate_i].decode("utf-8")
+            assert self.progress_count is not None
+            self.progress_count += terminate_i
+
             # print (cdiString)
             # self.parse(cdiString)  # no such method
             # self._parser.parse(cdiString)  # urllib.error.URLError
@@ -273,6 +300,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             # self._fireStatus("Done loading CDI.")
             cm = CDIMemo()
             cm.done = True  # 'done' and not 'error' means got all
+            cm.progress_count = self.progress_count
             self.onStatusMemo(cm)
         if self._realtime:
             self._parser.feed(partial_str)  # may call startElement/endElement

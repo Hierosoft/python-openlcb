@@ -12,4 +12,7 @@ class DataProcessor:
     Superclass for data listeners.
     """
     def __init__(self):
-        pass
+        # Members used to construct space memo such as CDIMemo:
+        self.progress_ratio = None  # type: float|None
+        self.progress_count = None  # type: int|None
+        self.expected_size = None  # type: int|None

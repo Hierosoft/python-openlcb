@@ -62,6 +62,10 @@ class CDIMemo:
         self.address = None  # type: int|None
         self.cdivar = None  # type: CDIVar|None
         self.children = []  # type: List[CDIMemo]
+        # Set by DataProcessor such as XMLDataProcessor:
+        self.progress_ratio = None  # type: float|None
+        self.progress_count = None  # type: int|None
+        self.expected_size = None  # type: int|None
 
     def getTag(self):
         if self.element is None:

@@ -328,7 +328,8 @@ class MemoryService:
         dgWriteMemo = DatagramWriteMemo(memo.nodeID, data)
         self.service.sendDatagram(dgWriteMemo)
 
-    def requestSpaceLength(self, space, nodeID, callback):
+    def requestSpaceLength(self, space: int, nodeID: NodeID,
+                           callback: Callable[[int], None]):
         '''Request the length of a specific memory space from a remote node.
 
         Args:

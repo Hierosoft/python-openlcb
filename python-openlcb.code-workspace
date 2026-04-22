@@ -41,6 +41,7 @@
 			"cdiform",
 			"cdimemo",
 			"cdivar",
+			"cdivars",
 			"columnspan",
 			"controlframe",
 			"datagram",
@@ -108,6 +109,7 @@
 			"usbmodem",
 			"WASI",
 			"winnative",
+			"wraplength",
 			"xmldataprocessor",
 			"xscrollcommand",
 			"zeroconf"
