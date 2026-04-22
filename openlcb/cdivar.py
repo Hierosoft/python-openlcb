@@ -1,4 +1,6 @@
 
+import base64
+from collections import OrderedDict
 import struct
 
 from logging import getLogger
@@ -61,6 +63,7 @@ class CDIVar:
         assert className, f"Expected {CLASSNAME_TYPES.keys()} got {className}"
         assert className in CLASSNAME_TYPES, \
             f"Expected {list(CLASSNAME_TYPES.keys())} got {className}"
+        self.name = None  # type: str|None
         self.className = className  # type: str
         self.data = None  # type: bytes|None
         self.min = _min  # type: int|float|None
@@ -85,9 +88,11 @@ class CDIVar:
 
     def assertNumberFormat(self, assertWhat=""):
         if self.className == "int":
-            assert self.size in (1, 2, 4, 8)
+            assert self.size in (1, 2, 4, 8), \
+                f"Expected size (1, 2, 4, 8) for int, got {self.size}"
         elif self.className == "float":
-            assert self.size in (2, 4, 8)
+            assert self.size in (2, 4, 8), \
+                f"Expected size (2, 4, 8) for float, got {self.size}"
         else:
             if not assertWhat:
                 assertWhat = f"Expected float/int size {STANDARD_SIZES}"
@@ -123,6 +128,25 @@ class CDIVar:
         assert self.className == "int"
         assert isinstance(value, int)
         return struct.pack(self.packFormat(), value)
+
+    def getSerializable(self):
+        """Get a value in the corresponding Python type"""
+        if self.className == "int":
+            return self.getInt()
+        elif self.className == "float":
+            return self.getFloat()
+        elif self.className == "string":
+            return self.getString()
+        assert self.className in ("blob", "eventid", "action")
+        return base64.b64encode(self.data)
+
+    def getDict(self, add_name=True):
+        result = OrderedDict()
+        if add_name and self.name:
+            result['name'] = self.name
+        result['className'] = self.className
+        result['value'] = self.getSerializable()
+        return result
 
     def setInt(self, value: int):
         self.data = self.intToData(value)

@@ -156,17 +156,37 @@ class CDIMemo:
         """Create a CDIVar from descriptors (child elements of self).
         See LCC "Configuration Description Information" Standard.
         """
-        result = CDIVar(self.tag)
+        # result = CDIVar(self.tag)
         assert (self.tag is not None) and (self.tag.strip())
-        result.className = self.tag.lower()
+        className = self.tag.lower()
+        result_floatFormat = None
         if self.element:
-            result.floatFormat = self.element.attrib.get('floatFormat')
+            result_floatFormat = self.element.attrib.get('floatFormat')
         this_t = NUM_TYPES.get(self.tag) if self.tag else None
+        result_min = None
+        result_max = None
+        result_default = None
+        result_size = self.getSize()
         if this_t is not None:
-            result.min = self.getChildContentN("min", result.className)
-            result.max = self.getChildContentN("max", result.className)
-            result.default = self.getChildContentN("default", result.className)
-        result.size = self.getSize()
+            result_min = self.getChildContentN("min", className)
+            result_max = self.getChildContentN("max", className)
+            default_n = self.getChildContentN("default", className)
+            if default_n is not None:
+                default_var = CDIVar(className, _size=result_size)
+                if isinstance(default_n, int):
+                    assert self.tag == "int"
+                    default_var.setInt(default_n)
+                else:
+                    assert self.tag == "float"
+                    default_var.setFloat(default_n)
+                assert default_var.data is not None
+                result_default = bytearray(default_var.data)
+        # Size must be gotten ahead of time since CDIVar constructor
+        #   enforces size:
+        result = CDIVar(self.tag, _min=result_min, _max=result_max,
+                        _size=result_size, _default=result_default)
+        result.floatFormat = result_floatFormat
+        result.name = self.getChildContent("name")
 
         if result.className == "int":
             if result.min is None:
