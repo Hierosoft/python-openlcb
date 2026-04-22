@@ -248,6 +248,7 @@ def generate_node_id_str(id_range_prefix: str, increment: bool = False) -> str:
 
     lastParts = [f"{p:02X}" for p in generate_last_three_octets(increment=increment)]  # noqa: E501
     assert len(lastParts) == 3
+    id_range_prefix = id_range_prefix.rstrip(".")
     prefixParts = id_range_prefix.split(".")
     if len(prefixParts) < 3:
         raise ValueError(
