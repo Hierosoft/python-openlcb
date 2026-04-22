@@ -221,8 +221,8 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
 
     def onStartDownload(self):
         """Initialize variables used by element handler(s)."""
-        self.onStart()
-        self._resetTree()
+        XMLDataProcessor.onStartDownload(self)
+        # TODO: clear tree?
 
     def onStatusMemo(self, cm: CDIMemo) -> bool:
         """Handler for incoming CDI tag

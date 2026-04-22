@@ -181,6 +181,15 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         """
         return False
 
+    def onStartDownload(self):
+        """Initialize variables used by element handler(s).
+        If subclass is a GUI, reimplement this to reset GUI,
+        but also call onStart or super().onStartDownload().
+        """
+        self._stringTerminated = False
+        self._resetTree()
+        self.onStart()
+
     def onStart(self):
         # self._cdi_offset = 0  # Instead see memo.address (which is
         #   incremented on _memoryReadSuccess or custom memory read

@@ -632,7 +632,6 @@ class MainForm(ttk.Frame):
         self.setStatus("Downloading CDI...")
         assert self.cdi_form is not None
         assert self.network is not None
-        self.cdi_form.onStartDownload()
         try:
             self.network.download(farNodeID, MemorySpace.CDI,
                                   self.cdi_form)

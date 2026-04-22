@@ -156,6 +156,7 @@ class OpenLCBNetwork:
         """
         # read 64 bytes from the CDI space starting at address zero
         assert isinstance(self._dataProcessor.space, MemorySpace)
+        self._dataProcessor.onStartDownload()
         memMemo = MemoryReadMemo(NodeID(farNodeID), 64,
                                  self._dataProcessor.space.value,
                                  0,  # incremented on _memoryReadSuccess
@@ -193,7 +194,6 @@ class OpenLCBNetwork:
         assert isinstance(space, MemorySpace)
         self._dataProcessor = dataProcessor
         self._dataProcessor._space = space
-        self._dataProcessor._stringTerminated = False
 
         self._startMemoryRead(farNodeID)
         # ^ Following this, _memoryReadSuccess callback will
