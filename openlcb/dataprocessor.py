@@ -10,8 +10,12 @@ class DataFormat(Enum):
 class DataProcessor:
     """Collect & process consecutive data from each incoming MemoryReadMemo.
     Superclass for data listeners.
+
+    Attributes:
+        enable_cache (bool): Defaults to False (May differ in subclass).
     """
     def __init__(self):
+        self.enable_cache = False  # type: bool
         # Members used to construct space memo such as CDIMemo:
         self.progress_ratio = None  # type: float|None
         self.progress_count = None  # type: int|None

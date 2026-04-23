@@ -59,13 +59,15 @@ def attrs_to_ordered(attrs: xml.sax.xmlreader.AttributesImpl):
     return od
 
 
-def format_of_space(space):
+def format_of_space(space, unknown_raises=True):
     assert isinstance(space, MemorySpace)
     if space == MemorySpace.CDI:
         return DataFormat.XML
     elif space == MemorySpace.FDI:
         return DataFormat.XML
-    raise NotImplementedError(emit_cast(space))
+    if unknown_raises:
+        raise NotImplementedError(emit_cast(space))
+    return None
 
 
 class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
@@ -101,16 +103,19 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             of start tags).
     """
     XML_TOP_TAGS = ("cdi", "fdi")
+    DEFAULT_CACHES_DIR = SysDirs.Cache
+    DEFAULT_CACHE_DIR = os.path.join(DEFAULT_CACHES_DIR, "python-openlcb")
 
     def __init__(self, linkLayer: CanLink, space: MemorySpace):
         self.canLink: CanLink = linkLayer
-        caches_dir = SysDirs.Cache
+        # caches_dir = SysDirs.Cache
         self._root_memos = None  # type: list[CDIMemo]|None
         self._root_memo = None  # type: CDIMemo|None
         self._space: Union[MemorySpace, None] = None
         self._openEl: Union[ET.Element, None] = None
         self._top_tag = "cdi"  # cdi or fdi (detected in startElement)
-        self._myCacheDir = os.path.join(caches_dir, "python-openlcb")
+        # self._myCacheDir = os.path.join(caches_dir, "python-openlcb")
+        self._myCacheDir = XMLDataProcessor.DEFAULT_CACHE_DIR
         self._tmp_space = None  # type: int|None
         self._tmp_address = None  # type: int|None
         assert isinstance(space, MemorySpace)
@@ -120,6 +125,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         #   prepare these for _callback_msg.
         xml.sax.ContentHandler.__init__(self)
         DataProcessor.__init__(self)
+        self.enable_cache = True
         self._stringTerminated = None  # type: Union[bool, None]
         # ^ None means no read is occurring.
         if self._format != DataFormat.XML:
@@ -197,6 +203,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         Returns:
             bool: True if handled.
         """
+        logger.warning("Default onStatusMemo ran.")
         return False
 
     def onPushScope(self, cm: CDIMemo) -> bool:
@@ -290,13 +297,82 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         cm.expected_size = self.expected_size
         self.onStatusMemo(cm)
 
-    def _feedLast(self, memo: MemoryReadMemo):
+    def load(self, node_id: NodeID, path, space: Union[MemorySpace, int],
+             memo: Union[MemoryReadMemo, None] = None,
+             format: Union[DataFormat, None] = None):
+        """Load instead of downloading."""
+        assert not self._data
+        self.onStartDownload()
+        assert isinstance(space, (MemorySpace, int))
+        if isinstance(space, int):
+            try_space = MemorySpace.fromNumber(space)
+            if try_space is not None:
+                space = try_space
+        if isinstance(space, MemorySpace):
+            self.setSpace(space)
+        else:
+            if format is None:
+                raise ValueError(f"Using device-specific space: {space}"
+                                 " but format not specified")
+            else:
+                assert isinstance(format, DataFormat)
+                self._format = format
+                self._space = space  # int in device-specific case
+                logger.warning(f"Using device-specific space: {space}")
+        data = None
+        with open(path, "rb") as stream:
+            data = stream.read()  # type:ignore
+        if self._format is DataFormat.XML:
+            if memo is not None:
+                assert isinstance(memo, MemoryReadMemo)
+            else:
+                def memoryReadSuccess(memo: MemoryReadMemo):
+                    # See further down
+                    print("Fallback memoryReadSuccess ran.")
+                    pass
+
+                def memoryReadFail(memo: MemoryReadMemo):
+                    raise RuntimeError(
+                        "Offline parse failure (should never happen)")
+
+                assert data is not None
+                # Based on _startMemoryRead in OpenLCBNetwork:
+                memo = MemoryReadMemo(node_id, len(data),
+                                      self.getSpaceValue(), 0,
+                                      memoryReadFail, memoryReadSuccess)
+
+            assert data is not None
+            memo.data = data  # type: ignore
+            self._data = bytearray()  # Since _feedLast adds memo.data to it
+            memo.size = len(data)
+            # based on "else" (done) case in _memoryReadSuccess
+            #   in OpenLCBNetwork:
+            self._stringTerminated = True
+            self._feedLast(memo, enable_cache=False)
+            self.onStop()  # sets self._format to DataFormat.EOF
+        else:
+            logger.warning(f"Custom DataFormat {self._format}"
+                           f" (space={space}): not parsed automatically.")
+
+    def getSpaceValue(self):
+        # type: () -> int|None
+        if self._space is None:
+            return None
+        if isinstance(self._space, MemorySpace):
+            return self._space.value
+        assert isinstance(self._space, int)
+        return self._space
+
+    def _feedLast(self, memo: MemoryReadMemo, enable_cache=None):
         """Handle end of CDI XML (last packet)
         End of data, so parse (or feed if self._realtime)
 
         Args:
             memo (MemoryReadMemo): successful read memo containing data.
+            enable_cache (bool): Defaults to self.enable_cache.
         """
+        if enable_cache is None:
+            enable_cache = self.enable_cache
         partial_str = memo.data.decode("utf-8")
         # save content
         assert self._data is not None
@@ -353,8 +429,14 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             print('Saved {}'.format(repr(path)))
         self._data = None  # Ensure isn't reused for more than one doc
 
-    def cache_cdi_path(self, item_id: Union[NodeID, str]):
-        cdi_cache_dir = os.path.join(self._myCacheDir, "cdi")
+    def cache_cdi_path_scoped(self, item_id: Union[NodeID, str]):
+        type(self).cache_cdi_path(item_id, my_cache_dir=self._myCacheDir)
+
+    @classmethod
+    def cache_cdi_path(cls, item_id: Union[NodeID, str], my_cache_dir=None):
+        if my_cache_dir is None:
+            my_cache_dir = cls.DEFAULT_CACHE_DIR
+        cdi_cache_dir = os.path.join(my_cache_dir, "cdi")
         if not os.path.isdir(cdi_cache_dir):
             os.makedirs(cdi_cache_dir)
         # TODO: add hardware name and firmware version and from SNIP to

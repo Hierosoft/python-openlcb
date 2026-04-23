@@ -65,6 +65,17 @@ class MemorySpace(Enum):
     All = 0xFE
     Configuration = 0xFD
 
+    @classmethod
+    def fromNumber(cls, num: int):
+        """Return the MemorySpace member with the given numeric value,
+        or None if no match is found.
+        """
+        assert isinstance(num, int)
+        for member in cls:
+            if member.value == num:
+                return member
+        return None
+
 
 class MemoryReadMemo:
     """Memo carries request and reply.

@@ -363,7 +363,7 @@ class OpenLCBNetwork:
         else:
             logger.warning("No callback, but set status: {}".format(status))
 
-    def _memoryReadSuccess(self, memo: MemoryReadMemo):
+    def _memoryReadSuccess(self, memo: MemoryReadMemo, force_end=False):
         """Handle a successful read
         Invoked when the memory read successfully returns,
         this queues a new read until the entire CDI has been
@@ -373,7 +373,8 @@ class OpenLCBNetwork:
             memo (MemoryReadMemo): Successful MemoryReadMemo
         """
         # print("successful memory read: {}".format(memo.data))
-        if len(memo.data) == 64 and 0 not in memo.data:  # *not* last chunk
+        if (not force_end) and (len(memo.data) == 64 and 0 not in memo.data):
+            # *not* last chunk
             self._dataProcessor._stringTerminated = False
             if self._dataProcessor.format != DataFormat.EOF:
                 # save content
