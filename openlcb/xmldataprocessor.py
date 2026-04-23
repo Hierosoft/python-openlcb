@@ -105,6 +105,8 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
     def __init__(self, linkLayer: CanLink, space: MemorySpace):
         self.canLink: CanLink = linkLayer
         caches_dir = SysDirs.Cache
+        self._root_memos = None  # type: list[CDIMemo]|None
+        self._root_memo = None  # type: CDIMemo|None
         self._space: Union[MemorySpace, None] = None
         self._openEl: Union[ET.Element, None] = None
         self._top_tag = "cdi"  # cdi or fdi (detected in startElement)
@@ -135,6 +137,42 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         self._tag_stack = []  # type: List[CDIMemo]
         # endregion ContentHandler
         self.acdi = False
+
+    def getRootMemo(self):
+        """Get the root memo object if any.
+        This should only be called after the entire file is parsed such
+        as when cm.done is True in onStatusMemo(cm) callback. Set
+        callback manually if necessary and if using realtime parsing
+        (_feed) mode.
+        """
+        if not self._root_memos:
+            return None
+        if len(self._root_memos) > 1:
+            summaries = []
+            cdi_roots = []
+            tag = None
+            for memo in self._root_memos:
+                tag = memo.getTag()
+                if tag is not None:
+                    tag = tag.lower()
+                summaries.append(memo.getTag())
+                if tag in ("cdi", "fdi"):
+                    cdi_roots.append(memo)
+            if len(cdi_roots) == 1:
+                return cdi_roots[0]
+            if tag not in ("cdi", "fdi"):
+                logger.warning(
+                    f"Got more than one XML root: {summaries};"
+                    " expected cdi/fdi")
+            else:
+                logger.warning(f"Got more than one XML root: {summaries}")
+            return self._root_memos[-1]
+        tag = self._root_memos[0].getTag()
+        if tag is not None:
+            tag = tag.lower()
+        if tag not in ("cdi", "fdi"):
+            logger.warning(f"Only XML root is {repr(tag)} not cdi/fdi")
+        return self._root_memos[0]
 
     def setSpace(self, space: MemorySpace):
         self._space = space
@@ -200,6 +238,8 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 " or failed (Set _data to None first if failed)")
         self._data = bytearray()
         self.progress_count = 0
+        self._root_memos = []  # list of roots
+        self._root_memo = None
 
     def onStop(self):
         self._format = DataFormat.EOF  # no data expected
@@ -379,6 +419,10 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         cm.address = self._tmp_address  # May be None if after /segment
 
         self.onPushScope(cm)
+        if len(self._tag_stack) < 1:
+            self._root_memos.append(cm)
+            if cm.tag == "cdi":
+                self._root_memo = cm
 
         # self._callback_msg(
         #     "loaded: {}{}".format(tab, ET.tostring(el, encoding="unicode")))
