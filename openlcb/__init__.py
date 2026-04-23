@@ -131,3 +131,19 @@ def from_hex_bytes(b: bytearray, start: int, stop: int,
 
 def from_all_hex_bytes(b: bytearray) -> bytearray:
     return from_hex_bytes(b, 0, len(b))
+
+
+def hr_repr(value, always_quote: bool = False) -> str:
+    """Represent value with double quotes
+    (Human-readable repr).
+    """
+    repr_value = repr(value)
+    if repr_value.startswith("'") and repr_value.endswith("'"):
+        return '"' + repr_value[1:-1].replace('"', '\\"') + '"'
+    elif always_quote:
+        return '"' + repr_value.replace('"', '\\"') + '"'
+    return repr(value)
+
+
+def d_quote(value) -> str:
+    return hr_repr(value, always_quote=True)

@@ -1,4 +1,5 @@
 from collections import OrderedDict
+import copy
 import json
 import math
 import xml.etree.ElementTree
@@ -102,7 +103,10 @@ class CDIMemo:
     def copy(self):
         cm = CDIMemo()
         for k, v in self.__dict__.items():
-            setattr(cm, k, v)
+            if isinstance(v, (list, dict, OrderedDict)):
+                setattr(cm, k, copy.deepcopy(v))
+            else:
+                setattr(cm, k, v)
         return cm
 
     def getBranch(self, default=None) -> Union[str, None]:
@@ -218,6 +222,8 @@ class CDIMemo:
         return result
 
     def getSize(self):
+        if self.tag == "eventid":
+            return 8
         if self.element is None:
             return None
         size = self.element.attrib.get('size')

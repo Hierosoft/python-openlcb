@@ -1,10 +1,11 @@
 
 import base64
 from collections import OrderedDict
+import copy
 import struct
 
 from logging import getLogger
-from typing import List, Type, Union
+from typing import Any, List, Type, Union
 
 from openlcb import emit_cast
 from openlcb.eventid import EventID
@@ -18,6 +19,8 @@ FLOAT_MAXIMUMS = {16: 65504.0, 32: 3.40e38, 64: 1.80e308}  # type: dict[int, flo
 CLASSNAME_TYPES = {'int': int, 'float': float, 'string': str,
                    'blob': bytearray, 'eventid': EventID,
                    'action': OpenLCBAction}
+SIZED_CONSTRUCTION_TYPES = copy.deepcopy(CLASSNAME_TYPES)
+SIZED_CONSTRUCTION_TYPES['eventid'] = bytearray
 SUBTYPE_FORMATS = {
     'int8': "b", 'uint8': "B",
     'int16': ">h", 'uint16': ">H",
@@ -30,6 +33,8 @@ SUBTYPE_FORMATS = {
 STANDARD_SIZES = {
     'int': (1, 2, 4, 8),
     'float': (2, 4, 8),
+    'eventid': (8,),
+    'action': (1, 2, 4, 8),
 }
 
 
@@ -53,6 +58,8 @@ class CDIVar:
         _data (bytes): The value read from the device or ready to
             write. Only None if not read yet, otherwise length
             must be .size.
+        element (xml.etree.Element): An associated element in an XML
+            tree.
     """
     TYPED_KEYS = ['min', 'max', 'default']
 
@@ -73,12 +80,47 @@ class CDIVar:
         self.max = _max  # type: int|float|None
         self.default = _default  # type: bytearray|None
         self.size = _size  # type: int|None
+        self.branch_size = None  # type: int|None  # size including children
         if self.size is None:
             if self.default is not None:
                 self.size = len(self.default)
         if self.className in ("int", "float"):
             self.assertNumberFormat()
+        elif self.className == "eventid":
+            if (_size is not None) and (_size != 8):
+                logger.error(
+                    f'Specified eventid size="{_size}" but 8 is required.')
+            self.size = 8
+        sizes = STANDARD_SIZES.get(self.className)
+        if sizes is not None:
+            assert self.size in sizes, \
+                (f"Expected size in {sizes}"
+                 f" for {self.className} but got {self.size}")
         self.floatFormat = None  # type: str|None
+        self.address = None  # type: int|None
+        self.element = None  # type: Any|None
+
+    def setData(self, data: Union[bytes, bytearray]):
+        assert isinstance(data, (bytes, bytearray))
+        if isinstance(data, bytes):
+            data = bytearray(data)
+        if self.className == "eventid":
+            assert len(data) == 8
+        elif self.className == "blob":
+            # FIXME: enforce blob
+            pass
+        elif self.className == "string":
+            assert self.size
+            assert len(data) <= self.size
+        elif self.className in SIZED_CONSTRUCTION_TYPES:
+            assert self.size
+            assert len(data) == self.size
+        else:
+            raise NotImplementedError(f"Type {self.className} not implemented")
+        self.data = data
+
+    def getData(self):
+        return self.data
 
     def isNumber(self):
         return self.className in ("int", "float")

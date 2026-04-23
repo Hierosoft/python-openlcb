@@ -6,10 +6,10 @@ import xml.etree.ElementTree as ET
 
 from logging import getLogger
 from typing import Callable, List, Union
-# from xml.sax.xmlreader import AttributesImpl  # for type hints, for autocomplete only in this case
+# from xml.sax.xmlreader import AttributesImpl  # for type hints, for autocomplete only in this case  # noqa:E501
 import xml.sax.xmlreader  # for type hints, for autocomplete only in this case
 
-from openlcb import emit_cast
+from openlcb import d_quote, emit_cast
 from openlcb.canbus.canlink import CanLink
 from openlcb.cdimemo import CDIMemo
 from openlcb.dataprocessor import DataFormat, DataProcessor
@@ -23,6 +23,10 @@ from openlcb.memoryservice import (
     MemorySpace,
 )
 # from openlcb.remotenodeprocessor import RemoteNodeProcessor
+from openlcb.cdivar import (
+    CDIVar,
+    CLASSNAME_TYPES,
+)
 
 
 if __name__ == "__main__":
@@ -109,6 +113,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
     def __init__(self, linkLayer: CanLink, space: MemorySpace):
         self.canLink: CanLink = linkLayer
         # caches_dir = SysDirs.Cache
+        self.expanded_root = None  # type: xml.etree.ElementTree|None
         self._root_memos = None  # type: list[CDIMemo]|None
         self._root_memo = None  # type: CDIMemo|None
         self._space: Union[MemorySpace, None] = None
@@ -317,7 +322,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             else:
                 assert isinstance(format, DataFormat)
                 self._format = format
-                self._space = space  # int in device-specific case
+                self._space = space  # type:ignore # int if device-specific
                 logger.warning(f"Using device-specific space: {space}")
         data = None
         with open(path, "rb") as stream:
@@ -421,7 +426,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         if self._realtime:
             self._parser.feed(partial_str)  # may call startElement/endElement
         # memo = MemoryReadMemo(memo)
-        path = self.cache_cdi_path(memo.nodeID)
+        path = self.cacheFilePath(memo.nodeID)
         with open(path, 'w') as stream:
             if cdiString is None:
                 cdiString = self._data.rstrip(b'\0').decode("utf-8")
@@ -429,21 +434,35 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             print('Saved {}'.format(repr(path)))
         self._data = None  # Ensure isn't reused for more than one doc
 
-    def cache_cdi_path_scoped(self, item_id: Union[NodeID, str]):
-        type(self).cache_cdi_path(item_id, my_cache_dir=self._myCacheDir)
+    def cacheFilePathCustom(self, item_id: Union[NodeID, str], **kwargs):
+        if 'my_cache_dir' not in kwargs:
+            kwargs['my_cache_dir'] = self._myCacheDir
+        type(self).cacheFilePath(item_id, **kwargs)
 
     @classmethod
-    def cache_cdi_path(cls, item_id: Union[NodeID, str], my_cache_dir=None):
+    def cacheFilePath(cls, item_id: Union[NodeID, str], my_cache_dir=None,
+                      subFolder="cdi", name=None, ext=".xml"):
         if my_cache_dir is None:
             my_cache_dir = cls.DEFAULT_CACHE_DIR
-        cdi_cache_dir = os.path.join(my_cache_dir, "cdi")
+        if subFolder:
+            cdi_cache_dir = os.path.join(my_cache_dir, subFolder)
+        else:
+            cdi_cache_dir = my_cache_dir
         if not os.path.isdir(cdi_cache_dir):
             os.makedirs(cdi_cache_dir)
         # TODO: add hardware name and firmware version and from SNIP to
         #   name file to avoid cache file from a different
         #   device/version.
-        item_id = str(item_id)  # Convert NodeID or other
-        clean_name = clean_file_name(item_id.replace(":", "."))
+        if not name:
+            item_id = str(item_id)  # Convert NodeID or other
+            clean_name = clean_file_name(item_id.replace(":", "."))
+            clean_name += ext
+        else:
+            clean_name = clean_file_name(name)
+            if clean_name != name:
+                logger.warning(
+                    "[cacheFilePath]"
+                    f" changed name {repr(name)} to {repr(clean_name)}")
         # ^ replace ":" to avoid converting that one to default "_"
         # ^ will raise error if path instead of name
         path = os.path.join(cdi_cache_dir, clean_name)
@@ -451,7 +470,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             # just to be safe, even though clean_file_name
             #   should prevent. If this occurs, fix clean_file_name.
             raise ValueError("Cannot specify absolute path.")
-        return path + ".xml"
+        return path
 
     def startElement(self, name: str,
                      attrs: xml.sax.xmlreader.AttributesImpl):
@@ -471,7 +490,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         if offset is not None:
             parts.append(f"offset={offset}")
         logger.debug(*parts)
-        if attrs is not None and attrs :
+        if (attrs is not None) and attrs.getNames():
             logger.debug(tab, "  Attributes: ", attrs.getNames())
         # el = ET.Element(name, attrs)
 
@@ -502,6 +521,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
 
         self.onPushScope(cm)
         if len(self._tag_stack) < 1:
+            assert self._root_memos is not None, "onStart must run first"
             self._root_memos.append(cm)
             if cm.tag == "cdi":
                 self._root_memo = cm
@@ -623,3 +643,109 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             raise TypeError(
                 "Expected str, got {}".format(type(content).__name__))
         self._chunks.append(content)
+
+    def expandedTree(self) -> ET.Element:
+        """Build an expanded XML tree with replication and addresses.
+
+        Starting from the root CDIMemo (via :meth:`getRootMemo`), this
+        method creates a new ElementTree. Replication is expanded,
+        addresses are calculated per the OpenLCB CDI standard, and
+        ``address`` attributes are added where required.
+
+        The ``replication`` attribute is removed from all copied group
+        elements in the new tree. The original tree is left unchanged.
+
+        Returns:
+            ET.Element: Root of the new expanded tree.
+        """
+        root_memo = self.getRootMemo()
+        assert root_memo is not None and root_memo.element is not None
+
+        new_root = ET.Element(root_memo.element.tag)
+        new_root.attrib.update(root_memo.element.attrib)
+
+        self.address = 0
+
+        self._expanded_tree_recursive(root_memo, new_root)
+        return new_root
+
+    def _expanded_tree_recursive(
+        self, memo: CDIMemo, new_parent: ET.Element
+    ) -> None:
+        """Recursive helper for :meth:`expandedTree`.
+
+        Copies the element, handles replication, sets addresses, and
+        recurses into children. Removes ``replication`` attribute from
+        copied group elements.
+        """
+        assert memo.element is not None
+        tag = memo.getTag() or memo.element.tag
+        tag_lower = tag.lower()
+
+        replication_str = memo.element.attrib.get("replication")
+        count = int(replication_str) if replication_str is not None else 1
+
+        if tag_lower == "group":
+            origin = memo.element.attrib.get("origin")
+            self.address = int(origin) if origin is not None else 0
+
+        for idx in range(count):
+            elem_copy = ET.Element(tag)
+            elem_copy.attrib.update(memo.element.attrib)
+
+            # Remove replication from the expanded copy
+            if "replication" in elem_copy.attrib:
+                del elem_copy.attrib["replication"]
+
+            if tag_lower == "group" or memo.tag in CLASSNAME_TYPES:
+                elem_copy.set("address", str(self.address))
+
+                if replication_str is not None and tag_lower == "group":
+                    elem_copy.set("replication_index", str(idx))
+
+            new_parent.append(elem_copy)
+
+            # Determine size for address advancement
+            if tag_lower == "eventid":
+                size = 8
+            elif "size" in memo.element.attrib:
+                size = int(memo.element.attrib["size"])
+            else:
+                size = 0
+
+            # Recurse into children (replication handled at this level)
+            for child_memo in memo.children:
+                self._expanded_tree_recursive(child_memo, elem_copy)
+
+            # Advance address for leaf variables
+            if tag_lower in CLASSNAME_TYPES or tag_lower == "eventid":
+                self.address += size
+
+    def extractCDIVarMemos(self) -> List[CDIMemo]:
+        """Build a flat list of CDIMemo objects for all variables.
+
+        Uses :meth:`expandedTree` internally so replication is fully
+        expanded and stores it as ``self.expanded_root``.
+
+        Returns:
+            List of CDIMemo objects (with elements from the expanded
+            tree).
+        """
+        if not hasattr(self, "etree") or self.etree is None:
+            logger.error("processor has no etree")
+            return []
+
+        self.expanded_root = self.expandedTree()
+
+        cdivar_memos: List[CDIMemo] = []
+
+        def traverse(element: ET.Element) -> None:
+            tag_lower = element.tag.lower()
+            if tag_lower in CLASSNAME_TYPES:
+                memo = CDIMemo(tag=element.tag, element=element)
+                cdivar_memos.append(memo)
+            for child in element:
+                traverse(child)
+
+        traverse(self.expanded_root)
+        return cdivar_memos
