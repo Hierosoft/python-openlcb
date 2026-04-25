@@ -99,6 +99,7 @@ class CDIVar:
         self.floatFormat = None  # type: str|None
         self.address = None  # type: int|None
         self.element = None  # type: Any|None
+        self.space = None  # type: int|None
 
     def setData(self, data: Union[bytes, bytearray]):
         assert isinstance(data, (bytes, bytearray))

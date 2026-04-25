@@ -5,10 +5,14 @@ import math
 import xml.etree.ElementTree
 # import xml.etree.ElementTree as ET
 
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
+from logging import getLogger
 
-from openlcb.cdivar import FLOAT_MAXIMUMS, NUM_TYPES, CDIVar
+from openlcb.cdivar import CLASSNAME_TYPES, FLOAT_MAXIMUMS, NUM_TYPES, CDIVar
 from openlcb.message import Message
+from openlcb.dataprocessormemo import DataProcessorMemo
+
+logger = getLogger(__name__)
 
 
 def element_ordered(el: xml.etree.ElementTree.Element):
@@ -18,7 +22,7 @@ def element_ordered(el: xml.etree.ElementTree.Element):
     return od
 
 
-class CDIMemo:
+class CDIMemo(DataProcessorMemo):
     """Store parsing state info as a tree (This is a tree node)
 
     Attributes:
@@ -41,32 +45,34 @@ class CDIMemo:
         error (str): Message of failure (requires 'done' if stopped).
         iid (str): Treeview branch id (no parent when top of Treeview)
         name (str): Name (determined by `name` child element content).
+        space (int|None): The memory space address (May be one in
+            MemorySpace values, or not if vendor-specific such as
+            defined in CDI etc. See expandedTree in XMLDataProcessor).
         stray (bool): The end tag is misplaced (doesn't match a start
             tag) due to bad xml or incorrect parsing.
+        tail (str|None): Content following the end tag (not used in
+            OpenLCB CDI/FDI standards).
     """
     def __init__(self, tag: Union[str, None] = None,
                  element: Union[xml.etree.ElementTree.Element, None] = None,
                  status: Union[str, None] = None,
-                 parent: Optional['CDIMemo'] = None):
+                 parent: Optional['CDIMemo'] = None,
+                 document: Optional['XMLDocumentProcessor'] = None):
+        DataProcessorMemo.__init__(self)
         self.tag = tag  # type: str|None
         # self.name = None  # type: str|None
         self.element = element  # type: xml.etree.ElementTree.Element|None
-        self.status = status   # type: str|None
-        self.error = None  # type: str|None
-        self.done = False  # type: bool
-        self.end = False  # type: bool
         self.parent = parent  # type: CDIMemo|None
         self.stray = False  # type: bool
         self.content = None  # type: str|None
-        self.message: Union[Message, None] = None  # type: Message|None
+        self.tail = None  # type: str|None
+        # TODO: Set tail (unused in OpenLCB CDI/FDI standards, but allowed in XML)
         self.iid = None  # type: str|None
         self.address = None  # type: int|None
+        self.space = None  # type: int|None
         self.cdivar = None  # type: CDIVar|None
         self.children = []  # type: List[CDIMemo]
-        # Set by DataProcessor such as XMLDataProcessor:
-        self.progress_ratio = None  # type: float|None
-        self.progress_count = None  # type: int|None
-        self.expected_size = None  # type: int|None
+        self.document: Union[Optional['XMLDocumentProcessor'], None] = document
 
     def getTag(self):
         if self.element is None:
@@ -101,12 +107,30 @@ class CDIMemo:
         return None
 
     def copy(self):
+        return self.__copy__()
+
+    def __copy__(self):
         cm = CDIMemo()
         for k, v in self.__dict__.items():
-            if isinstance(v, (list, dict, OrderedDict)):
-                setattr(cm, k, copy.deepcopy(v))
-            else:
-                setattr(cm, k, v)
+            setattr(cm, k, v)
+        return cm
+
+    def __deepcopy__(self, memo: dict):
+        """Allow deepcopy on this class.
+        Place id of new object in memo dict
+        (prevents infinite recursion).
+        See <https://stackoverflow.com/a/15774013/4541104>.
+        """
+        cm = type(self)()
+        memo[id(self)] = cm
+        for k, v in self.__dict__.items():
+            if k == 'parent':
+                # prevent invalid container
+                continue
+            if k == "document":
+                # prevent un-pickle-able object (& invalid container)
+                continue
+            setattr(cm, k, copy.deepcopy(v, memo))
         return cm
 
     def getBranch(self, default=None) -> Union[str, None]:
@@ -147,6 +171,8 @@ class CDIMemo:
             #     continue
             if k == 'parent':
                 continue
+            if k == 'document':
+                continue
             if isinstance(v, xml.etree.ElementTree.Element):
                 d[k] = element_ordered(v)
                 continue
@@ -157,8 +183,12 @@ class CDIMemo:
         return json.dumps(CDIMemo.to_dict(self), default=CDIMemo.to_dict)
 
     def toCDIVar(self):
+        # type: () -> CDIVar
         """Create a CDIVar from descriptors (child elements of self).
         See LCC "Configuration Description Information" Standard.
+
+        NOTE: The `address` is only correct if this CDIMemo has been
+        replicated (such as in expandedTree or self.expanded_root).
         """
         # result = CDIVar(self.tag)
         assert (self.tag is not None) and (self.tag.strip())
@@ -189,8 +219,12 @@ class CDIMemo:
         #   enforces size:
         result = CDIVar(self.tag, _min=result_min, _max=result_max,
                         _size=result_size, _default=result_default)
+        result.address = self.address  # only set in expandedTree()
+        result.space = self.space
         result.floatFormat = result_floatFormat
         result.name = self.getChildContent("name")
+        if not result.name and (self.tag in CLASSNAME_TYPES):
+            raise NotImplementedError(f"Can't get name for {self}")
 
         if result.className == "int":
             if result.min is None:
@@ -230,3 +264,36 @@ class CDIMemo:
         if size is None:
             return None
         return int(size)
+
+    def addChildren(self) -> None:
+        """Recursively build the full CDIMemo tree from self.element.
+
+        Populates ``self.children`` with proper CDIMemo instances
+        (one per direct child element). Each child memo also gets
+        its own children built recursively.
+
+        Preserves original ``.content`` from the parsed tree.
+        """
+        if self.element is None:
+            self.children = []
+            return
+
+        self.children = []
+        if self.element.text:
+            self.content = self.element.text
+        elif self.element.tag.lower() in ("name", "description"):
+            logger.warning(
+                f"{self.element.tag} has no content.")
+
+        if self.element.tail:
+            self.tail = self.element.tail
+
+        for child_elem in list(self.element):  # list() to avoid modification issues
+            child_memo = CDIMemo(
+                tag=child_elem.tag,
+                element=child_elem,
+                parent=self,
+                document=self.document
+            )
+            child_memo.addChildren()  # recursive
+            self.children.append(child_memo)

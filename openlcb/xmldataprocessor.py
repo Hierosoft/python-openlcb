@@ -1,17 +1,18 @@
 from collections import OrderedDict
+import copy
 import os
 import xml.sax  # noqa: E402
 import xml.sax.handler
 import xml.etree.ElementTree as ET
 
 from logging import getLogger
-from typing import Callable, List, Union
+from typing import Callable, List, Tuple, Union
 # from xml.sax.xmlreader import AttributesImpl  # for type hints, for autocomplete only in this case  # noqa:E501
 import xml.sax.xmlreader  # for type hints, for autocomplete only in this case
 
 from openlcb import d_quote, emit_cast
 from openlcb.canbus.canlink import CanLink
-from openlcb.cdimemo import CDIMemo
+from openlcb.cdimemo import CDIMemo, DataProcessorMemo
 from openlcb.dataprocessor import DataFormat, DataProcessor
 from openlcb.nodeid import NodeID
 from openlcb.platformextras import (
@@ -101,10 +102,9 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         _space (int): Space containing the CDI itself (not data
             described by CDI).
         _tmp_space (int|None): What space we are currently on
-            (of data described by Element(s), not of XML data itself)
-        _tmp_address (int|None): Where we are in the memory space
-            (starting at origin, and calculated using offset and/or size
-            of start tags).
+            (of data described by Element(s), not of XML data itself).
+        _tmp_address (int|None): For sanity check, not actual address
+            (no replication)! See expandedTree docstring.
     """
     XML_TOP_TAGS = ("cdi", "fdi")
     DEFAULT_CACHES_DIR = SysDirs.Cache
@@ -113,7 +113,8 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
     def __init__(self, linkLayer: CanLink, space: MemorySpace):
         self.canLink: CanLink = linkLayer
         # caches_dir = SysDirs.Cache
-        self.expanded_root = None  # type: xml.etree.ElementTree|None
+        self.expanded_root = None  # type: ET.Element|None
+        self.expanded_root_memo = None  # type: CDIMemo|None
         self._root_memos = None  # type: list[CDIMemo]|None
         self._root_memo = None  # type: CDIMemo|None
         self._space: Union[MemorySpace, None] = None
@@ -202,7 +203,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         assert isinstance(self._space, MemorySpace)
         return self._space
 
-    def onStatusMemo(self, cm: CDIMemo) -> bool:
+    def onStatusMemo(self, cm: DataProcessorMemo) -> bool:
         """Handle memo with status that doesn't affect tag stack/scope.
         (Implement in subclass)
         Returns:
@@ -297,7 +298,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         partial_str = memo.data.decode("utf-8")
         if self._realtime:
             self._parser.feed(partial_str)  # may call startElement/endElement
-        cm = CDIMemo()
+        cm = DataProcessorMemo()
         cm.progress_count = self.progress_count
         cm.expected_size = self.expected_size
         self.onStatusMemo(cm)
@@ -395,7 +396,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             partial_str = memo.data[:terminate_i].decode("utf-8")
             assert self.progress_count is not None
             self.progress_count += terminate_i
-            cm = CDIMemo()
+            cm = DataProcessorMemo()
             cm.done = True  # 'done' and not 'error' means got all
             cm.progress_count = self.progress_count
             cm.expected_size = self.expected_size
@@ -419,7 +420,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             #   ?xml version="1.0" encoding="utf-8"?>
             xml.sax.parseString(cdiString, self)
             # self._fireStatus("Done loading CDI.")
-            cm = CDIMemo()
+            cm = DataProcessorMemo()
             cm.done = True  # 'done' and not 'error' means got all
             cm.progress_count = self.progress_count
             self.onStatusMemo(cm)
@@ -501,7 +502,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         parent_cm = None
         if self._tag_stack:
             parent_cm = self._tag_stack[-1]
-        cm = CDIMemo(tag=name, element=el, parent=parent_cm)
+        cm = CDIMemo(tag=name, element=el, parent=parent_cm, document=self)
         if name == "segment":
             self._tmp_space = attrib.get('space')
             self._tmp_address = int(attrib.get('origin', 0))
@@ -517,7 +518,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                     raise AttributeError(
                         f"Node specifies {name} offset before segment origin")
                 self._tmp_address += offset
-        cm.address = self._tmp_address  # May be None if after /segment
+                # NOTE: ^ Sanity check only! For real address see expandedTree.
 
         self.onPushScope(cm)
         if len(self._tag_stack) < 1:
@@ -583,7 +584,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             top_cm.tag = name
             cm = top_cm
         else:
-            cm = CDIMemo(tag=name)
+            cm = CDIMemo(tag=name, document=self)
             cm.stray = True
         cm.end = True
 
@@ -644,7 +645,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 "Expected str, got {}".format(type(content).__name__))
         self._chunks.append(content)
 
-    def expandedTree(self) -> ET.Element:
+    def expandedTree(self) -> Tuple[CDIMemo, ET.Element]:
         """Build an expanded XML tree with replication and addresses.
 
         Starting from the root CDIMemo (via :meth:`getRootMemo`), this
@@ -661,91 +662,183 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         root_memo = self.getRootMemo()
         assert root_memo is not None and root_memo.element is not None
 
-        new_root = ET.Element(root_memo.element.tag)
+        new_root = ET.Element("cdi")  # always new: children added from memos
         new_root.attrib.update(root_memo.element.attrib)
 
-        self.address = 0
-
-        self._expanded_tree_recursive(root_memo, new_root)
-        return new_root
+        new_root_memo = copy.deepcopy(root_memo)  # deepcopy to edit children!
+        new_root_memo.document = self
+        size = self._expanded_tree_recursive(new_root_memo, new_root, address=0)
+        if size < 1:
+            logger.warning(f"No space used by CDI after replication (size={size})")
+        return new_root_memo, new_root
 
     def _expanded_tree_recursive(
-        self, memo: CDIMemo, new_parent: ET.Element
-    ) -> None:
+        self, parent: CDIMemo, parent_el: ET.Element,
+        allow_non_standard=False,
+        address: int = 0,
+        space: Union[int, None] = None,
+    ) -> int:
         """Recursive helper for :meth:`expandedTree`.
 
         Copies the element, handles replication, sets addresses, and
         recurses into children. Removes ``replication`` attribute from
         copied group elements.
         """
-        assert memo.element is not None
-        tag = memo.getTag() or memo.element.tag
-        tag_lower = tag.lower()
+        assert address is not None
+        assert parent.element is not None
+        parent_tag = parent.getTag() or parent.element.tag
+        parent_tag_lower = parent_tag.lower()
+        if parent_el.text:
+            parent.content = parent_el.text
+        elif parent.content:  # new_root
+            parent_el.text = parent.content
+        elif parent_tag_lower in ("name", "description"):
+            logger.warning(
+                f"expanded {parent_tag_lower} has no content.")
+        if parent_el.tail:
+            parent.tail = parent_el.tail
+        elif parent.tail:  # # new_root
+            parent_el.tail = parent.tail
 
-        replication_str = memo.element.attrib.get("replication")
-        count = int(replication_str) if replication_str is not None else 1
+        # Recurse into children (replication handled at this level)
+        new_children = []
+        # new_child_elements = []
+        for child_memo in parent.children:
+            replication_str = parent.element.attrib.get("replication")
+            count = int(replication_str) if replication_str is not None else 1
+            child_tag = child_memo.getTag()
+            assert child_tag
+            c_tag_lower = child_tag.lower()
+            child_el = child_memo.element
+            assert child_el is not None
+            if c_tag_lower == "segment":
+                space_str = child_el.attrib.get("space")
+                assert space_str, "expected space in segment"
+                space = int(space_str)
+                address = 0  # as per standard, 1st is at 0 else use "group"
+            if c_tag_lower == "group":
+                origin = child_el.attrib.get("origin")
+                address = int(origin) if (origin is not None) else 0
+            for idx in range(count):
+                # if count > 1:
+                copy_child_el = ET.Element(child_el.tag)
+                copy_child_el.attrib.update(child_el.attrib)
+                copy_child_el.text = child_el.text
+                copy_child_el.tail = child_el.tail
+                copy_child_memo = copy.deepcopy(child_memo)
+                copy_child_memo.parent = parent
+                copy_child_memo.document = self
+                copy_child_memo.element = copy_child_el
+                # else:
+                #     copy_child_el = child_el
+                #     copy_child_memo = child_memo
+                # NOTE: ^ Why commented: We don't want to modify
+                #   self.etree children (if we modify expandedTree
+                #   result such as self.expanded_root)!
+                #   - Don't even chance it by keeping the memo
+                #     (otherwise child_memo.element would be from tree).
+                #   - Also, we always add child to parent_el below.
 
-        if tag_lower == "group":
-            origin = memo.element.attrib.get("origin")
-            self.address = int(origin) if origin is not None else 0
+                new_children.append(copy_child_memo)
+                # for child_el in new_parent:
+                #     copy_parent_el.append(child_el)
 
-        for idx in range(count):
-            elem_copy = ET.Element(tag)
-            elem_copy.attrib.update(memo.element.attrib)
+                # Remove replication from the expanded copy
+                if "replication" in copy_child_el.attrib:
+                    del copy_child_el.attrib["replication"]
 
-            # Remove replication from the expanded copy
-            if "replication" in elem_copy.attrib:
-                del elem_copy.attrib["replication"]
+                if c_tag_lower == "group" or c_tag_lower in CLASSNAME_TYPES:
+                    copy_child_el.set("address", str(address))
+                    copy_child_el.set("space", str(space))
+                    if c_tag_lower in CLASSNAME_TYPES:
+                        copy_child_memo.address = address
+                        copy_child_memo.space = space
 
-            if tag_lower == "group" or memo.tag in CLASSNAME_TYPES:
-                elem_copy.set("address", str(self.address))
+                    if replication_str is not None:
+                        if c_tag_lower != "group":
+                            el_error = \
+                                f"unexpected replication for {c_tag_lower} tag"
+                            if allow_non_standard:
+                                logger.warning(el_error)
+                            else:
+                                raise SyntaxError(el_error)
+                        copy_child_el.set('replication_index', str(idx))
+                        # ^ optimized attrib[key] = value
 
-                if replication_str is not None and tag_lower == "group":
-                    elem_copy.set("replication_index", str(idx))
+                parent_el.append(copy_child_el)
+                # parent: Use new_children below (can't change while iterating)
 
-            new_parent.append(elem_copy)
+                # Determine size for address advancement
+                if c_tag_lower == "eventid":
+                    size = 8
+                elif "size" in copy_child_el.attrib:
+                    size = int(copy_child_el.attrib["size"])
+                else:
+                    size = 0
 
-            # Determine size for address advancement
-            if tag_lower == "eventid":
-                size = 8
-            elif "size" in memo.element.attrib:
-                size = int(memo.element.attrib["size"])
-            else:
-                size = 0
+                # Advance address *before* leaf variables
+                if size:
+                    if c_tag_lower in CLASSNAME_TYPES:
+                        assert size, f"expected size for {c_tag_lower}"
+                        address += size
+                    else:
+                        el_error = (
+                            f"size is not expected for {c_tag_lower}"
+                            f" size={size}")
+                        if allow_non_standard:
+                            logger.warning(el_error)
+                            address += size
+                        else:
+                            assert not size, el_error
 
-            # Recurse into children (replication handled at this level)
-            for child_memo in memo.children:
-                self._expanded_tree_recursive(child_memo, elem_copy)
+                address = self._expanded_tree_recursive(
+                    copy_child_memo, copy_child_el, address=address,
+                    space=space)
+                if c_tag_lower == "segment":
+                    space = None  # undefined after section
 
-            # Advance address for leaf variables
-            if tag_lower in CLASSNAME_TYPES or tag_lower == "eventid":
-                self.address += size
+        parent.children = new_children  # Same references if no replication
+        return address
 
-    def extractCDIVarMemos(self) -> List[CDIMemo]:
+    def extractCDIVarMemos(self, expanded_root=None, root_memo=None) -> List[CDIMemo]:  # noqa: E501
+        # type: (ET.Element|None, CDIMemo|None) -> List[CDIMemo]
         """Build a flat list of CDIMemo objects for all variables.
 
-        Uses :meth:`expandedTree` internally so replication is fully
-        expanded and stores it as ``self.expanded_root``.
-
-        Returns:
-            List of CDIMemo objects (with elements from the expanded
-            tree).
+        Uses the expanded tree (replication expanded, replication
+        attribute removed, addresses set). Returns original-style
+        memos (with .content) but with .element pointing into the
+        expanded tree so that modifications (setData etc.) affect
+        the saved XML.
         """
+        # TODO: Implement ACDI vars if present (See OpenLCB
+        #     "Configuration Description Information" Standard)
         if not hasattr(self, "etree") or self.etree is None:
             logger.error("processor has no etree")
             return []
+        if expanded_root is not None:
+            if root_memo is not None:  # reserved
+                assert isinstance(root_memo, CDIMemo)
+            assert isinstance(expanded_root, ET.Element)
+            root_memo = root_memo  # reserved
+            root_el = expanded_root
+        else:
+            root_memo, root_el = self.expandedTree()
+        self.expanded_root = root_el
+        self.expanded_root_memo = root_memo
 
-        self.expanded_root = self.expandedTree()
+        assert isinstance(self.expanded_root_memo, CDIMemo)
 
         cdivar_memos: List[CDIMemo] = []
 
-        def traverse(element: ET.Element) -> None:
-            tag_lower = element.tag.lower()
+        def traverse(memo: CDIMemo) -> None:
+            tag = memo.getTag()
+            tag_lower = tag.lower() if tag else ""
             if tag_lower in CLASSNAME_TYPES:
-                memo = CDIMemo(tag=element.tag, element=element)
+                # Use the existing expanded memo (has correct .content)
                 cdivar_memos.append(memo)
-            for child in element:
+            for child in memo.children:
                 traverse(child)
 
-        traverse(self.expanded_root)
+        traverse(self.expanded_root_memo)
+        assert root_el is self.expanded_root  # concurrent modification check
         return cdivar_memos

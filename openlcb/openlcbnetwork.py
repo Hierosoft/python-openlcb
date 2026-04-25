@@ -28,6 +28,7 @@ from openlcb.canbus.canlink import CanLink
 from openlcb.cdimemo import CDIMemo
 from openlcb.datagramservice import DatagramReadMemo, DatagramService
 from openlcb.dataprocessor import DataFormat
+from openlcb.dataprocessormemo import DataProcessorMemo
 from openlcb.memoryservice import MemoryReadMemo, MemoryService, MemorySpace
 from openlcb.message import Message
 from openlcb.xmldataprocessor import XMLDataProcessor
@@ -54,7 +55,7 @@ class OpenLCBNetwork:
             is a MemorySpace)
     """
     def __init__(self, localNodeID: Union[str, bytearray, int, NodeID]):
-        self._onConnect: Union[Callable[[CDIMemo], None], None] = None
+        self._onConnect: Union[Callable[[DataProcessorMemo], None], None] = None
         self._port: PortInterface = None
         self.physicalLayer: CanPhysicalLayerGridConnect = None
         self.canLink: CanLink = None
@@ -289,23 +290,28 @@ class OpenLCBNetwork:
             #   manually.
             #   - Usually "socket connection broken" due to no more
             #     bytes to read, but ok if "\0" terminator was reached.
-            if ((self._dataProcessor._data is not None)
-                    and (not self._dataProcessor._stringTerminated)):
-                # This boolean is managed by the memoryReadSuccess
-                # callback.
-                cm = CDIMemo()
-                cm.error = formatted_ex(ex)
-                cm.done = True  # stop progress in gui/other main thread
-                if self._dataProcessor.onStatusMemo:
-                    self._dataProcessor.onStatusMemo(cm)
-                raise  # re-raise since incomplete (prevent done OK state)
+            if self._dataProcessor is not None:
+                if ((self._dataProcessor._data is not None)
+                        and (not self._dataProcessor._stringTerminated)):
+                    # This boolean is managed by the memoryReadSuccess
+                    # callback.
+                    cm = DataProcessorMemo()
+                    cm.error = formatted_ex(ex)
+                    cm.done = True  # stop progress in gui/other main thread
+                    if self._dataProcessor.onStatusMemo:
+                        self._dataProcessor.onStatusMemo(cm)
+                    raise  # re-raise since incomplete (prevent done OK state)
+            else:
+                logger.warning(
+                    "Listen loop ended, but _dataProcessor not set"
+                    " (DataProcessorMemo will not be used to notify caller).")
         finally:
             self.physicalLayer.physicalLayerDown()  # Link_Layer_Down, setState
         self._listenThread: Union[threading.Thread, None] = None
 
         # If we got here, the RuntimeError was ok since the
         #   null terminator '\0' was reached (otherwise re-raise occurs above)
-        cm = CDIMemo()
+        cm = DataProcessorMemo()
         cm.error = ("Listen loop stopped (caught_ex={})."
                     .format(formatted_ex(caught_ex)))
         cm.done = True
@@ -336,7 +342,7 @@ class OpenLCBNetwork:
         logger.debug("[_handleMessage]   message.mti={}".format(message.mti))
         if message.mti == MTI.Link_Layer_Down:
             if self._onConnect:
-                cm = CDIMemo()
+                cm = DataProcessorMemo()
                 cm.done = True
                 cm.error = "Disconnected"
                 cm.message = message
@@ -345,7 +351,7 @@ class OpenLCBNetwork:
                 return True
         elif message.mti == MTI.Link_Layer_Up:
             if self._onConnect:
-                cm = CDIMemo()
+                cm = DataProcessorMemo()
                 cm.done = True  # 'done' without error indicates connected.
                 cm.message = message
                 self._onConnect(cm)
@@ -406,7 +412,7 @@ class OpenLCBNetwork:
             if len(self._dataProcessor._tag_stack):
                 cm = self._dataProcessor._tag_stack[-1]
             else:
-                cm = CDIMemo()
+                cm = DataProcessorMemo()
             cm.error = error
             cm.done = True  # stop progress in gui/other main thread
             self._dataProcessor._onElement(cm)

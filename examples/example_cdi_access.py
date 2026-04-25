@@ -190,10 +190,8 @@ class MyHandler(xml.sax.handler.ContentHandler):
         _chunks (list[str]): Collects chunks of data.
             This is implementation-specific, and not
             required if streaming (parser.feed).
-        _tmp_address (int|None): Where we are in the memory space (starting
-            at origin, and calculated using offset and/or size of start
-            tags).
-        _tmp_space (int|None): What space we are currently on.
+        _tmp_address (int|None): For sanity check, not actual address.
+            See expandedTree docstring.
     """
 
     def __init__(self):
