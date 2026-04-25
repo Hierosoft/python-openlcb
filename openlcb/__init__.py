@@ -36,6 +36,8 @@ def only_hex_pairs(value: str) -> Union[re.Match[bytes], re.Match[str], None]:
 
 def emit_cast(value) -> str:
     """Get type and value, such as for debug output."""
+    if value is None:
+        return "None"
     repr_str = repr(value)
     if isinstance(value, Enum):
         repr_str = "{}".format(value.value)
