@@ -489,13 +489,21 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 self._top_tag = name.lower()
             elif name.lower() == "acdi":
                 self.acdi = True
-        tail = self._flushCharBuffer() if self._chunks else None
-        if tail is not None:
+        content = self._flushCharBuffer() if self._chunks else None
+        if content is not None:
             if self._ended_memo is not None:
-                self._ended_memo.tail = tail
+                self._ended_memo.tail = content
             else:
-                logger.warning(
-                    f"Stray characters before {repr(name)}: {repr(tail)}")
+                if self._tag_stack:
+                    # Text in parent before this
+                    #   (typically "\n", possibly indentation).
+                    if self._tag_stack[-1].content is None:
+                        self._tag_stack[-1].content = content
+                    else:
+                        self._tag_stack[-1].content += content
+                else:
+                    logger.warning(
+                        f"Stray characters before {repr(name)}: {repr(content)}")
         if self._ended_memo is not None:
             self._ended_memo = None
         attrib = attrs_to_dict(attrs)
@@ -721,7 +729,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         new_children = []
         # new_child_elements = []
         for child_memo in parent.children:
-            replication_str = parent.element.attrib.get("replication")
+            replication_str = parent.element.attrib.get('replication')
             count = int(replication_str) if replication_str is not None else 1
             child_tag = child_memo.getTag()
             assert child_tag
@@ -729,13 +737,15 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             child_el = child_memo.element
             assert child_el is not None
             if c_tag_lower == "segment":
-                space_str = child_el.attrib.get("space")
+                space_str = child_el.attrib.get('space')
                 assert space_str, "expected space in segment"
                 space = int(space_str)
-                address = 0  # as per standard, 1st is at 0 else use "group"
-            if c_tag_lower == "group":
-                origin = child_el.attrib.get("origin")
+                origin = child_el.attrib.get('origin')
                 address = int(origin) if (origin is not None) else 0
+            if c_tag_lower == "group":
+                offset = child_el.attrib.get('offset')
+                if offset:
+                    address += int(offset)
             for idx in range(count):
                 # if count > 1:
                 copy_child_el = ET.Element(child_el.tag)
@@ -769,8 +779,8 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                     del copy_child_el.attrib["replication"]
 
                 if c_tag_lower == "group" or c_tag_lower in CLASSNAME_TYPES:
-                    copy_child_el.set("address", str(address))
-                    copy_child_el.set("space", str(space))
+                    copy_child_el.set('address', str(address))
+                    copy_child_el.set('space', str(space))
                     if c_tag_lower in CLASSNAME_TYPES:
                         copy_child_memo.address = address
                         copy_child_memo.space = space
