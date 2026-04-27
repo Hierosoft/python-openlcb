@@ -88,6 +88,12 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         _openEl (SubElement): Tracks currently-open tag (no `</...>`
             yet) during parsing, or if no tags are open then equals
             etree.
+        _ended_memo (CDIMemo|None): The memo most recently popped,
+            where "tail" (text after end tag) should be set during
+            "characters" when a new tag hasn't been started yet.
+            TODO: Put child element's tail in parent (Not part of
+            Standard as of 2026-05, but technically possible, such
+            as "World" in `<name>Hello<br/>World`).
         _tag_stack (list[SubElement]): Tracks scope during parse since
             self.etree doesn't have awareness of whether end tag is
             finished (and therefore doesn't know which element is the
@@ -121,6 +127,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         self._openEl: Union[ET.Element, None] = None
         self._top_tag = "cdi"  # cdi or fdi (detected in startElement)
         # self._myCacheDir = os.path.join(caches_dir, "python-openlcb")
+        self._ended_memo = None   # type: CDIMemo|None
         self._myCacheDir = XMLDataProcessor.DEFAULT_CACHE_DIR
         self._tmp_space = None  # type: int|None
         self._tmp_address = None  # type: int|None
@@ -482,6 +489,15 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 self._top_tag = name.lower()
             elif name.lower() == "acdi":
                 self.acdi = True
+        tail = self._flushCharBuffer() if self._chunks else None
+        if tail is not None:
+            if self._ended_memo is not None:
+                self._ended_memo.tail = tail
+            else:
+                logger.warning(
+                    f"Stray characters before {repr(name)}: {repr(tail)}")
+        if self._ended_memo is not None:
+            self._ended_memo = None
         attrib = attrs_to_dict(attrs)
         origin = attrib.get('origin')
         offset = attrib.get('offset')
@@ -618,6 +634,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             cm.parent.children.append(cm)
         _ = self.checkDone(cm)
         cm.content = self._flushCharBuffer()
+        self._ended_memo = cm
         self.onPopScope(cm)
 
     def _flushCharBuffer(self):
@@ -697,7 +714,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 f"expanded {parent_tag_lower} has no content.")
         if parent_el.tail:
             parent.tail = parent_el.tail
-        elif parent.tail:  # # new_root
+        elif parent.tail:  # new_root
             parent_el.tail = parent.tail
 
         # Recurse into children (replication handled at this level)
@@ -724,7 +741,11 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 copy_child_el = ET.Element(child_el.tag)
                 copy_child_el.attrib.update(child_el.attrib)
                 copy_child_el.text = child_el.text
+                if child_el.text is not None:
+                    copy_child_el.text = child_el.text.strip()
                 copy_child_el.tail = child_el.tail
+                if child_el.tail is not None:
+                    copy_child_el.tail = child_el.tail.strip()
                 copy_child_memo = copy.deepcopy(child_memo)
                 copy_child_memo.parent = parent
                 copy_child_memo.document = self
