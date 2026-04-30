@@ -14,6 +14,8 @@ class DataProcessor:
     Attributes:
         enable_cache (bool): Defaults to False (May differ in subclass).
     """
+    DEFAULT_EXT = ".bin"  # override in subclass
+
     def __init__(self):
         self.enable_cache = False  # type: bool
         # Members used to construct space memo such as CDIMemo:

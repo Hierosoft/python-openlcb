@@ -113,6 +113,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             (no replication)! See expandedTree docstring.
     """
     XML_TOP_TAGS = ("cdi", "fdi")
+    DEFAULT_EXT = ".cdi.xml"  # override in subclass
     DEFAULT_CACHES_DIR = SysDirs.Cache
     DEFAULT_CACHE_DIR = os.path.join(DEFAULT_CACHES_DIR, "python-openlcb")
 
@@ -448,7 +449,9 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         type(self).cacheFilePath(item_id, **kwargs)
 
     @classmethod
-    def cacheFileName(cls, item_id: Union[NodeID, str], ext=".cdi.xml"):
+    def cacheFileName(cls, item_id: Union[NodeID, str], ext=None):
+        if ext is None:
+            ext = cls.DEFAULT_EXT
         item_id = str(item_id)  # Convert NodeID or other
         clean_name = clean_file_name(item_id.replace(":", "."))
         clean_name += ext
@@ -457,7 +460,9 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
     @classmethod
     def cacheFilePath(cls, item_id: Union[NodeID, str], my_cache_dir=None,
                       subfolder: Union[str, None] = "cdi", name=None,
-                      ext=".cdi.xml"):
+                      ext=None):
+        if ext is None:
+            ext = cls.DEFAULT_EXT
         if my_cache_dir is None:
             my_cache_dir = cls.DEFAULT_CACHE_DIR
         if subfolder:
