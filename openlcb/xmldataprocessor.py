@@ -448,12 +448,20 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         type(self).cacheFilePath(item_id, **kwargs)
 
     @classmethod
+    def cacheFileName(cls, item_id: Union[NodeID, str], ext=".cdi.xml"):
+        item_id = str(item_id)  # Convert NodeID or other
+        clean_name = clean_file_name(item_id.replace(":", "."))
+        clean_name += ext
+        return clean_name
+
+    @classmethod
     def cacheFilePath(cls, item_id: Union[NodeID, str], my_cache_dir=None,
-                      subFolder="cdi", name=None, ext=".xml"):
+                      subfolder: Union[str, None] = "cdi", name=None,
+                      ext=".cdi.xml"):
         if my_cache_dir is None:
             my_cache_dir = cls.DEFAULT_CACHE_DIR
-        if subFolder:
-            cdi_cache_dir = os.path.join(my_cache_dir, subFolder)
+        if subfolder:
+            cdi_cache_dir = os.path.join(my_cache_dir, subfolder)
         else:
             cdi_cache_dir = my_cache_dir
         if not os.path.isdir(cdi_cache_dir):
@@ -462,9 +470,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         #   name file to avoid cache file from a different
         #   device/version.
         if not name:
-            item_id = str(item_id)  # Convert NodeID or other
-            clean_name = clean_file_name(item_id.replace(":", "."))
-            clean_name += ext
+            clean_name = cls.cacheFileName(item_id, ext=ext)
         else:
             clean_name = clean_file_name(name)
             if clean_name != name:

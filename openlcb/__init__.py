@@ -139,10 +139,12 @@ def hr_repr(value, always_quote: bool = False) -> str:
     """Represent value with double quotes
     (Human-readable repr).
     """
-    repr_value = repr(value)
-    if repr_value.startswith("'") and repr_value.endswith("'"):
-        return '"' + repr_value[1:-1].replace('"', '\\"') + '"'
-    elif always_quote:
+    # repr_value = repr(value)
+    # repr_value = repr_value.replace("\\\\", "\\")
+    # if repr_value.startswith("'") and repr_value.endswith("'"):
+    #     return '"' + repr_value[1:-1].replace('"', '\\"') + '"'
+    repr_value = str(value)
+    if always_quote or isinstance(value, str):
         return '"' + repr_value.replace('"', '\\"') + '"'
     return repr(value)
 
