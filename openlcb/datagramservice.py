@@ -248,7 +248,7 @@ class DatagramService:
 
         # check for whether a match was found, indicating this was for us
         if memo is None : return
-        
+
         # check of tracking logic
         if self.currentOutstandingMemo != memo:
             logger.error(
@@ -266,6 +266,10 @@ class DatagramService:
         '''Not OK reply to write'''
         # match to the memo and remove from queue
         memo = self.matchToWriteMemo(message)
+
+        # check for whether a match was found, indicating this was for us
+        if memo is None:
+            return
 
         # check of tracking logic
         if self.currentOutstandingMemo != memo:
