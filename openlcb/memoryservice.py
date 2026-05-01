@@ -36,6 +36,7 @@ from openlcb.datagramservice import (
     DatagramService,
 )
 from openlcb.convert import Convert
+from openlcb.nodeid import NodeID
 
 logger = getLogger(__name__)
 
