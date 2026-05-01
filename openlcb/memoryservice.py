@@ -30,6 +30,9 @@ from typing import (
     Union,  # in case `|` doesn't support 'type' in this Python version
 )
 
+from openlcb import (
+    emit_cast,
+)
 from openlcb.datagramservice import (
     # DatagramReadMemo,
     DatagramReadMemo,
@@ -40,6 +43,26 @@ from openlcb.convert import Convert
 from openlcb.nodeid import NodeID
 
 logger = getLogger(__name__)
+
+
+MODE_BYTES = {
+    'Read_Command': {0x40, 0x41, 0x42, 0x43},
+    'Read_Reply': {0x50, 0x51, 0x52, 0x53},
+    'Read_Stream_Command': {0x60, 0x61, 0x62, 0x63},
+    'Read_Stream_Reply': {0x70, 0x71, 0x72, 0x73},
+    'Write_Command': {0x00, 0x01, 0x02, 0x03},
+    'Write_Reply': {0x10, 0x11, 0x12, 0x13},
+    'Write_Under_Mask_Command': {0x08, 0x09, 0x0A, 0x0B},
+    'Write_Stream_Command': {0x20, 0x21, 0x22, 0x23},
+    'Write_Stream_Reply': {0x30, 0x31, 0x32, 0x33},
+}
+
+MODE_ERROR_BYTES = {
+    'Read_Reply': {0x58, 0x59, 0x5A, 0x5B},
+    'Read_Stream_Reply': {0x78, 0x79, 0x7A, 0x7B},
+    'Write_Reply': {0x18, 0x19, 0x1A, 0x1B},
+    'Write_Stream_Reply': {0x38, 0x39, 0x3A, 0x3B},
+}
 
 
 class MemorySpace(Enum):
@@ -105,8 +128,12 @@ class MemoryReadMemo:
     Attributes:
         data(bytearray): The data that was read.
     """
-    def __init__(self, nodeID, size, space, address, rejectedReply, dataReply):
+    def __init__(self, nodeID: NodeID, size: int, space: int, address: int,
+                 rejectedReply: Callable[['MemoryReadMemo'], None],
+                 dataReply: Callable[['MemoryReadMemo'], None]):
         # For args see class docstring.
+        self.error = None  # type: str|None
+        self.errorCode = None  # type: int|None
         self.nodeID = nodeID
         self.size = size
         self.space = space
@@ -116,6 +143,7 @@ class MemoryReadMemo:
         # for convenience, data can be added or updated after creation of the
         # memo
         self.data = bytearray()
+        assertMemoOK(self)
 
 
 class MemoryWriteMemo:
@@ -138,9 +166,13 @@ class MemoryWriteMemo:
             memory address.
     """
 
-    def __init__(self, nodeID, okReply, rejectedReply, size, space, address,
-                 data):
+    def __init__(self, nodeID: NodeID,
+                 okReply: Callable[['MemoryWriteMemo'], None],
+                 rejectedReply: Callable[['MemoryWriteMemo'], None],
+                 size: int, space: int, address: int, data: bytearray):
         # For args see class docstring.
+        self.error = None  # type: str|None
+        self.errorCode = None  # type: int|None
         self.nodeID = nodeID
         self.okReply = okReply
         self.rejectedReply = rejectedReply
@@ -148,6 +180,84 @@ class MemoryWriteMemo:
         self.space = space
         self.address = address
         self.data = data
+        assertMemoOK(self)
+
+
+def assertMemoOK(memo: Union[MemoryReadMemo, MemoryWriteMemo]):
+    assert isinstance(memo.space, int), \
+        f"Expected int or MemorySpace.value, got space={emit_cast(memo.space)}"
+    assert isinstance(memo.size, int), \
+        f"Expected int, got size={emit_cast(memo.size)}"
+    assert memo.size <= 64, \
+        f"Expected <= 64, got size={memo.size}"
+    assert isinstance(memo.address, int), \
+        f"Expected int, got address={emit_cast(memo.address)}"
+    assert isinstance(memo.data, Union[bytes, bytearray]), \
+        f"Expected bytearray, got data={emit_cast(memo.data)}"
+
+
+def parseReplyDatagram(memo: Union[MemoryReadMemo, MemoryWriteMemo],
+                       dmemo: Union[DatagramReadMemo, DatagramWriteMemo]):
+    """Parse dmemo and set errorCode and/or error attributes of memo"""
+    if not dmemo.data or dmemo.data[0] != 0x20:
+        logger.warning(
+            "Datagram type is not memory configuration (0x20)"
+            f" it is {hex(dmemo.data[0])}")
+        return
+    if len(dmemo.data) < 2:
+        logger.warning(
+            "Datagram is truncated to 1 byte:"
+            f" it is {hex(dmemo.data[0])}")
+        return
+    (hasByte6, _) = Convert.deserializeMC2ndByte(dmemo.data[1])
+    offset = 6
+    error = None
+    if hasByte6:
+        offset = 7
+    memo.error = None
+    memo.errorCode = None
+    if (dmemo.data[1] & 0x08 == 0):
+        # ok reply
+        return
+    else:
+        pass
+        # 0x08 (0b00001000) is error bit
+        # mode = None
+        # for k, values in MODE_ERROR_BYTES.items():
+        #     if dmemo.data[1] in values:
+        #         mode = k
+        #         break
+        # if mode is not None:
+        #     error = f"No {mode} error code."
+        # else:
+        #     error = f"No error code for unknown mode {hex(dmemo.data[1])}."
+    code_idx = offset
+
+    if len(dmemo.data) < code_idx + 2:
+        memo.error = error
+        if len(dmemo.data) == code_idx + 1:
+            memo.error = (
+                f"malformed error code {hex(dmemo.data[code_idx])}"
+                " (expected 2 bytes)")
+        memo.errorCode = dmemo.data[code_idx]
+        return
+    error = None
+    # Decode big-endian number:
+    memo.errorCode = dmemo.data[code_idx] << 8 + dmemo.data[code_idx+1]
+    message_idx = code_idx + 2
+    if len(dmemo.data) > message_idx:
+        error_bytes = Convert.getBeforeNull(dmemo.data, message_idx)
+        error = error_bytes.decode("utf-8")
+        if len(error) == 1:
+            error += f" ({hex(dmemo.data[message_idx])})"
+        elif len(error) == 0 and (len(dmemo.data) - message_idx > 0):
+            error += f" ({list(dmemo.data[message_idx:])})"
+    else:
+        error = f"(2nd byte = {hex(dmemo.data[1])})"
+    error += f" (hasByte6={hasByte6})"
+    if hasByte6:
+        error += f" (space={hex(dmemo.data[6])})"
+    memo.error = error
 
 
 class MemoryService:
@@ -196,15 +306,15 @@ class MemoryService:
             memo (MemoryReadMemo): Request to send.
         """
         assert isinstance(stream, bool)
-        byte6 = False  # if custom space is defined in byte 6
+        hasByte6 = False  # if custom space is defined in byte 6
         flag = 0
-        (byte6, flag) = Convert.spaceDecode(memo.space)
+        (hasByte6, flag) = Convert.serializeSpace(memo.space)
         if stream:
             # Encoding: 0x60=custom, 0x61=0xFD, 0x62=0xFE, 0x63=0xFF
-            spaceFlag = 0x60 if byte6 else (flag | 0x60)
+            spaceFlag = 0x60 if hasByte6 else (flag | 0x60)
         else:
             # Encoding: 0x40=custom, 0x41=0xFD, 0x42=0xFE, 0x43=0xFF
-            spaceFlag = 0x40 if byte6 else (flag | 0x40)  # | 0b11111100
+            spaceFlag = 0x40 if hasByte6 else (flag | 0x40)  # | 0b11111100
         # ^ In else case, flag is 1-3, so re-add 0xFC (0b11111100)
         addr2 = ((memo.address >> 24) & 0xFF)
         addr3 = ((memo.address >> 16) & 0xFF)
@@ -214,7 +324,7 @@ class MemoryService:
             DatagramService.ProtocolID.MemoryOperation.value, spaceFlag,
             addr2, addr3, addr4, addr5])
         # NOTE: list[int] is ok for bytearray extend (`+` requires cast)
-        if byte6:
+        if hasByte6:
             assert memo.space <= 0xFF, f"Space {memo.space} out of byte range"
             data.extend([(memo.space & 0xFF)])
         data.extend([memo.size])
@@ -272,6 +382,7 @@ class MemoryService:
                     if len(self.readMemos) > 0:
                         self.requestMemoryReadNext(self.readMemos[0])
 
+                    parseReplyDatagram(tMemoryMemo, dmemo)
                     # fill data for call-back to requestor
                     if len(dmemo.data) > offset:
                         tMemoryMemo.data = dmemo.data[offset:]
@@ -295,6 +406,7 @@ class MemoryService:
                 if self.writeMemos[index].nodeID == dmemo.srcID:
                     writeMemo = self.writeMemos[index]  # type: MemoryWriteMemo
                     del self.writeMemos[index]
+                    parseReplyDatagram(writeMemo, dmemo)
                     if dmemo.data[1] & 0x08 == 0 :
                         writeMemo.okReply(writeMemo)
                     else:
@@ -334,15 +446,15 @@ class MemoryService:
         # preserve the request
         self.writeMemos.append(memo)
         # create & send a write datagram
-        byte6 = False  # if custom space is defined in byte 6
+        hasByte6 = False  # if custom space is defined in byte 6
         flag = 0
-        (byte6, flag) = Convert.spaceDecode(memo.space)
+        (hasByte6, flag) = Convert.serializeSpace(memo.space)
         if stream:
             # Encoding: 0x20=custom, 0x21=0xFD, 0x22=0xFE, 0x23=0xFF
-            spaceFlag = 0x20 if byte6 else (flag | 0x20)
+            spaceFlag = 0x20 if hasByte6 else (flag | 0x20)
         else:
             # Encoding: 0x00=custom, 0x01=0xFD, 0x02=0xFE, 0x03=0xFF
-            spaceFlag = 0x00 if byte6 else (flag | 0x00)
+            spaceFlag = 0x00 if hasByte6 else (flag | 0x00)
         addr2 = ((memo.address >> 24) & 0xFF)
         addr3 = ((memo.address >> 16) & 0xFF)
         addr4 = ((memo.address >> 8) & 0xFF)
@@ -351,7 +463,7 @@ class MemoryService:
             DatagramService.ProtocolID.MemoryOperation.value, spaceFlag,
             addr2, addr3, addr4, addr5
         ])
-        if byte6:
+        if hasByte6:
             assert memo.space <= 0xFF, f"Space {memo.space} out of byte range"
             data.extend([(memo.space & 0xFF)])
         data.extend(memo.data)
@@ -365,7 +477,7 @@ class MemoryService:
         Args:
             space (int): Encoded memory space identifier. This can be a
                 value within a specific range, as defined in the
-                `spaceDecode` method.
+                `serializeSpace` method.
             nodeID (NodeID): ID of remote node from which the memory
                 space length is requested.
             callback (Callable): Callback function that will receive the

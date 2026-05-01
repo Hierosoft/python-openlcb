@@ -87,18 +87,18 @@ class TestConvertClass(unittest.TestCase):
             with self.assertRaises(ValueError):
                 Convert.intToArray(value, length)
 
-    def testSpaceDecode(self):
+    def testSerializeSpace(self):
         byte6 = False
         space = 0x00
 
-        (byte6, space) = Convert.spaceDecode(0xF8)
+        (byte6, space) = Convert.serializeSpace(0xF8)
         self.assertEqual(space, 0xF8)
         self.assertTrue(byte6)
 
-        (byte6, space) = Convert.spaceDecode(0xFF)
+        (byte6, space) = Convert.serializeSpace(0xFF)
         self.assertEqual(space, 0x03)
         self.assertFalse(byte6)
 
-        (byte6, space) = Convert.spaceDecode(0xFD)
+        (byte6, space) = Convert.serializeSpace(0xFD)
         self.assertEqual(space, 0x01)
         self.assertFalse(byte6)

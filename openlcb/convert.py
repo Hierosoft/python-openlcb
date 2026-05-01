@@ -20,19 +20,30 @@ logger = getLogger(__name__)
 class Convert:
 
     @staticmethod
-    def spaceDecode(space):
+    def deserializeMC2ndByte(datagramByte1):
+        """Decode byte[1] (2nd) of Memory Configuration Datagram"""
+        has_byte6 = False
+        if datagramByte1 & 0x03 == 0:
+            has_byte6 = True
+        return has_byte6, datagramByte1 & 0xFC
+        # ^ 0xFC = 11111100
+
+    # formerly spaceDecode, but it serializes a space for datagram byte2
+    @staticmethod
+    def serializeSpace(space):
         """Convert from a space number to either
-        False and command byte or True and standard memory space
+        False and control number or True and standard memory space
+        for use in a Datagram.
 
         Args:
-            space (int): Encoded memory space identifier, where values:
+            space (int): Sequential memory space identifier, where values:
             - 0xFF to 0xFD are special spaces, and only the least significant
-              2 bits are relevant.
+              2 bits will be used in a datagram.
             - 0x00 to 0xFC represent standard memory spaces directly.
 
         Returns:
-            tuple(bool, byte): (is custom space, command | space)
-                - (False, 1-3 for in command byte) :
+            tuple(bool, byte): (is custom space, control | space)
+                - (False, control number 1 to 3 inclusive) :
                   spaces 0xFF - 0xFD (Except bits beyond 0x00000011
                   differ for each datagram type. See 4.2 Address
                   Space Selection in OpenLCB Memory Configuration
@@ -168,3 +179,15 @@ class Convert:
         #   to bytearray after getting list[int] of remaining length:
         padding = bytearray([0] * (length-len(contentPart)))
         return contentPart + padding
+
+    @staticmethod
+    def getBeforeNull(data: Union[bytes, bytearray], start):
+        null_idx = -1
+        for i in range(start, len(data)):
+            assert isinstance(data[i], int)
+            if data[i] == 0:
+                null_idx = i
+                break
+        if null_idx > -1:
+            return data[start:null_idx]
+        return data[start:]
