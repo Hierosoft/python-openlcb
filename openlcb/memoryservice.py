@@ -245,7 +245,7 @@ def parseReplyDatagram(memo: Union[MemoryReadMemo, MemoryWriteMemo],
         return
     error = None
     # Decode big-endian number:
-    memo.errorCode = dmemo.data[code_idx] << 8 + dmemo.data[code_idx+1]
+    memo.errorCode = (dmemo.data[code_idx] << 8) + dmemo.data[code_idx+1]
     message_idx = code_idx + 2
     if len(dmemo.data) > message_idx:
         error_bytes = Convert.getBeforeNull(dmemo.data, message_idx)
