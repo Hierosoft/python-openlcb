@@ -188,10 +188,12 @@ def assertMemoOK(memo: Union[MemoryReadMemo, MemoryWriteMemo]):
         f"Expected int or MemorySpace.value, got space={emit_cast(memo.space)}"
     assert isinstance(memo.size, int), \
         f"Expected int, got size={emit_cast(memo.size)}"
-    assert memo.size <= 64, \
-        f"Expected <= 64, got size={memo.size}"
+    # TODO: > 64 is only ok for a length request (?)
+    # assert memo.size <= 64, \
+    #     f"Expected <= 64, got size={memo.size}"
     assert isinstance(memo.address, int), \
         f"Expected int, got address={emit_cast(memo.address)}"
+    assert len(memo.data) <= 64
     assert isinstance(memo.data, Union[bytes, bytearray]), \
         f"Expected bytearray, got data={emit_cast(memo.data)}"
 
