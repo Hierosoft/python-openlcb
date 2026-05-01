@@ -247,7 +247,11 @@ class DatagramService:
         memo = self.matchToWriteMemo(message)  # type: DatagramWriteMemo|None
 
         # check for whether a match was found, indicating this was for us
-        if memo is None : return
+        if memo is None:
+            logger.debug(
+                f"Unrelated OK reply discarded: from"
+                f" {message.source} to {message.destination}")
+            return
 
         # check of tracking logic
         if self.currentOutstandingMemo != memo:
@@ -269,6 +273,9 @@ class DatagramService:
 
         # check for whether a match was found, indicating this was for us
         if memo is None:
+            logger.debug(
+                f"Unrelated Rejected reply discarded: from"
+                f" {message.source} to {message.destination}")
             return
 
         # check of tracking logic
