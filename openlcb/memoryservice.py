@@ -25,7 +25,8 @@ from enum import Enum
 from logging import getLogger
 from typing import (
     Callable,
-    List,  # in case list doesn't support `[` in this Python version
+    List,
+    Optional,  # in case list doesn't support `[` in this Python version
     Union,  # in case `|` doesn't support 'type' in this Python version
 )
 
@@ -168,8 +169,8 @@ class MemoryService:
             self.datagramReceivedListener
         )
 
-    def requestMemoryRead(self, memo):
-        # type: (MemoryReadMemo) -> None
+    def requestMemoryRead(self, memo, stream: Bool = False):
+        # type: (MemoryReadMemo, Optional[bool]) -> None
         '''Request a read operation start.
 
         - If okReply in the memo is triggered, it will be followed by a
@@ -180,23 +181,31 @@ class MemoryService:
         Args:
             memo (MemoryReadMemo): Request to enqueue.
         '''
+        assert isinstance(stream, bool)
         # preserve the request
         self.readMemos.append(memo)
 
         if len(self.readMemos) == 1:
-            self.requestMemoryReadNext(memo)
+            self.requestMemoryReadNext(memo, stream=stream)
 
-    def requestMemoryReadNext(self, memo):
-        # type: (MemoryReadMemo) -> None
+    def requestMemoryReadNext(self, memo, stream: bool = False):
+        # type: (MemoryReadMemo, Optional[bool]) -> None
         """send the read request
 
         Args:
             memo (MemoryReadMemo): Request to send.
         """
-        byte6 = False
+        assert isinstance(stream, bool)
+        byte6 = False  # if custom space is defined in byte 6
         flag = 0
         (byte6, flag) = Convert.spaceDecode(memo.space)
-        spaceFlag = 0x40 if byte6 else (flag | 0x40)
+        if stream:
+            # Encoding: 0x60=custom, 0x61=0xFD, 0x62=0xFE, 0x63=0xFF
+            spaceFlag = 0x60 if byte6 else (flag | 0x60)
+        else:
+            # Encoding: 0x40=custom, 0x41=0xFD, 0x42=0xFE, 0x43=0xFF
+            spaceFlag = 0x40 if byte6 else (flag | 0x40)  # | 0b11111100
+        # ^ In else case, flag is 1-3, so re-add 0xFC (0b11111100)
         addr2 = ((memo.address >> 24) & 0xFF)
         addr3 = ((memo.address >> 16) & 0xFF)
         addr4 = ((memo.address >> 8) & 0xFF)
@@ -206,6 +215,7 @@ class MemoryService:
             addr2, addr3, addr4, addr5])
         # NOTE: list[int] is ok for bytearray extend (`+` requires cast)
         if byte6:
+            assert memo.space <= 0xFF, f"Space {memo.space} out of byte range"
             data.extend([(memo.space & 0xFF)])
         data.extend([memo.size])
         logger.debug(
@@ -313,19 +323,26 @@ class MemoryService:
 
         return True
 
-    def requestMemoryWrite(self, memo: MemoryWriteMemo):
+    def requestMemoryWrite(self, memo: MemoryWriteMemo, stream: bool = False):
+        # type: (MemoryWriteMemo, Optional[bool]) -> None
         """Request memory write.
 
         Args:
             memo (MemoryWriteMemo): information to send
         """
+        assert isinstance(stream, bool)
         # preserve the request
         self.writeMemos.append(memo)
         # create & send a write datagram
-        byte6 = False
+        byte6 = False  # if custom space is defined in byte 6
         flag = 0
         (byte6, flag) = Convert.spaceDecode(memo.space)
-        spaceFlag = 0x00 if byte6 else (flag | 0x00)
+        if stream:
+            # Encoding: 0x20=custom, 0x21=0xFD, 0x22=0xFE, 0x23=0xFF
+            spaceFlag = 0x20 if byte6 else (flag | 0x20)
+        else:
+            # Encoding: 0x00=custom, 0x01=0xFD, 0x02=0xFE, 0x03=0xFF
+            spaceFlag = 0x00 if byte6 else (flag | 0x00)
         addr2 = ((memo.address >> 24) & 0xFF)
         addr3 = ((memo.address >> 16) & 0xFF)
         addr4 = ((memo.address >> 8) & 0xFF)
@@ -335,6 +352,7 @@ class MemoryService:
             addr2, addr3, addr4, addr5
         ])
         if byte6:
+            assert memo.space <= 0xFF, f"Space {memo.space} out of byte range"
             data.extend([(memo.space & 0xFF)])
         data.extend(memo.data)
         dgWriteMemo = DatagramWriteMemo(memo.nodeID, data)

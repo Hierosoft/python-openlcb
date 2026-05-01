@@ -31,9 +31,13 @@ class Convert:
             - 0x00 to 0xFC represent standard memory spaces directly.
 
         Returns:
-            tuple(bool, byte): (False, 1-3 for in command byte) :
-                spaces 0xFF - 0xFD
-                or (True, space number) : spaces 0 - 0xFC
+            tuple(bool, byte): (is custom space, command | space)
+                - (False, 1-3 for in command byte) :
+                  spaces 0xFF - 0xFD (Except bits beyond 0x00000011
+                  differ for each datagram type. See 4.2 Address
+                  Space Selection in OpenLCB Memory Configuration
+                  Standard)
+                - or (True, space number) : spaces 0 - 0xFC
                 (NOTE: type of space may affect type of output)
         """
         # TODO: Maybe check type of space & raise TypeError if not
