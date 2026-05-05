@@ -439,12 +439,13 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         if self._realtime:
             self._parser.feed(partial_str)  # may call startElement/endElement
         # memo = MemoryReadMemo(memo)
-        path = self.cacheFilePath(memo.nodeID)
-        with open(path, 'w') as stream:
-            if cdiString is None:
-                cdiString = self._data.rstrip(b'\0').decode("utf-8")
-            stream.write(cdiString)
-            print('Saved {}'.format(repr(path)))
+        if enable_cache:
+            path = self.cacheFilePath(memo.nodeID)
+            with open(path, 'w') as stream:
+                if cdiString is None:
+                    cdiString = self._data.rstrip(b'\0').decode("utf-8")
+                stream.write(cdiString)
+                print('Saved {}'.format(repr(path)))
         self._data = None  # Ensure isn't reused for more than one doc
 
     def cacheFilePathCustom(self, item_id: Union[NodeID, str], **kwargs):
