@@ -316,6 +316,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
              format: Union[DataFormat, None] = None):
         """Load instead of downloading."""
         assert not self._data
+        self._is_from_cache = True
         self.onStartDownload()
         assert isinstance(space, (MemorySpace, int))
         if isinstance(space, int):
@@ -336,6 +337,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         data = None
         with open(path, "rb") as stream:
             data = stream.read()  # type:ignore
+        self._path = path
         if self._format is DataFormat.XML:
             if memo is not None:
                 assert isinstance(memo, MemoryReadMemo)
@@ -351,8 +353,10 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
 
                 assert data is not None
                 # Based on _startMemoryRead in OpenLCBNetwork:
+                _space = self.getSpaceValue()  # self._space is set above
+                assert _space is not None
                 memo = MemoryReadMemo(node_id, len(data),
-                                      self.getSpaceValue(), 0,
+                                      _space, 0,
                                       memoryReadFail, memoryReadSuccess)
 
             assert data is not None
