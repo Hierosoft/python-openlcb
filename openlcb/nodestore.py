@@ -38,6 +38,10 @@ class NodeStore :
         self.nodes.sort(key=lambda x: x.snip.userProvidedNodeName,
                         reverse=True)
 
+    def clear(self):
+        self.byIdMap.clear()
+        self.nodes.clear()
+
     def isPresent(self, nodeID: NodeID) -> bool:
         return self.byIdMap.get(nodeID) is not None
 
