@@ -23,11 +23,14 @@ ORD_f = 0x66
 ORD_z = 0x7A
 
 
-def only_hex_pairs(value: str) -> Union[re.Match[bytes], re.Match[str], None]:
+def only_hex_pairs(value: str):
+    # type: (str) -> Union[re.Match[bytes], re.Match[str], None]
     """Check if string contains only machine-readable hex pairs.
     See openlcb.conventions submodule for LCC ID dot notation
     functions (less restrictive).
     """
+    # ^ PEP8 (instead of Python) type hint is used to avoid
+    #   "TypeError: 'type' object is not subscriptable"
     if isinstance(value, (bytearray, bytes)):
         return hex_pairs_brc.fullmatch(value)
     assert isinstance(value, str)
