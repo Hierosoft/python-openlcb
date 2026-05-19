@@ -195,7 +195,8 @@ class CDIVar:
         self.data = self.intToData(value)
 
     def floatToData(self, value: float) -> bytes:
-        assert self.className == "float"
+        assert self.className == "float", \
+            f"floatToData attempted on non-float: {self.className}"
         assert isinstance(value, float)
         return struct.pack(self.packFormat(), value)
 

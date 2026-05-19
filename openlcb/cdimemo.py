@@ -233,10 +233,12 @@ class CDIMemo(DataProcessorMemo):
                 result.signed = True
             # if self.size is not None:
             if result.size not in [1, 2, 4, 8]:
+                children_msg = json.dumps(self.children, sort_keys=True,
+                                          indent=2,
+                                          default=CDIMemo.to_dict)
                 raise AttributeError(
                     f"expected 1,2,4,8 for int size, got {result.size}"
-                    f" in children={json.dumps(self.children, sort_keys=True, indent=2,
-                                      default=CDIMemo.to_dict)}")
+                    f" in children={children_msg}")
             if result.max is None:
                 if result.signed:
                     result.max = math.pow(2, result.size * 8 - 1) - 1

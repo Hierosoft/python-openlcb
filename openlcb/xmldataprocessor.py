@@ -313,8 +313,18 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
 
     def load(self, node_id: NodeID, path, space: Union[MemorySpace, int],
              memo: Union[MemoryReadMemo, None] = None,
-             format: Union[DataFormat, None] = None):
-        """Load instead of downloading."""
+             format: Union[DataFormat, None] = None,
+             data: Union[bytes, bytearray, str, None] = None):
+        """Load instead of downloading.
+        Args:
+            path (str): Location of original xml data (unused if
+                data is specified, but may be used for tracing;
+                Always sets self._path).
+            data (Optional[Union[bytes, bytearray, str]]): Actual XML data,
+                optional if path exists. If None,
+                path will be loaded, otherwise it will not,
+                and data will be used instead.
+        """
         assert not self._data
         self._is_from_cache = True
         self.onStartDownload()
@@ -334,9 +344,13 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 self._format = format
                 self._space = space  # type:ignore # int if device-specific
                 logger.warning(f"Using device-specific space: {space}")
-        data = None
-        with open(path, "rb") as stream:
-            data = stream.read()  # type:ignore
+        if data is None:
+            with open(path, "rb") as stream:
+                data = stream.read()  # type:ignore
+        else:
+            if isinstance(data, str):
+                # Mimic network data by converting to bytes:
+                data = data.encode('utf-8')
         self._path = path
         if self._format is DataFormat.XML:
             if memo is not None:
@@ -543,6 +557,9 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         if self._tag_stack:
             parent_cm = self._tag_stack[-1]
         cm = CDIMemo(tag=name, element=el, parent=parent_cm, document=self)
+        # cm.space = self._tmp_space  Commented since not replicated!
+        # - address and space should be set by expandedTree or the
+        #   node processing the CDI, accounting for replication.
         if name == "segment":
             self._tmp_space = attrib.get('space')
             self._tmp_address = int(attrib.get('origin', 0))
@@ -705,12 +722,22 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
 
         new_root = ET.Element("cdi")  # always new: children added from memos
         new_root.attrib.update(root_memo.element.attrib)
+        new_root.attrib['replicated'] = "true"
+        if new_root.tag != "cdi":
+            logger.warning(
+                f"expected cdi got {new_root.tag} from {root_memo.tag}")
 
-        new_root_memo = copy.deepcopy(root_memo)  # deepcopy to edit children!
+        tmp_el = root_memo.element
+        root_memo.element = None  # avoid deepcopy. Temporarily erase it.
+        new_root_memo = copy.deepcopy(root_memo)  # copy to avoid affecting old
+        root_memo.element = tmp_el  # restore the old copy.
         new_root_memo.document = self
-        size = self._expanded_tree_recursive(new_root_memo, new_root, address=0)
+        new_root_memo.element = new_root  # use this not root_memo.element copy
+        size = self._expanded_tree_recursive(new_root_memo, new_root,
+                                             address=0)
         if size < 1:
-            logger.warning(f"No space used by CDI after replication (size={size})")
+            logger.warning(
+                f"No space used by CDI after replication (size={size})")
         return new_root_memo, new_root
 
     def _expanded_tree_recursive(

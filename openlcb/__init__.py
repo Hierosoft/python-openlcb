@@ -1,4 +1,6 @@
 from enum import Enum
+import os
+import platform
 import re
 import time
 
@@ -21,6 +23,18 @@ ORD_Z = 0x5A
 ORD_a = 0x61
 ORD_f = 0x66
 ORD_z = 0x7A
+
+
+def get_config_dir(unique_software_name: str):
+    """Get a configuration directory for any program
+    (In the parent directory recommended by the specific platform).
+    """
+    CONFIGS = os.path.expanduser("~/.config")
+    if platform.system() == "Darwin":
+        CONFIGS = os.path.expanduser("~/Library/Application Support")
+    elif platform.system() == "Windows":
+        CONFIGS = os.environ['APPDATA']
+    return os.path.join(CONFIGS, unique_software_name)
 
 
 def only_hex_pairs(value: str):

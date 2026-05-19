@@ -194,7 +194,7 @@ def assertMemoOK(memo: Union[MemoryReadMemo, MemoryWriteMemo]):
     assert isinstance(memo.address, int), \
         f"Expected int, got address={emit_cast(memo.address)}"
     assert len(memo.data) <= 64
-    assert isinstance(memo.data, Union[bytes, bytearray]), \
+    assert isinstance(memo.data, (bytes, bytearray)), \
         f"Expected bytearray, got data={emit_cast(memo.data)}"
 
 
