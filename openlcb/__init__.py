@@ -140,6 +140,7 @@ def from_all_hex_bytes(b: bytearray) -> bytearray:
 
 def hr_repr(value, always_quote: bool = False) -> str:
     """Represent value with double quotes
+    if str, otherwise as an unquoted string.
     (Human-readable repr).
     """
     # repr_value = repr(value)
@@ -153,4 +154,8 @@ def hr_repr(value, always_quote: bool = False) -> str:
 
 
 def d_quote(value) -> str:
+    """Represent any type of value in double-quotes
+    (with any already present escaped) such as for emitting XML
+    attribute debug messages or any other technical/literary use.
+    """
     return hr_repr(value, always_quote=True)

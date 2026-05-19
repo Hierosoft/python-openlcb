@@ -158,7 +158,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         # endregion ContentHandler
         self.acdi = False
 
-    def getRootMemo(self):
+    def getRootMemo(self) -> Union[CDIMemo, None]:
         """Get the root memo object if any.
         This should only be called after the entire file is parsed such
         as when cm.done is True in onStatusMemo(cm) callback. Set

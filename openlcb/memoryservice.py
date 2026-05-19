@@ -281,7 +281,7 @@ class MemoryService:
             self.datagramReceivedListener
         )
 
-    def requestMemoryRead(self, memo, stream: Bool = False):
+    def requestMemoryRead(self, memo, stream: bool = False):
         # type: (MemoryReadMemo, Optional[bool]) -> None
         '''Request a read operation start.
 
