@@ -191,7 +191,7 @@ class MyHandler(xml.sax.handler.ContentHandler):
             This is implementation-specific, and not
             required if streaming (parser.feed).
         _tmp_address (int|None): For sanity check, not actual address.
-            See expandedTree docstring.
+            See replicatedTree docstring.
     """
 
     def __init__(self):

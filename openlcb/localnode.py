@@ -148,15 +148,15 @@ class LocalNode(Node):
         assert parent.element is not None
         if (('replicated' in parent.element.attrib)
                 and (parent.element.attrib['replicated'] == "true")):
-            # Caller already used expandedTree
+            # Caller already used replicatedTree
             return self._reserveSpaces(parent=parent)
-        expanded_root_memo, expanded_root = self.cdi.expandedTree()
-        self.cdi.expanded_root_memo = expanded_root_memo
-        self.cdi.expanded_root = expanded_root
-        # ^ self.cdi.expanded_root_memo can also be set via
+        replicated_root_memo, replicated_root = self.cdi.replicatedTree()
+        self.cdi.replicated_root_memo = replicated_root_memo
+        self.cdi.replicated_root = replicated_root
+        # ^ self.cdi.replicated_root_memo can also be set via
         #   self.cdi.extractCDIVarMemos.
         return self._reserveSpaces(
-            parent=self.cdi.expanded_root_memo,
+            parent=self.cdi.replicated_root_memo,
         )
 
     def _reserveSpaces(self, parent: Union[CDIMemo, None] = None, level=0):
@@ -166,7 +166,7 @@ class LocalNode(Node):
         if tag == "cdi":
             assert parent.element is not None
             assert parent.element.attrib['replicated'] == "true", \
-                "expanded_root_memo accounting for replication must be used."
+                "replicated_root_memo accounting for replication must be used."
         if tag in ("int", "float"):  # CLASSNAME_TYPES:
             # cast_fn = int if tag == "int" else float
             var = parent.toCDIVar()

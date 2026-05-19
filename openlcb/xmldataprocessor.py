@@ -110,7 +110,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         _tmp_space (int|None): What space we are currently on
             (of data described by Element(s), not of XML data itself).
         _tmp_address (int|None): For sanity check, not actual address
-            (no replication)! See expandedTree docstring.
+            (no replication)! See replicatedTree docstring.
     """
     XML_TOP_TAGS = ("cdi", "fdi")
     DEFAULT_EXT = ".cdi.xml"  # override in subclass
@@ -120,8 +120,8 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
     def __init__(self, linkLayer: CanLink, space: MemorySpace):
         self.canLink: CanLink = linkLayer
         # caches_dir = SysDirs.Cache
-        self.expanded_root = None  # type: ET.Element|None
-        self.expanded_root_memo = None  # type: CDIMemo|None
+        self.replicated_root = None  # type: ET.Element|None
+        self.replicated_root_memo = None  # type: CDIMemo|None
         self._root_memos = None  # type: list[CDIMemo]|None
         self._root_memo = None  # type: CDIMemo|None
         self._space: Union[MemorySpace, None] = None
@@ -558,7 +558,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             parent_cm = self._tag_stack[-1]
         cm = CDIMemo(tag=name, element=el, parent=parent_cm, document=self)
         # cm.space = self._tmp_space  Commented since not replicated!
-        # - address and space should be set by expandedTree or the
+        # - address and space should be set by replicatedTree or the
         #   node processing the CDI, accounting for replication.
         if name == "segment":
             self._tmp_space = attrib.get('space')
@@ -575,7 +575,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                     raise AttributeError(
                         f"Node specifies {name} offset before segment origin")
                 self._tmp_address += offset
-                # NOTE: ^ Sanity check only! For real address see expandedTree.
+                # NOTE: ^ Sanity check only! For real address see replicatedTree.
 
         self.onPushScope(cm)
         if len(self._tag_stack) < 1:
@@ -703,7 +703,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 "Expected str, got {}".format(type(content).__name__))
         self._chunks.append(content)
 
-    def expandedTree(self) -> Tuple[CDIMemo, ET.Element]:
+    def replicatedTree(self) -> Tuple[CDIMemo, ET.Element]:
         """Build an expanded XML tree with replication and addresses.
 
         Starting from the root CDIMemo (via :meth:`getRootMemo`), this
@@ -715,7 +715,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         elements in the new tree. The original tree is left unchanged.
 
         Returns:
-            ET.Element: Root of the new expanded tree.
+            ET.Element: Root of the new replicated tree.
         """
         root_memo = self.getRootMemo()
         assert root_memo is not None and root_memo.element is not None
@@ -733,20 +733,20 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         root_memo.element = tmp_el  # restore the old copy.
         new_root_memo.document = self
         new_root_memo.element = new_root  # use this not root_memo.element copy
-        size = self._expanded_tree_recursive(new_root_memo, new_root,
+        size = self._replicated_tree_recursive(new_root_memo, new_root,
                                              address=0)
         if size < 1:
             logger.warning(
                 f"No space used by CDI after replication (size={size})")
         return new_root_memo, new_root
 
-    def _expanded_tree_recursive(
+    def _replicated_tree_recursive(
         self, parent: CDIMemo, parent_el: ET.Element,
         allow_non_standard=False,
         address: int = 0,
         space: Union[int, None] = None,
     ) -> int:
-        """Recursive helper for :meth:`expandedTree`.
+        """Recursive helper for :meth:`replicatedTree`.
 
         Copies the element, handles replication, sets addresses, and
         recurses into children. Removes ``replication`` attribute from
@@ -762,7 +762,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             parent_el.text = parent.content
         elif parent_tag_lower in ("name", "description"):
             logger.warning(
-                f"expanded {parent_tag_lower} has no content.")
+                f"replicated {parent_tag_lower} has no content.")
         if parent_el.tail:
             parent.tail = parent_el.tail
         elif parent.tail:  # new_root
@@ -807,8 +807,8 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 #     copy_child_el = child_el
                 #     copy_child_memo = child_memo
                 # NOTE: ^ Why commented: We don't want to modify
-                #   self.etree children (if we modify expandedTree
-                #   result such as self.expanded_root)!
+                #   self.etree children (if we modify replicatedTree
+                #   result such as self.replicated_root)!
                 #   - Don't even chance it by keeping the memo
                 #     (otherwise child_memo.element would be from tree).
                 #   - Also, we always add child to parent_el below.
@@ -817,7 +817,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 # for child_el in new_parent:
                 #     copy_parent_el.append(child_el)
 
-                # Remove replication from the expanded copy
+                # Remove replication from the replicated copy
                 if "replication" in copy_child_el.attrib:
                     del copy_child_el.attrib["replication"]
 
@@ -865,7 +865,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                         else:
                             assert not size, el_error
 
-                address = self._expanded_tree_recursive(
+                address = self._replicated_tree_recursive(
                     copy_child_memo, copy_child_el, address=address,
                     space=space)
                 if c_tag_lower == "segment":
@@ -874,14 +874,14 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         parent.children = new_children  # Same references if no replication
         return address
 
-    def extractCDIVarMemos(self, expanded_root=None, root_memo=None) -> List[CDIMemo]:  # noqa: E501
+    def extractCDIVarMemos(self, replicated_root=None, root_memo=None) -> List[CDIMemo]:  # noqa: E501
         # type: (ET.Element|None, CDIMemo|None) -> List[CDIMemo]
         """Build a flat list of CDIMemo objects for all variables.
 
-        Uses the expanded tree (replication expanded, replication
+        Uses the replicated tree (replication expanded, replication
         attribute removed, addresses set). Returns original-style
         memos (with .content) but with .element pointing into the
-        expanded tree so that modifications (setData etc.) affect
+        replicated tree so that modifications (setData etc.) affect
         the saved XML.
         """
         # TODO: Implement ACDI vars if present (See OpenLCB
@@ -889,18 +889,18 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         if not hasattr(self, "etree") or self.etree is None:
             logger.error("processor has no etree")
             return []
-        if expanded_root is not None:
+        if replicated_root is not None:
             if root_memo is not None:  # reserved
                 assert isinstance(root_memo, CDIMemo)
-            assert isinstance(expanded_root, ET.Element)
+            assert isinstance(replicated_root, ET.Element)
             root_memo = root_memo  # reserved
-            root_el = expanded_root
+            root_el = replicated_root
         else:
-            root_memo, root_el = self.expandedTree()
-        self.expanded_root = root_el
-        self.expanded_root_memo = root_memo
+            root_memo, root_el = self.replicatedTree()
+        self.replicated_root = root_el
+        self.replicated_root_memo = root_memo
 
-        assert isinstance(self.expanded_root_memo, CDIMemo)
+        assert isinstance(self.replicated_root_memo, CDIMemo)
 
         cdivar_memos: List[CDIMemo] = []
 
@@ -908,11 +908,11 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             tag = memo.getTag()
             tag_lower = tag.lower() if tag else ""
             if tag_lower in CLASSNAME_TYPES:
-                # Use the existing expanded memo (has correct .content)
+                # Use the existing replicated memo (has correct .content)
                 cdivar_memos.append(memo)
             for child in memo.children:
                 traverse(child)
 
-        traverse(self.expanded_root_memo)
-        assert root_el is self.expanded_root  # concurrent modification check
+        traverse(self.replicated_root_memo)
+        assert root_el is self.replicated_root  # concurrent modification check
         return cdivar_memos

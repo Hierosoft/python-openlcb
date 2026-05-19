@@ -47,7 +47,7 @@ class CDIMemo(DataProcessorMemo):
         name (str): Name (determined by `name` child element content).
         space (int|None): The memory space address (May be one in
             MemorySpace values, or not if vendor-specific such as
-            defined in CDI etc. See expandedTree in XMLDataProcessor).
+            defined in CDI etc. See replicatedTree in XMLDataProcessor).
         stray (bool): The end tag is misplaced (doesn't match a start
             tag) due to bad xml or incorrect parsing.
         tail (str|None): Content following the end tag (not used in
@@ -188,7 +188,7 @@ class CDIMemo(DataProcessorMemo):
         See LCC "Configuration Description Information" Standard.
 
         NOTE: The `address` is only correct if this CDIMemo has been
-        replicated (such as in expandedTree or self.expanded_root).
+        replicated (such as in replicatedTree or self.replicated_root).
         """
         # result = CDIVar(self.tag)
         assert (self.tag is not None) and (self.tag.strip())
@@ -219,7 +219,7 @@ class CDIMemo(DataProcessorMemo):
         #   enforces size:
         result = CDIVar(self.tag, _min=result_min, _max=result_max,
                         _size=result_size, _default=result_default)
-        result.address = self.address  # only set in expandedTree()
+        result.address = self.address  # only set in replicatedTree()
         result.space = self.space
         result.floatFormat = result_floatFormat
         result.name = self.getChildContent("name")
