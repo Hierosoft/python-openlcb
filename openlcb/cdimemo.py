@@ -290,7 +290,7 @@ class CDIMemo(DataProcessorMemo):
         if self.element.tail:
             self.tail = self.element.tail
 
-        for child_elem in list(self.element):  # list() to avoid modification issues
+        for child_elem in list(self.element):  # list() fixes concurrency issue
             child_memo = CDIMemo(
                 tag=child_elem.tag,
                 element=child_elem,

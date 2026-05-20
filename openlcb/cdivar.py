@@ -181,6 +181,7 @@ class CDIVar:
         elif self.className == "string":
             return self.getString()
         assert self.className in ("blob", "eventid", "action")
+        assert self.data is not None, "CDIVar data not initialized"
         return base64.b64encode(self.data)
 
     def getDict(self, add_name=True):
