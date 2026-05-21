@@ -29,9 +29,11 @@ class TestCDIVarNumericConversions(unittest.TestCase):
             (0x12345678,   [0x12, 0x34, 0x56, 0x78]),
         ]
 
+        size = 4
         for value, expected_bytes in cases:
+            cvNeg1 = CDIVar.fromInt(-1, _size=size)
             with self.subTest(f"int {value} → bytes"):
-                var = CDIVar("int", _size=4, _min=-1)  # signed
+                var = CDIVar("int", _size=size, _min=cvNeg1)  # signed
                 var.setInt(value)
                 assert var.data is not None
                 self.assertBytesEqual(expected_bytes, var.data)
@@ -52,8 +54,11 @@ class TestCDIVarNumericConversions(unittest.TestCase):
         ]
 
         for val, size, signed, exp_bytes, exp_restored in cases:
+            cvNeg1 = CDIVar.fromInt(-1, _size=size)
+            cv0 = CDIVar.fromInt(0, _size=size)
             with self.subTest(f"{val} @ {size} bytes signed={signed}"):
-                var = CDIVar("int", _size=size, _min=-1 if signed else 0)
+                var = CDIVar("int", _size=size,
+                             _min=cvNeg1 if signed else cv0)
                 var.setInt(val)
                 assert var.data is not None
                 self.assertBytesEqual(exp_bytes, var.data)
@@ -128,17 +133,22 @@ class TestCDIVarNumericConversions(unittest.TestCase):
             ("café π",     "café π".encode("utf-8") + b"\x00"),
         ]
 
+        size = 100
         for s, expected_bytes in cases:
             with self.subTest(f"setString({s!r})"):
-                var = CDIVar("string", _size=100)
+                var = CDIVar("string", _size=size)
                 var.setString(s)
+                expected_padded = expected_bytes
+                if len(expected_padded) < size:
+                    slack = size - len(expected_bytes)
+                    expected_padded = bytearray(expected_bytes) + bytearray(b'\0'*slack)
                 self.assertEqual(expected_bytes, var.data)
 
                 restored = var.getString()
                 self.assertEqual(s, restored)
 
         # Extra data after null is ignored
-        var = CDIVar("string")
+        var = CDIVar("string", _size=100)
         var.data = b"test\x00junk"
         self.assertEqual("test", var.getString())
 
