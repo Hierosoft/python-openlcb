@@ -71,6 +71,7 @@
 			"memoryservice",
 			"metas",
 			"MSGLEN",
+			"msvc",
 			"nodeid",
 			"nodestore",
 			"offvalue",

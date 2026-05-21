@@ -1,6 +1,8 @@
 import math
 import unittest
-from openlcb.cdivar import FLOAT_MAXIMUMS, SIGNED_INT_MAXIMUMS, SIGNED_INT_MINIMUMS, UNSIGNED_INT_MAXIMUMS, CDIVar, SUBTYPE_FORMATS
+from openlcb.cdivar import (
+    FLOAT_MAXIMUMS, SIGNED_INT_MAXIMUMS, SIGNED_INT_MINIMUMS,
+    UNSIGNED_INT_MAXIMUMS, CDIVar, SUBTYPE_FORMATS)
 
 
 class TestCDIVar(unittest.TestCase):
@@ -32,6 +34,7 @@ class TestCDIVar(unittest.TestCase):
                                _default_data=bytearray(b'Hello\0'),
                                _size=maxSize)
         self.assertEqual(cdivar_string.className, 'string')
+        assert cdivar_string.default is not None
         self.assertEqual(cdivar_string.default.data, bytearray(b'Hello\0'),
                          f"got {cdivar_string.default}")
         assert cdivar_string.default is not None
@@ -98,11 +101,11 @@ class TestCDIVar(unittest.TestCase):
     def test_invalid_set_string(self):
         size = 100
         cdivar_string = CDIVar(className='string', _size=size)
-        with self.assertRaises(AttributeError):  # number has no attribute 'encode'
+        with self.assertRaises(AttributeError):  # int, no attribute 'encode'
             cdivar_string.setString(12345)  # type:ignore (assertRaises)
 
     def test_ranges(self):
-        # See https://learn.microsoft.com/en-us/cpp/cpp/data-type-ranges?view=msvc-170
+        # See learn.microsoft.com/en-us/cpp/cpp/data-type-ranges?view=msvc-170
         # size 1 byte is 8-bit
         self.assertEqual(SIGNED_INT_MINIMUMS[1], -128)
         self.assertEqual(SIGNED_INT_MAXIMUMS[1], 127)
