@@ -166,6 +166,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         (_feed) mode.
         """
         if not self._root_memos:
+            logger.warning("[getRootMemo] No root memos.")
             return None
         if len(self._root_memos) > 1:
             summaries = []
@@ -347,10 +348,17 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         if data is None:
             with open(path, "rb") as stream:
                 data = stream.read()  # type:ignore
+                print(f"[XMLDataProcessor] Loading {d_quote(path)}")
         else:
             if isinstance(data, str):
                 # Mimic network data by converting to bytes:
                 data = data.encode('utf-8')
+                print("[XMLDataProcessor] Loading string length"
+                      " {} as bytes from memory."
+                      .format(len(data)))
+            else:
+                print("[XMLDataProcessor] Loading {} length {} from memory."
+                      .format(type(data).__name__, len(data)))
         self._path = path
         if self._format is DataFormat.XML:
             if memo is not None:
@@ -380,6 +388,9 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             # based on "else" (done) case in _memoryReadSuccess
             #   in OpenLCBNetwork:
             self._stringTerminated = True
+            if self._realtime:
+                # Don't miss calling parser if realtime
+                self._feedNext(memo)
             self._feedLast(memo, enable_cache=False)
             self.onStop()  # sets self._format to DataFormat.EOF
         else:
@@ -533,7 +544,8 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                         self._tag_stack[-1].content += content
                 else:
                     logger.warning(
-                        f"Stray characters before {repr(name)}: {repr(content)}")
+                        f"Stray characters before {repr(name)}:"
+                        f" {repr(content)}")
         if self._ended_memo is not None:
             self._ended_memo = None
         attrib = attrs_to_dict(attrs)
@@ -575,7 +587,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                     raise AttributeError(
                         f"Node specifies {name} offset before segment origin")
                 self._tmp_address += offset
-                # NOTE: ^ Sanity check only! For real address see replicatedTree.
+                # NOTE: ^ Sanity check only! real address: see replicatedTree
 
         self.onPushScope(cm)
         if len(self._tag_stack) < 1:
@@ -718,7 +730,8 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             ET.Element: Root of the new replicated tree.
         """
         root_memo = self.getRootMemo()
-        assert root_memo is not None and root_memo.element is not None
+        assert root_memo is not None
+        assert root_memo.element is not None
 
         new_root = ET.Element("cdi")  # always new: children added from memos
         new_root.attrib.update(root_memo.element.attrib)
@@ -730,11 +743,11 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
         tmp_el = root_memo.element
         root_memo.element = None  # avoid deepcopy. Temporarily erase it.
         new_root_memo = copy.deepcopy(root_memo)  # copy to avoid affecting old
-        root_memo.element = tmp_el  # restore the old copy.
+        root_memo.element = tmp_el  # Put the old root back into the old memo.
         new_root_memo.document = self
         new_root_memo.element = new_root  # use this not root_memo.element copy
         size = self._replicated_tree_recursive(new_root_memo, new_root,
-                                             address=0)
+                                               address=0)
         if size < 1:
             logger.warning(
                 f"No space used by CDI after replication (size={size})")
