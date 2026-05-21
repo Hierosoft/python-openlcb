@@ -68,6 +68,7 @@
 			"localoverrides",
 			"MDNS",
 			"mdnsconventions",
+			"memorymanager",
 			"memoryservice",
 			"metas",
 			"MSGLEN",

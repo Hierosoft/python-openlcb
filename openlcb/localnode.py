@@ -3,6 +3,7 @@ import os
 from logging import getLogger
 from typing import Union
 from openlcb import emit_cast
+from openlcb.memorymanager import MemoryManager
 from openlcb.node import PIP, SNIP, Node
 
 from openlcb.localnodeprocessor import LocalNodeProcessor
@@ -40,10 +41,10 @@ class LocalNode(Node):
                 f" for new LocalNode {self.cdi}, so XMLDataProcessor"
                 " will not be initialized (functioning as Node, unless"
                 " remote user knows addresses apart from CDI)")
-        self.spaces = {}  # type: dict[int, bytearray]
         self.localNodeProcessor = LocalNodeProcessor(linkLayer, self)
         linkLayer.registerMessageReceivedListener(
             self.localNodeProcessor.process)
+        self.memory = MemoryManager()
 
     def loadCDIFile(self, path, memo=None):
         """Load a CDI file to generate virtual memory spaces
@@ -106,34 +107,9 @@ class LocalNode(Node):
         assert var is not None
         assert var.data is not None
         assert len(var.data) == memo.getSize()
-        self.setMemoryAt(memo.space, memo.address, var.data)
-
-    def setMemoryAt(self, space, address, data):
-        """Set address in virtual memory space to data"""
-        assert isinstance(data, (bytearray, bytes))
-        if isinstance(space, MemorySpace):
-            space = space.value
-        assert isinstance(space, int)
-        assert isinstance(address, int)
-        assert address >= 0
-        size = len(data)
-        end = address + size
-
-        if space not in self.spaces:
-            self.spaces[space] = bytearray()
-        else:
-            assert isinstance(self.spaces[space], bytearray)
-
-        newRegionLen = end - len(self.spaces[space])
-        if newRegionLen > 0:
-            logger.warning(
-                f"Extending LocalNode data from {len(self.spaces[space])}"
-                f" byte(s) to {end} byte(s).")
-            self.spaces[space] += b'\0' * newRegionLen
-        assert end - address == len(data)
-        self.spaces[space][address:end] = data
-        print(f"Set LocalNode {self.id} space {space}"
-              f" address {space} (length {len(data)}).")
+        self.memory.set(memo.space, memo.address, var.data)
+        print(f"Set LocalNode {self.id} space {memo.space}"
+              f" address {memo.space} (length {len(var.data)}).")
 
     def reserveSpaces(self, parent: Union[CDIMemo, None] = None):
 
@@ -201,7 +177,7 @@ class LocalNode(Node):
                 logger.warning(
                     f"Creating cdiBackupDir {self.cdiBackupDir}")
                 os.makedirs(self.cdiBackupDir)
-            for space, data in self.spaces.items():
+            for space, data in self.memory.spaces.items():
                 name = f"{self.id}.lcc-link-virtual-node.space={space}.xml"
                 path = os.path.join(self.cdiBackupDir, name)
                 with open(path, "wb") as stream:
