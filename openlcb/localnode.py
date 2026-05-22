@@ -24,13 +24,14 @@ from openlcb.xmldataprocessor import (
 logger = getLogger(__name__)
 
 
-class LocalNode(Node):
+class LocalNode(Node, MemoryManager):
     """A Node with its own virtual memory
     (emulate memory spaces such as for creating a virtual
     signal node with settings)"""
     def __init__(self, id: NodeID, snip: SNIP, pipSet: set,
                  linkLayer: CanLink):
         Node.__init__(self, id, snip, pipSet)
+        MemoryManager.__init__(self)
         self.cdi = None  # type: XMLDataProcessor|None
         self._replicated_cdi_tree = None  # type: CDIMemo|None
         if PIP.CONFIGURATION_DESCRIPTION_INFORMATION in pipSet:
@@ -44,7 +45,6 @@ class LocalNode(Node):
         self.localNodeProcessor = LocalNodeProcessor(linkLayer, self)
         linkLayer.registerMessageReceivedListener(
             self.localNodeProcessor.process)
-        self.memory = MemoryManager()
 
     def loadCDIFile(self, path, memo=None):
         """Load a CDI file to generate virtual memory spaces
@@ -107,7 +107,7 @@ class LocalNode(Node):
         assert var is not None
         assert var.data is not None
         assert len(var.data) == memo.getSize()
-        self.memory.set(memo.space, memo.address, var.data)
+        self.set(memo.space, memo.address, var.data)
         print(f"Set LocalNode {self.id} space {memo.space}"
               f" address {memo.space} (length {len(var.data)}).")
 
@@ -177,7 +177,7 @@ class LocalNode(Node):
                 logger.warning(
                     f"Creating cdiBackupDir {self.cdiBackupDir}")
                 os.makedirs(self.cdiBackupDir)
-            for space, data in self.memory.spaces.items():
+            for space, data in self.spaces.items():
                 name = f"{self.id}.lcc-link-virtual-node.space={space}.xml"
                 path = os.path.join(self.cdiBackupDir, name)
                 with open(path, "wb") as stream:
