@@ -40,22 +40,29 @@ from openlcb.datagramservice import (
     DatagramService,
 )
 from openlcb.convert import Convert
+from openlcb.memoryconfigurationheader import MemoryConfigurationHeader, MemorySpaceIndex
+from openlcb.memorymanager import MemoryManager
 from openlcb.nodeid import NodeID
 
 logger = getLogger(__name__)
 
-
+MODE_BYTES['']
 MODE_BYTES = {
-    'Read_Command': {0x40, 0x41, 0x42, 0x43},
+    # order determines meaning for lists (See )
+    'Read_Command': {0x40, 0x41, 0x42, 0x43},  # TODO: Use memoryManagers
     'Read_Reply': {0x50, 0x51, 0x52, 0x53},
-    'Read_Stream_Command': {0x60, 0x61, 0x62, 0x63},
-    'Read_Stream_Reply': {0x70, 0x71, 0x72, 0x73},
-    'Write_Command': {0x00, 0x01, 0x02, 0x03},
+    'Read_Stream_Command': {0x60, 0x61, 0x62, 0x63},  # TODO: Use memoryManagers
+    'Read_Stream_Reply': {0x70, 0x71, 0x72, 0x73},  # TODO
+    'Write_Command': [0x00, 0x01, 0x02, 0x03],  # TODO: Use memoryManagers
     'Write_Reply': {0x10, 0x11, 0x12, 0x13},
-    'Write_Under_Mask_Command': {0x08, 0x09, 0x0A, 0x0B},
+    'Write_Under_Mask_Command': {0x08, 0x09, 0x0A, 0x0B},  # TODO: Use memoryManagers
     'Write_Stream_Command': {0x20, 0x21, 0x22, 0x23},
-    'Write_Stream_Reply': {0x30, 0x31, 0x32, 0x33},
+    'Write_Stream_Reply': {0x30, 0x31, 0x32, 0x33},  # TODO
+    'Get_Address_Space_Info_Command': {0x84, },
+    'Get_Address_Space_Info_Reply': {0x86, 0x87, },
+    'Lock_Reserve_Command': {0x88, },
 }
+
 
 MODE_ERROR_BYTES = {
     'Read_Reply': {0x58, 0x59, 0x5A, 0x5B},
@@ -85,10 +92,10 @@ class MemorySpace(Enum):
             (See OpenLCB Memory Configuration Standard 4.2).
     """
     Uninitialized = -1
-    CDI = 0xFF  # decodes to 0x03
     FDI = 0xFA
-    All = 0xFE
     Configuration = 0xFD
+    All = 0xFE
+    CDI = 0xFF  # decodes to 0x03
 
     @classmethod
     def fromNumber(cls, num: int):
@@ -99,6 +106,22 @@ class MemorySpace(Enum):
         for member in cls:
             if member.value == num:
                 return member
+        return None
+
+    @classmethod
+    def fromIndex(cls, msi: MemorySpaceIndex):
+        """Return the MemorySpace member with the given numeric value,
+        or None if no match is found.
+        """
+        assert isinstance(msi, MemorySpaceIndex)
+        if msi is MemorySpaceIndex.Custom:
+            return None
+        elif msi is MemorySpaceIndex.Configuration:
+            return cls.Configuration
+        elif msi is MemorySpaceIndex.All:
+            return cls.All
+        elif msi is MemorySpaceIndex.CDI:
+            return cls.CDI
         return None
 
 
@@ -211,10 +234,16 @@ def parseReplyDatagram(memo: Union[MemoryReadMemo, MemoryWriteMemo],
             "Datagram is truncated to 1 byte:"
             f" it is {hex(dmemo.data[0])}")
         return
-    (hasByte6, _) = Convert.deserializeMC2ndByte(dmemo.data[1])
+    mcHeader = MemoryConfigurationHeader.fromMC2ndByte(
+        dmemo.data[1],
+        # space=memo.space,
+    )
     offset = 6
     error = None
-    if hasByte6:
+    assert mcHeader.spaceIndex is not MemorySpaceIndex.Uninitialized
+    if mcHeader.spaceIndex is MemorySpaceIndex.Custom:
+        # mcHeader.customSpace = memo.space
+        mcHeader.customSpace = dmemo.data[6]
         offset = 7
     memo.error = None
     memo.errorCode = None
@@ -256,9 +285,15 @@ def parseReplyDatagram(memo: Union[MemoryReadMemo, MemoryWriteMemo],
             error += f" ({list(dmemo.data[message_idx:])})"
     else:
         error = f"(2nd byte = {hex(dmemo.data[1])})"
-    error += f" (hasByte6={hasByte6})"
-    if hasByte6:
-        error += f" (space={hex(dmemo.data[6])})"
+    error += f" (spaceIndex={mcHeader.spaceIndex})"
+    if mcHeader.spaceIndex is mcHeader.customSpace:
+        if mcHeader.customSpace is not None:
+            if mcHeader.customSpace != dmemo.data[6]:
+                error += f" (mcHeader.customSpace={hex(mcHeader.customSpace)} != space={hex(dmemo.data[6])} !)"  # noqa: E501
+            else:
+                error += f" (mcHeader.customSpace={hex(mcHeader.customSpace)})"
+        else:
+            error += f" (space={hex(dmemo.data[6])} mcHeader.customSpace=None!)"  # noqa: E501
     memo.error = error
 
 
@@ -268,6 +303,12 @@ class MemoryService:
 
     Args:
         service (DatagramService): See DatagramService.
+
+    Attributes:
+        memoryManagers (dict[str, MemoryManager]): The storage where
+            other nodes can read and write memory. Each element can be
+            changed to a specific nodeid's memory manager. They key is
+            the NodeID in string form (dotted notation).
     """
 
     def __init__(self, service: DatagramService):
@@ -280,6 +321,7 @@ class MemoryService:
         self.service.registerDatagramReceivedListener(
             self.datagramReceivedListener
         )
+        self.memoryManagers = {}  # type: dict[str, MemoryManager]
 
     def requestMemoryRead(self, memo, stream: bool = False):
         # type: (MemoryReadMemo, Optional[bool]) -> None
@@ -308,16 +350,10 @@ class MemoryService:
             memo (MemoryReadMemo): Request to send.
         """
         assert isinstance(stream, bool)
-        hasByte6 = False  # if custom space is defined in byte 6
-        flag = 0
-        (hasByte6, flag) = Convert.serializeSpace(memo.space)
-        if stream:
-            # Encoding: 0x60=custom, 0x61=0xFD, 0x62=0xFE, 0x63=0xFF
-            spaceFlag = 0x60 if hasByte6 else (flag | 0x60)
-        else:
-            # Encoding: 0x40=custom, 0x41=0xFD, 0x42=0xFE, 0x43=0xFF
-            spaceFlag = 0x40 if hasByte6 else (flag | 0x40)  # | 0b11111100
-        # ^ In else case, flag is 1-3, so re-add 0xFC (0b11111100)
+        mcHeader = MemoryConfigurationHeader(memo.space)
+        assert mcHeader.spaceIndex is not None
+        spaceFlag = (0x60 if stream else 0x40) | mcHeader.spaceIndex.value
+        # NOTE: Why was there commented: | 0xFC (0b11111100) if not stream?
         addr2 = ((memo.address >> 24) & 0xFF)
         addr3 = ((memo.address >> 16) & 0xFF)
         addr4 = ((memo.address >> 8) & 0xFF)
@@ -326,7 +362,7 @@ class MemoryService:
             DatagramService.ProtocolID.MemoryOperation.value, spaceFlag,
             addr2, addr3, addr4, addr5])
         # NOTE: list[int] is ok for bytearray extend (`+` requires cast)
-        if hasByte6:
+        if mcHeader.customSpace is not None:
             assert memo.space <= 0xFF, f"Space {memo.space} out of byte range"
             data.extend([(memo.space & 0xFF)])
         data.extend([memo.size])
@@ -352,7 +388,6 @@ class MemoryService:
         if self.service.datagramType(dmemo.data) \
                 != DatagramService.ProtocolID.MemoryOperation :
             return False
-
         # datagram must has a command value
         if len(dmemo.data) < 2:
             logger.error("Memory service datagram too short: {}"
@@ -449,14 +484,8 @@ class MemoryService:
         self.writeMemos.append(memo)
         # create & send a write datagram
         hasByte6 = False  # if custom space is defined in byte 6
-        flag = 0
-        (hasByte6, flag) = Convert.serializeSpace(memo.space)
-        if stream:
-            # Encoding: 0x20=custom, 0x21=0xFD, 0x22=0xFE, 0x23=0xFF
-            spaceFlag = 0x20 if hasByte6 else (flag | 0x20)
-        else:
-            # Encoding: 0x00=custom, 0x01=0xFD, 0x02=0xFE, 0x03=0xFF
-            spaceFlag = 0x00 if hasByte6 else (flag | 0x00)
+        header = MemoryConfigurationHeader(memo.space)
+        spaceFlag = (0x20 if stream else 0) | header.spaceIndex.value
         addr2 = ((memo.address >> 24) & 0xFF)
         addr3 = ((memo.address >> 16) & 0xFF)
         addr4 = ((memo.address >> 8) & 0xFF)

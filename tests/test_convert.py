@@ -3,6 +3,7 @@ import struct
 import unittest
 
 from openlcb.convert import Convert
+from openlcb.memoryconfigurationheader import MemoryConfigurationHeader, MemorySpaceIndex
 
 
 class TestConvertClass(unittest.TestCase):
@@ -88,17 +89,19 @@ class TestConvertClass(unittest.TestCase):
                 Convert.intToArray(value, length)
 
     def testSerializeSpace(self):
-        byte6 = False
-        space = 0x00
+        # byte6 = False
+        # space = 0x00
 
-        (byte6, space) = Convert.serializeSpace(0xF8)
-        self.assertEqual(space, 0xF8)
-        self.assertTrue(byte6)
+        mcHeader = MemoryConfigurationHeader(0xF8)
+        self.assertEqual(mcHeader.customSpace, 0xF8)
+        self.assertEqual(mcHeader.spaceIndex, MemorySpaceIndex.Custom)
 
-        (byte6, space) = Convert.serializeSpace(0xFF)
-        self.assertEqual(space, 0x03)
-        self.assertFalse(byte6)
+        mcHeader = MemoryConfigurationHeader(0xFF)
+        self.assertIs(mcHeader.spaceIndex, MemorySpaceIndex.CDI)
+        self.assertEqual(mcHeader.spaceIndex.value, 0x03)
+        self.assertIsNone(mcHeader.customSpace)
 
-        (byte6, space) = Convert.serializeSpace(0xFD)
-        self.assertEqual(space, 0x01)
-        self.assertFalse(byte6)
+        mcHeader = MemoryConfigurationHeader(0xFD)
+        self.assertIs(mcHeader.spaceIndex, MemorySpaceIndex.Configuration)
+        self.assertEqual(mcHeader.spaceIndex.value, 0x01)
+        self.assertIsNone(mcHeader.customSpace)

@@ -20,45 +20,6 @@ logger = getLogger(__name__)
 class Convert:
 
     @staticmethod
-    def deserializeMC2ndByte(datagramByte1):
-        """Decode byte[1] (2nd) of Memory Configuration Datagram"""
-        has_byte6 = False
-        if datagramByte1 & 0x03 == 0:
-            has_byte6 = True
-        return has_byte6, datagramByte1 & 0xFC
-        # ^ 0xFC = 11111100
-
-    # formerly spaceDecode, but it serializes a space for datagram byte2
-    @staticmethod
-    def serializeSpace(space):
-        """Convert from a space number to either
-        False and control number or True and standard memory space
-        for use in a Datagram.
-
-        Args:
-            space (int): Sequential memory space identifier, where values:
-            - 0xFF to 0xFD are special spaces, and only the least significant
-              2 bits will be used in a datagram.
-            - 0x00 to 0xFC represent standard memory spaces directly.
-
-        Returns:
-            tuple(bool, byte): (is custom space, control | space)
-                - (False, control number 1 to 3 inclusive) :
-                  spaces 0xFF - 0xFD (Except bits beyond 0x00000011
-                  differ for each datagram type. See 4.2 Address
-                  Space Selection in OpenLCB Memory Configuration
-                  Standard)
-                - or (True, space number) : spaces 0 - 0xFC
-                (NOTE: type of space may affect type of output)
-        """
-        # TODO: Maybe check type of space & raise TypeError if not
-        #   something valid, whether byte, int, or what is ok [add
-        #   more _description_ to space in docstring].
-        if space >= 0xFD:
-            return (False, space & 0x03)
-        return (True, space)
-
-    @staticmethod
     def arrayToInt(data: Union[bytes, bytearray, List[int]]) -> int:
         """Convert an array in MSB-first order to an integer
 
