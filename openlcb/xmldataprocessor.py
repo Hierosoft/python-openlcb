@@ -14,6 +14,7 @@ from openlcb import d_quote, emit_cast
 from openlcb.canbus.canlink import CanLink
 from openlcb.cdimemo import CDIMemo, DataProcessorMemo
 from openlcb.dataprocessor import DataFormat, DataProcessor
+from openlcb.memoryspace import MemorySpace
 from openlcb.nodeid import NodeID
 from openlcb.platformextras import (
     SysDirs,
@@ -21,7 +22,6 @@ from openlcb.platformextras import (
 )
 from openlcb.memoryservice import (
     MemoryReadMemo,
-    MemorySpace,
 )
 # from openlcb.remotenodeprocessor import RemoteNodeProcessor
 from openlcb.cdivar import (

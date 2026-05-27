@@ -3,6 +3,7 @@ import os
 from logging import getLogger
 from typing import Union
 from openlcb import emit_cast
+from openlcb.memoryspace import MemorySpace
 from openlcb.storagepool import StoragePool
 from openlcb.node import PIP, SNIP, Node
 
@@ -17,7 +18,6 @@ from openlcb.xmldataprocessor import (
     # CLASSNAME_TYPES,
     d_quote,
     MemoryReadMemo,
-    MemorySpace,
     XMLDataProcessor,
 )
 

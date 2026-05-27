@@ -29,7 +29,8 @@ from openlcb.cdimemo import CDIMemo
 from openlcb.datagramservice import DatagramReadMemo, DatagramService
 from openlcb.dataprocessor import DataFormat
 from openlcb.dataprocessormemo import DataProcessorMemo
-from openlcb.memoryservice import MemoryReadMemo, MemoryService, MemorySpace
+from openlcb.memoryservice import MemoryReadMemo, MemoryService
+from openlcb.memoryspace import MemorySpace
 from openlcb.message import Message
 from openlcb.xmldataprocessor import XMLDataProcessor
 from openlcb.mti import MTI

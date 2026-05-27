@@ -44,7 +44,7 @@ try:
     from openlcb.xmldataprocessor import XMLDataProcessor
     from openlcb.cdimemo import CDIMemo
     from openlcb.linklayer import LinkLayer
-    from openlcb.memoryservice import MemorySpace
+    from openlcb.memoryspace import MemorySpace
     from openlcb.xmldataprocessor import element_to_dict
 except ImportError as ex:
     print("{}: {}".format(type(ex).__name__, ex), file=sys.stderr)

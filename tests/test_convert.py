@@ -3,7 +3,8 @@ import struct
 import unittest
 
 from openlcb.convert import Convert
-from openlcb.memoryconfigurationheader import MemoryConfigurationHeader, MemorySpaceIndex
+from openlcb.memoryconfigurationheader import MemoryConfigurationHeader
+from openlcb.memoryspaceindex import MemorySpaceIndex
 
 
 class TestConvertClass(unittest.TestCase):
