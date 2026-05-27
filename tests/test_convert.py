@@ -11,7 +11,7 @@ class TestConvertClass(unittest.TestCase):
     def testReturnCyrillicStrings(self):
         # See also testReturnCyrillicStrings in test_snip
         # If you have characters specific to UTF-8 (either in code or comment)
-        #   add the following as the 1st or 2nd line of the py file:
+        #   add the following as 1st line of py file (or line after shebang):
         # -*- coding: utf-8 -*-
         data = bytearray([0xd0, 0x94, 0xd0, 0xbc, 0xd0, 0xb8, 0xd1, 0x82, 0xd1, 0x80, 0xd0, 0xb8, 0xd0, 0xb9])   # Cyrillic spelling of the name Dmitry (7 characters becomes 14 bytes)  # noqa: E501
         self.assertEqual(Convert.arrayToString(data, len(data)), "Дмитрий")  # Cyrillic spelling of the name Dmitry. This string should appear as 7 Cyrillic characters like Cyrillic-demo-Dmitry.png in doc (14 bytes in a hex editor), otherwise your editor does not support utf-8 and editing this file with it could break it.  # noqa:E501

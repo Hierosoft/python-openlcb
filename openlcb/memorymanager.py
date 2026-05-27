@@ -5,7 +5,7 @@ from openlcb.memoryservice import MemorySpace
 logger = getLogger(__name__)
 
 
-class MemoryManager:
+class StoragePool:
     def __init__(self):
         self.spaces = {}  # type: dict[int, bytearray]
 

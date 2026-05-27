@@ -3,7 +3,7 @@ import os
 from logging import getLogger
 from typing import Union
 from openlcb import emit_cast
-from openlcb.memorymanager import MemoryManager
+from openlcb.memorymanager import StoragePool
 from openlcb.node import PIP, SNIP, Node
 
 from openlcb.localnodeprocessor import LocalNodeProcessor
@@ -24,14 +24,14 @@ from openlcb.xmldataprocessor import (
 logger = getLogger(__name__)
 
 
-class LocalNode(Node, MemoryManager):
+class LocalNode(Node, StoragePool):
     """A Node with its own virtual memory
     (emulate memory spaces such as for creating a virtual
     signal node with settings)"""
     def __init__(self, id: NodeID, snip: SNIP, pipSet: set,
                  linkLayer: CanLink):
         Node.__init__(self, id, snip, pipSet)
-        MemoryManager.__init__(self)
+        StoragePool.__init__(self)
         self.cdi = None  # type: XMLDataProcessor|None
         self._replicated_cdi_tree = None  # type: CDIMemo|None
         if PIP.CONFIGURATION_DESCRIPTION_INFORMATION in pipSet:

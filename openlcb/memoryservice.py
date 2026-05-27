@@ -41,34 +41,110 @@ from openlcb.datagramservice import (
 )
 from openlcb.convert import Convert
 from openlcb.memoryconfigurationheader import MemoryConfigurationHeader, MemorySpaceIndex
-from openlcb.memorymanager import MemoryManager
+from openlcb.memorymanager import StoragePool
 from openlcb.nodeid import NodeID
 
 logger = getLogger(__name__)
 
-MODE_BYTES['']
+
+class MCOp(Enum):
+    """Byte 1 & 0b11111100 values (assumes byte 0 is 0x20)"""
+    Read_Command = 0x40  # 01000000
+    Read_Reply = 0x50    # 01010000
+    Read_Reply_Failure = 0x58  # 01011000
+    Read_Stream_Command = 0x60  # 01100000
+    Read_Stream_Reply = 0x70  # 01110000
+    Read_Stream_Reply_Failure = 0x78  # 01111000
+    Write_Command = 0x00
+    Write_Reply = 0x10  # 00010000
+    Write_Reply_Failure = 0x18
+    Write_Under_Mask_Command = 0x08  # 00001000
+    Write_Stream_Command = 0x20  # 01000000
+    Write_Stream_Reply = 0x30  # 00110000
+    Write_Stream_Reply_Failure = 0x38  # 0b111000
+    Get_Configuration_Options_Command = 0x80  # 10000000
+    # 1 sub-operation (same as above using MCOpMasks.Default):
+    Get_Configuration_Options_Reply = 0x82    # 10000010
+    # ^ special datagram format follows (in later bytes)
+    Get_Address_Space_Info_Command = 0x84        # 10000100
+    # 2 sub-operations (same as above using MCOpMasks.Default):
+    Get_Address_Space_Info_Reply = 0x86          # 10000110
+    Get_Address_Space_Info_Reply_Command = 0x87  # 10000111
+    Lock_or_Reserve_Command = 0x88  # 10001000
+    # 1 sub-operation (same as above using MCOpMasks.Default):
+    Lock_or_Reserve_Reply = 0x8A    # 10001010
+    Get_Unique_ID_Command = 0x8C  # 10001100
+    # 1 sub-operation (same as above using MCOpMasks.Default):
+    Get_Unique_ID_Reply = 0x8D    # 10001101
+    Unfreeze_Command = 0xA0  # 10100000
+    # 1 sub-operation (same as above using MCOpMasks.Default):
+    Freeze_Command = 0xA1    # 10100001
+    Update_Complete_Command = 0xA8                # 10101000
+    # 2 sub-operations (same as above using MCOpMasks.Default):
+    Reset_or_Reboot_Command = 0xA9                # 10101001
+    Reinitialize_or_Factory_Reset_Command = 0xAA  # 10101010
+
+    @classmethod
+    def fromNumber(cls, num: int):
+        """Return the MemorySpace member with the given numeric value,
+        or None if no match is found.
+        """
+        assert isinstance(num, int)
+        for member in cls:
+            if member.value == num:
+                return member
+        return None
+
+
+class MCOpBits:
+    Failure_Bit = 0x08
+
+
+class MCOpMasks:
+    Default = 0x11111100
+    # The following aren't necessary since
+    #    they can be broken down with
+    #    sub-checks even if Default is used
+    #    (See any set with more than one entry
+    #    in MODE_BYTES):
+    # Get_Configuration_Options = 0x11111110
+    # Get_Address_Space_Info = 0x11111110
+
+
 MODE_BYTES = {
     # order determines meaning for lists (See )
-    'Read_Command': {0x40, 0x41, 0x42, 0x43},  # TODO: Use memoryManagers
-    'Read_Reply': {0x50, 0x51, 0x52, 0x53},
-    'Read_Stream_Command': {0x60, 0x61, 0x62, 0x63},  # TODO: Use memoryManagers
-    'Read_Stream_Reply': {0x70, 0x71, 0x72, 0x73},  # TODO
-    'Write_Command': [0x00, 0x01, 0x02, 0x03],  # TODO: Use memoryManagers
-    'Write_Reply': {0x10, 0x11, 0x12, 0x13},
-    'Write_Under_Mask_Command': {0x08, 0x09, 0x0A, 0x0B},  # TODO: Use memoryManagers
-    'Write_Stream_Command': {0x20, 0x21, 0x22, 0x23},
-    'Write_Stream_Reply': {0x30, 0x31, 0x32, 0x33},  # TODO
-    'Get_Address_Space_Info_Command': {0x84, },
-    'Get_Address_Space_Info_Reply': {0x86, 0x87, },
-    'Lock_Reserve_Command': {0x88, },
+    MCOp.Read_Command.value: {0x40, 0x41, 0x42, 0x43},  # pools
+    MCOp.Read_Reply.value: {0x50, 0x51, 0x52, 0x53},
+    MCOp.Read_Stream_Command.value: {0x60, 0x61, 0x62, 0x63},  # pools
+    MCOp.Read_Stream_Reply.value: {0x70, 0x71, 0x72, 0x73},  # TODO
+    MCOp.Write_Command.value: [0x00, 0x01, 0x02, 0x03],  # pools
+    MCOp.Write_Reply.value: {0x10, 0x11, 0x12, 0x13},
+    MCOp.Write_Under_Mask_Command.value: {0x08, 0x09, 0x0A, 0x0B},  # pools
+    MCOp.Write_Stream_Command.value: {0x20, 0x21, 0x22, 0x23},
+    MCOp.Write_Stream_Reply.value: {0x30, 0x31, 0x32, 0x33},  # TODO
+    MCOp.Get_Configuration_Options_Command.value: {0x80, },
+    MCOp.Get_Configuration_Options_Reply.value: {0x82, },
+    MCOp.Get_Address_Space_Info_Command.value: {
+        MCOp.Get_Address_Space_Info_Command.value,
+        MCOp.Get_Address_Space_Info_Reply.value,
+        MCOp.Get_Address_Space_Info_Reply_Command.value,
+    },
+    MCOp.Lock_or_Reserve_Command.value: {0x88, },
+    MCOp.Get_Unique_ID_Command.value: {0x8C, },
+    MCOp.Get_Unique_ID_Reply.value: {0x8D, },
+    MCOp.Unfreeze_Command.value: {0xA1, 0xA0},  # unfreeze, freeze respectively
+    MCOp.Update_Complete_Command.value: {  # all match using MCOpMasks.Default
+        MCOp.Update_Complete_Command.value,
+        MCOp.Reset_or_Reboot_Command.value,
+        MCOp.Reinitialize_or_Factory_Reset_Command.value,
+    }
 }
 
-
 MODE_ERROR_BYTES = {
-    'Read_Reply': {0x58, 0x59, 0x5A, 0x5B},
-    'Read_Stream_Reply': {0x78, 0x79, 0x7A, 0x7B},
-    'Write_Reply': {0x18, 0x19, 0x1A, 0x1B},
-    'Write_Stream_Reply': {0x38, 0x39, 0x3A, 0x3B},
+    MCOp.Read_Reply.value: {0x58, 0x59, 0x5A, 0x5B},
+    MCOp.Read_Stream_Reply.value: {0x78, 0x79, 0x7A, 0x7B},
+    MCOp.Write_Reply.value: {0x18, 0x19, 0x1A, 0x1B},
+    MCOp.Write_Stream_Reply.value: {0x38, 0x39, 0x3A, 0x3B},
 }
 
 
@@ -305,7 +381,7 @@ class MemoryService:
         service (DatagramService): See DatagramService.
 
     Attributes:
-        memoryManagers (dict[str, MemoryManager]): The storage where
+        pools (dict[str, StoragePool]): The storage where
             other nodes can read and write memory. Each element can be
             changed to a specific nodeid's memory manager. They key is
             the NodeID in string form (dotted notation).
@@ -321,7 +397,7 @@ class MemoryService:
         self.service.registerDatagramReceivedListener(
             self.datagramReceivedListener
         )
-        self.memoryManagers = {}  # type: dict[str, MemoryManager]
+        self.pools = {}  # type: dict[str, StoragePool]
 
     def requestMemoryRead(self, memo, stream: bool = False):
         # type: (MemoryReadMemo, Optional[bool]) -> None
