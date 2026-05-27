@@ -41,7 +41,7 @@ from openlcb.datagramservice import (
 )
 from openlcb.convert import Convert
 from openlcb.memoryconfigurationheader import MemoryConfigurationHeader, MemorySpaceIndex
-from openlcb.memorymanager import StoragePool
+from openlcb.storagepool import StoragePool
 from openlcb.nodeid import NodeID
 
 logger = getLogger(__name__)

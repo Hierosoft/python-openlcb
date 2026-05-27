@@ -3,7 +3,7 @@ import os
 from logging import getLogger
 from typing import Union
 from openlcb import emit_cast
-from openlcb.memorymanager import StoragePool
+from openlcb.storagepool import StoragePool
 from openlcb.node import PIP, SNIP, Node
 
 from openlcb.localnodeprocessor import LocalNodeProcessor
