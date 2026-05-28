@@ -202,19 +202,23 @@ class CDIMemo(DataProcessorMemo):
         result_default = None
         result_size = self.getSize()
         if this_t is not None:
+            assert result_size is not None, \
+                f"size is required for {this_t.__name__}"
             result_min = self.getChildContentN("min", className)
             result_max = self.getChildContentN("max", className)
             default_n = self.getChildContentN("default", className)
             if default_n is not None:
-                default_var = CDIVar(className, _size=result_size)
-                if isinstance(default_n, int):
-                    assert self.tag == "int"
-                    default_var.setInt(default_n)
-                else:
-                    assert self.tag == "float"
-                    default_var.setFloat(default_n)
-                assert default_var.data is not None
-                result_default = bytearray(default_var.data)
+                result_default = CDIVar.fromNumber(default_n, className,
+                                                   result_size)
+                # default_var = CDIVar(className, _size=result_size)
+                # if isinstance(default_n, int):
+                #     assert self.tag == "int"
+                #     default_var.setInt(default_n)
+                # else:
+                #     assert self.tag == "float"
+                #     default_var.setFloat(default_n)
+                # assert default_var.data is not None
+                # result_default = bytearray(default_var.data)
         # Size must be gotten ahead of time since CDIVar constructor
         #   enforces size:
         result = CDIVar(self.tag, _min=result_min, _max=result_max,
