@@ -17,6 +17,50 @@ logger = getLogger(__name__)
 NUM_TYPES = {'int': int, 'float': float}  # type: dict[str, Type]
 # Assumes "IEEE" in OpenLCB CDI Standard means IEEE 754-2008:
 FLOAT_MAXIMUMS = {2: 65504.0, 4: 3.40e38, 8: 1.80e308}  # type: dict[int, float]  # noqa: E501
+# Float minimums (https://en.wikipedia.org/wiki/IEEE_754):
+# 16-bit smallest normal 6.10×10−5 subnormal 5.96×10−8
+# 32-bit smallest normal 1.18×10−38 subnormal 1.40×10−45
+# 64-bit smallest normal 2.23×10−308 subnormal 4.94×10−324
+F_MIN_BITS = {
+    2: [0] * 16,
+    4: [0] * 32,
+    8: [0] * 64,
+}
+
+# Set bits for the most negative finite number
+for size, bits in F_MIN_BITS.items():
+    bits[0] = 1                                 # Sign bit = 1 (negative)
+    if size == 2:      # binary16: 1 sign + 5 exp + 10 mant
+        for i in range(1, 6):   bits[i] = 1    # exp = 11110
+        bits[5] = 0                             # ← important: clear LSB of exponent
+        for i in range(6, 16):  bits[i] = 1    # mantissa all 1s
+    elif size == 4:    # binary32: 1 sign + 8 exp + 23 mant
+        for i in range(1, 9):   bits[i] = 1    # exp = 11111110
+        bits[8] = 0                             # ← clear LSB of exponent
+        for i in range(9, 32):  bits[i] = 1
+    else:              # binary64: 1 sign + 11 exp + 52 mant
+        for i in range(1, 12):  bits[i] = 1    # exp = 111...1110
+        bits[11] = 0                            # ← clear LSB of exponent
+        for i in range(12, 64): bits[i] = 1
+
+FLOAT_MINIMUMS = {}  # F_MIN_DATA = {}
+
+for k, bits in F_MIN_BITS.items():
+    # Create traceable binary string (e.g. "0b000...001")
+    bit_str = "0b" + "".join(map(str, bits))
+    # Convert to integer then to bytes
+    value = int(bit_str, 2)
+    data_bytes = value.to_bytes(k, 'big')
+    fmt = {2: ">e", 4: ">f", 8: ">d"}[k]
+    # F_MIN_DATA[k] = data_bytes 
+    FLOAT_MINIMUMS[k] = struct.unpack(fmt, data_bytes)[0]
+    # print(f"binary{k*8:2d} bits: {bit_str}")
+    # print(f"binary{k*8:2d} value: {F_MIN_DATA[k]:.20e}\n")
+    # results:
+    # -65504.0
+    # -3.4028234663852886e+38
+    # -1.7976931348623157e+308
+
 UNSIGNED_INT_MAXIMUMS = {  # type: dict[int, int]
     1: 0xFF, 2: 0xFFFF, 4: 0xFFFF_FFFF, 8: 0xFFFF_FFFF_FFFF_FFFF}
 SIGNED_INT_MINIMUMS = {}
@@ -89,7 +133,8 @@ class CDIVar:
 
     def __init__(self, className, _min=None, _max=None,
                  _size=None, _default=None, assert_range=False,
-                 _no_min=False, _no_max=False, _default_data=None):
+                 _no_min=False, _no_max=False, _default_data=None,
+                 signed=None):
         self.data = None  # type: bytes|None
         self.min = _min  # type: CDIVar|None
         self.max = _max  # type: CDIVar|None
@@ -101,8 +146,6 @@ class CDIVar:
             f"Expected {list(CLASSNAME_TYPES.keys())} got {className}"
         if _default is not None:
             assert isinstance(_default, CDIVar)
-            if className in NUM_TYPES:
-                _default.assertNumberFormat()
             assert _default_data is None, \
                 "Can only set _default or _default_data"
         elif _default_data is not None:
@@ -113,9 +156,18 @@ class CDIVar:
                               _no_max=True, _no_min=True)  # prevent recursion
             _default.data = _default_data
 
+        if _default is not None:
+            if className in NUM_TYPES:
+                _default.assertNumberFormat()
+                if _default < 0:
+                    if signed is None:
+                        signed = True
+
         self.name = None  # type: str|None
         self.className = className  # type: str
-        self.signed = False  # type: bool
+        if signed is None:
+            signed = False
+        self.signed = signed  # type: bool
         assert isinstance(_no_min, bool)
         assert isinstance(_no_max, bool)
         self._no_min = _no_min
@@ -140,9 +192,26 @@ class CDIVar:
                         raise AssertionError(error)
                     else:
                         logger.error(error)
-        elif not _no_min:
-            self.min = CDIVar(className, _size=_size,
-                              _no_min=True, _no_max=True)  # prevent inf recurs
+        elif (className in NUM_TYPES) and not _no_min:
+            # self.min = CDIVar(className, _size=_size,
+            #                   _no_min=True, _no_max=True)  # prevent inf recurs
+            # Set minimum based on size,
+            #   as per Configuration Description Information Standard.
+            assert _size is not None
+            if className == "int":
+                if signed:
+                    # self.min.setInt(SIGNED_INT_MINIMUMS[_size])
+                    self.min = CDIVar.fromInt(SIGNED_INT_MINIMUMS[_size],
+                                              _size)
+                else:
+                    # self.min.setInt(0)
+                    self.min = CDIVar.fromInt(0, _size)
+            elif className == "float":
+                # self.min.setFloat(FLOAT_MINIMUMS[_size])
+                self.min = CDIVar.fromFloat(FLOAT_MINIMUMS[_size], _size)
+            else:
+                raise NotImplementedError(f"no default minimum {className}")
+
         if _max is not None:
             assert isinstance(_max, CDIVar)
             _max.assertNumberFormat()
@@ -342,9 +411,11 @@ class CDIVar:
     @classmethod
     def fromNumber(cls, value: Union[int, float],
                    className: str, _size: int) -> 'CDIVar':
-        var = CDIVar(className, _size=_size)
+        var = CDIVar(className, _size=_size, _no_min=True)
+        # ^ _no_min prevents infinite recursion generating min
         if value < 0:
             var.signed = True
+            var.min = None  # remove default (0)
         if className == "int":
             assert isinstance(value, int)
             var.setInt(value)
@@ -484,6 +555,7 @@ class CDIVar:
         try:
             return struct.pack(self.packFormat(), value)
         except Exception as ex:
+            logger.error("")
             logger.error(formatted_ex(ex))
             logger.error(
                 f"Tried to set a(n) {self.subtype()} CDIVar"

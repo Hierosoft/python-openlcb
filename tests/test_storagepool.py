@@ -3,6 +3,8 @@ import struct
 import sys
 import unittest
 
+from openlcb import emit_cast
+from openlcb.cdivar import SIGNED_INT_MINIMUMS, CDIVar
 from openlcb.storagepool import StoragePool
 
 
@@ -129,6 +131,65 @@ class TestStoragePool(unittest.TestCase):
         self.assertEqual(in_value, out_value)
         out_value = pool.getFloat(1, 10, size)
         self.assertEqual(in_value, out_value)
+
+    def testCDIVarUInt(self):
+        size = 4
+        var = CDIVar("int", _size=size)
+        var.space = 1
+        var.address = 10
+        in_value = 999
+        # signed = False
+        var.setInt(in_value)
+        self.assertEqual(var.getInt(), in_value)
+        pool = StoragePool()
+        pool.set(var)
+        var = pool.get(var)
+        self.assertEqual(var.getInt(), in_value)
+        assert var.space is not None
+        assert var.address is not None
+        assert var.size is not None
+        assert var.signed is not None
+        out_value = pool.getInt(var.space, var.address, var.size, var.signed)
+        self.assertEqual(out_value, in_value)
+
+    def testCDIVarSInt(self):
+        size = 4
+        in_value = -999
+        signed = True if in_value < 0 else False
+        # defaultVar = CDIVar("int", _size=size, _no_min=True, _no_max=True,
+        #                     signed=signed)
+        # defaultVar.setInt(in_value)
+        # simplified construction:
+        defaultVar = CDIVar.fromInt(in_value, size)
+        self.assertTrue(defaultVar.signed)
+        self.assertIsNone(defaultVar.min)
+        var = CDIVar(
+            "int",
+            _size=size,
+            _default=defaultVar,  # forces signed since negative
+        )
+        self.assertTrue(var.signed)
+        self.assertIsInstance(var.min, CDIVar)
+        self.assertIsNotNone(
+            var.min,
+            msg=f"{emit_cast(var.min)} should be min for {size*8}-bit")
+        self.assertEqual(var.min, SIGNED_INT_MINIMUMS[size])
+        # ^ == allowed since __eq__ is defined for CDIVar (var.min)
+        var.space = 1
+        var.address = 10
+        # signed = False
+        var.setInt(in_value)
+        self.assertEqual(var.getInt(), in_value)
+        pool = StoragePool()
+        pool.set(var)
+        var = pool.get(var)
+        self.assertEqual(var.getInt(), in_value)
+        assert var.space is not None
+        assert var.address is not None
+        assert var.size is not None
+        assert var.signed is True
+        out_value = pool.getInt(var.space, var.address, var.size, var.signed)
+        self.assertEqual(out_value, in_value)
 
 
 if __name__ == "__main__":

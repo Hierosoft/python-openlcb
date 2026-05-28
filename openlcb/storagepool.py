@@ -2,7 +2,7 @@ from logging import getLogger
 import struct
 from typing import Union
 
-from openlcb.cdivar import SUBTYPE_FORMATS
+from openlcb.cdivar import SUBTYPE_FORMATS, CDIVar
 from openlcb.memoryspace import MemorySpace
 
 logger = getLogger(__name__)
@@ -12,8 +12,31 @@ class StoragePool:
     def __init__(self):
         self.spaces = {}  # type: dict[int, bytearray]
 
+    def set(self, var: CDIVar):
+        assert isinstance(var, CDIVar)
+        assert var.space is not None
+        assert var.address
+        data = var.getData()
+        assert data is not None
+        self.setData(var.space, var.address, data, size=var.size)
+
+    def get(self, var: CDIVar) -> CDIVar:
+        """Modify var in place.
+
+        Returns:
+            CDIVar: Same var instance (returned by reference) modified.
+        """
+        assert isinstance(var, CDIVar)
+        assert var.space is not None
+        assert var.address
+        assert var.size is not None
+        data = self.getData(var.space, var.address, var.size)
+        assert data is not None
+        var.setData(data)
+        return var
+
     def setData(self, space: Union[MemorySpace, int], address: int,
-                data: Union[bytes, bytearray]):
+                data: Union[bytes, bytearray], size=None):
         """Set address in virtual memory space to data"""
         assert isinstance(data, (bytearray, bytes))
         if isinstance(space, MemorySpace):
@@ -21,8 +44,10 @@ class StoragePool:
         assert isinstance(space, int)
         assert isinstance(address, int)
         assert address >= 0
-        # if size is None:
-        size = len(data)
+        if size is None:
+            size = len(data)
+        else:
+            assert size <= len(data)
         end = address + size
 
         if space not in self.spaces:
@@ -37,7 +62,10 @@ class StoragePool:
                 f" byte(s) to {end} byte(s).")
             self.spaces[space] += b'\0' * newRegionLen
         assert end - address == len(data)
-        self.spaces[space][address:end] = data
+        if size < len(data):
+            self.spaces[space][address:end] = data[:size]
+        else:
+            self.spaces[space][address:end] = data
 
     def getData(self, space: Union[MemorySpace, int], address: int,
                 size: int, force=False) -> bytearray:
@@ -73,7 +101,6 @@ class StoragePool:
         typeStr = f"int{size*8}"
         dataFormat = SUBTYPE_FORMATS[typeStr]
         data = struct.pack(dataFormat, value)
-        print(f"packing {dataFormat}")
         assert len(data) == size, \
             f"Expected {size} byte(s) for {typeStr}, got {len(data)}"
         return self.setData(space, address, data)
