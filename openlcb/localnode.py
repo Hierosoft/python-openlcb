@@ -107,7 +107,7 @@ class LocalNode(Node, StoragePool):
         assert var is not None
         assert var.data is not None
         assert len(var.data) == memo.getSize()
-        self.set(memo.space, memo.address, var.data)
+        self.setData(memo.space, memo.address, var.data)
         print(f"Set LocalNode {self.id} space {memo.space}"
               f" address {memo.space} (length {len(var.data)}).")
 

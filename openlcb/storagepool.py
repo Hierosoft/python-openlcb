@@ -1,5 +1,8 @@
 from logging import getLogger
+import struct
+from typing import Union
 
+from openlcb.cdivar import SUBTYPE_FORMATS
 from openlcb.memoryspace import MemorySpace
 
 logger = getLogger(__name__)
@@ -9,7 +12,8 @@ class StoragePool:
     def __init__(self):
         self.spaces = {}  # type: dict[int, bytearray]
 
-    def set(self, space, address, data):
+    def setData(self, space: Union[MemorySpace, int], address: int,
+                data: Union[bytes, bytearray]):
         """Set address in virtual memory space to data"""
         assert isinstance(data, (bytearray, bytes))
         if isinstance(space, MemorySpace):
@@ -17,6 +21,7 @@ class StoragePool:
         assert isinstance(space, int)
         assert isinstance(address, int)
         assert address >= 0
+        # if size is None:
         size = len(data)
         end = address + size
 
@@ -34,7 +39,8 @@ class StoragePool:
         assert end - address == len(data)
         self.spaces[space][address:end] = data
 
-    def get(self, space, address, size, force=False) -> bytearray:
+    def getData(self, space: Union[MemorySpace, int], address: int,
+                size: int, force=False) -> bytearray:
         if isinstance(space, MemorySpace):
             space = space.value
         assert isinstance(space, int)
@@ -48,9 +54,76 @@ class StoragePool:
 
         end = address + size
         if address >= len(self.spaces[space]):
-            self.set(space, address, size*b"\0")
+            self.setData(space, address, size*b"\0")
         elif end > len(self.spaces[space]):
             slack = end - len(self.spaces[space])
             offset = size - slack
-            self.set(space, address + offset, slack*b"\0")
+            self.setData(space, address + offset, slack*b"\0")
         return self.spaces[space][address:end]
+
+    def setInt(self, space: Union[MemorySpace, int], address: int,
+               value: int, size: int, signed: bool):
+        if isinstance(space, MemorySpace):
+            space = space.value
+        assert isinstance(space, int)
+        assert isinstance(address, int)
+        assert isinstance(size, int)
+        assert isinstance(signed, bool)
+        assert size in (1, 2, 4, 8)
+        typeStr = f"int{size*8}"
+        dataFormat = SUBTYPE_FORMATS[typeStr]
+        data = struct.pack(dataFormat, value)
+        print(f"packing {dataFormat}")
+        assert len(data) == size, \
+            f"Expected {size} byte(s) for {typeStr}, got {len(data)}"
+        return self.setData(space, address, data)
+
+    def getInt(self, space: Union[MemorySpace, int], address: int,
+               size: int, signed: bool) -> int:
+        if isinstance(space, MemorySpace):
+            space = space.value
+        assert isinstance(space, int)
+        assert isinstance(address, int)
+        assert isinstance(size, int)
+        assert isinstance(signed, bool)
+        data = self.getData(space, address, size)
+        assert size in (1, 2, 4, 8)
+        typeStr = f"int{size*8}"
+        if not signed:
+            typeStr = "u" + typeStr
+        dataFormat = SUBTYPE_FORMATS[typeStr]
+        values = struct.unpack(dataFormat, data)
+        assert len(values) == 1, f"Expected 1 {typeStr}, got {len(values)}"
+        assert isinstance(values[0], int)
+        return values[0]
+
+    def setFloat(self, space: Union[MemorySpace, int], address: int,
+                 value: float, size: int):
+        if isinstance(space, MemorySpace):
+            space = space.value
+        assert isinstance(space, int)
+        assert isinstance(address, int)
+        assert isinstance(size, int)
+        assert size in (2, 4, 8)
+        typeStr = f"float{size*8}"
+        dataFormat = SUBTYPE_FORMATS[typeStr]
+        data = struct.pack(dataFormat, value)
+        assert len(data) == size, \
+            f"Expected {size} byte(s) for {typeStr}, got {len(data)}"
+        return self.setData(space, address, data)
+
+    def getFloat(self, space: Union[MemorySpace, int], address: int,
+                 size: int) -> float:
+        if isinstance(space, MemorySpace):
+            space = space.value
+        assert isinstance(space, int)
+        assert isinstance(address, int)
+        assert isinstance(size, int)
+        data = self.getData(space, address, size)
+        assert size in (2, 4, 8)
+        typeStr = f"float{size*8}"
+        dataFormat = SUBTYPE_FORMATS[typeStr]
+        values = struct.unpack(dataFormat, data)
+        assert len(values) == 1, f"Expected 1 {typeStr}, got {len(values)}"
+        assert isinstance(values[0], float)
+        return values[0]
