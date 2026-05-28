@@ -145,7 +145,8 @@ class CDIVar:
         assert className in CLASSNAME_TYPES, \
             f"Expected {list(CLASSNAME_TYPES.keys())} got {className}"
         if _default is not None:
-            assert isinstance(_default, CDIVar)
+            assert isinstance(_default, CDIVar), \
+                f"expected CDIVar got {type(_default).__name__}"
             assert _default_data is None, \
                 "Can only set _default or _default_data"
         elif _default_data is not None:
@@ -400,9 +401,13 @@ class CDIVar:
                 f"Can't compare float to {self.className} CDIVar"
             return self.cmp_float(self, other) == compare_op
         elif isinstance(other, int):
-            assert self.className == "int", \
-                f"Can't compare int to {self.className} CDIVar"
-            return self.cmp_int(self, other) == compare_op
+            # assert self.className == "int", \
+            #     f"Can't compare int to {self.className} CDIVar"
+            # Allow int such as 0 to be compared to float CDIVar:
+            if self.className == "float":
+                return self.cmp_float(self, float(other)) == compare_op
+            else:
+                return self.cmp_int(self, other) == compare_op
         else:
             raise TypeError(
                 f"Cannot compare {type(other).__name__}"
