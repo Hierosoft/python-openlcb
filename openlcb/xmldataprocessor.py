@@ -388,9 +388,9 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             # based on "else" (done) case in _memoryReadSuccess
             #   in OpenLCBNetwork:
             self._stringTerminated = True
-            if self._realtime:
-                # Don't miss calling parser if realtime
-                self._feedNext(memo)
+            # if self._realtime:
+            #     # Don't miss calling parser if realtime
+            #     self._feedNext(memo)
             self._feedLast(memo, enable_cache=False)
             self.onStop()  # sets self._format to DataFormat.EOF
         else:
