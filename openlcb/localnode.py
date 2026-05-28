@@ -94,6 +94,18 @@ class LocalNode(Node, StoragePool):
         #     data = stream.read()
         #     self.tree = etree.fromstring(data)
         self.reserveSpaces()
+        if MemorySpace.CDI.value in self.spaces:
+            logger.warning(f"CDI defined {MemorySpace.CDI.value}")
+
+        # NOTE: self.cdi._data is None after load is done!
+        if isinstance(xml_data, bytes):
+            xml_data = bytearray(xml_data)
+        elif isinstance(xml_data, str):
+            xml_data = bytearray(xml_data.encode("utf-8"))
+        assert isinstance(xml_data, bytearray), \
+            f"expected bytearray got {type(xml_data).__name__}"
+        # assert isinstance(xml_data, (bytes, bytearray))
+        self.spaces[MemorySpace.CDI.value] = xml_data
 
     def setMemory(self, memo: CDIMemo, var: CDIVar):
         """Set a memory address at memo to the value in var"""
@@ -191,6 +203,8 @@ class LocalNode(Node, StoragePool):
             ("PIP.CONFIGURATION_DESCRIPTION_INFORMATION is not in pipSet"
              f" for LocalNode {self.id}")
         print(f"LocalNode onFileLoaded {self.cdi.getPath()}: {memo}")
+        # NOTE: self.cdi._data is None after load is done!
+        # self.setData is done during loadCDIString since not multi-threaded.
 
     def onCDILoadFailed(self, memo: MemoryReadMemo):
         """Default handler for file load failed.

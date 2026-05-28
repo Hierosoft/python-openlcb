@@ -24,7 +24,8 @@ import struct
 
 # region same code as other examples
 from examples_settings import Settings
-from openlcb.localnode import LocalNode  # do 1st to fix path if no pip install
+from openlcb.localnode import LocalNode
+from openlcb.memoryspace import MemorySpace  # do 1st to fix path if no pip install
 settings = Settings()
 
 if __name__ == "__main__":
@@ -179,11 +180,13 @@ def memoryReadFail(memo):
 # create a node and connect it update
 # This is a very minimal node, which just takes part in the low-level common
 # protocols
+localNodeID = NodeID(settings['localNodeID'])
 localNode = LocalNode(
-    NodeID(settings['localNodeID']),
+    localNodeID,
     SNIP("python-openlcb example authors",
          "example_node_memory_implementation",
-         "1.0", "1.0", "Custom Name Here", "Custom Description Here"),
+         "1.0", "1.0", "example_node_memory_implementation",
+         "python-openlcb example node with memory"),
     set([
         PIP.SIMPLE_NODE_IDENTIFICATION_PROTOCOL,
         PIP.DATAGRAM_PROTOCOL,
@@ -193,12 +196,16 @@ localNode = LocalNode(
     ]),
     canLink
 )
+memoryService.pools[str(localNodeID)] = localNode
 my_conf_dir = os.path.join(get_config_dir("python-openlcb"))
 backup_name = "example_node_memory_implementation.cdi.xml"
 backup_path = os.path.join(my_conf_dir, backup_name)
 
 localNode.loadCDIString(cdi, backup_path)
-
+# NOTE: loadCDI or loadCDIString sets Element tree and
+#   localNode.spaces[MemorySpace.CDI.value]
+assert MemorySpace.CDI.value in localNode.spaces
+assert isinstance(localNode.spaces[MemorySpace.CDI.value], (bytearray, bytes))
 # localNodeProcessor = LocalNodeProcessor(canLink, localNode)
 # canLink.registerMessageReceivedListener(localNodeProcessor.process)
 localNodeProcessor = localNode.localNodeProcessor
