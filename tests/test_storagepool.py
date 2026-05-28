@@ -31,7 +31,7 @@ class TestStoragePool(unittest.TestCase):
 
     def testGetNothing(self):
         pool = StoragePool()
-        value_bytes = pool.getData(4, 40, 4, force=True)
+        value_bytes = pool.getSlice(4, 40, 4, force=True)
         self.assertEqual(len(value_bytes), 4)
         value = struct.unpack(">I", value_bytes)[0]
         assert isinstance(value, int)
@@ -44,7 +44,7 @@ class TestStoragePool(unittest.TestCase):
         with self.assertRaises(KeyError):
             # KeyError is necessary because space 4 was not defined
             #   (pool.set* is not called above, so no spaces exist).
-            pool.getData(4, 40, 4)        # adjust arguments as needed
+            pool.getSlice(4, 40, 4)        # adjust arguments as needed
 
     def testUnsignedIntData(self):
         in_value = 9999999
@@ -52,8 +52,8 @@ class TestStoragePool(unittest.TestCase):
         self.assertEqual(len(value_bytes), 4)
         assert isinstance(value_bytes, (bytes, bytearray))
         pool = StoragePool()
-        pool.setData(1, 10, value_bytes)
-        out_bytes = pool.getData(1, 10, 4)
+        pool.setSlice(1, 10, value_bytes)
+        out_bytes = pool.getSlice(1, 10, 4)
         self.assertEqual(len(out_bytes), 4)
         out_value = struct.unpack(">I", out_bytes)[0]
         self.assertEqual(in_value, out_value)
@@ -64,8 +64,8 @@ class TestStoragePool(unittest.TestCase):
         self.assertEqual(len(value_bytes), 4)
         assert isinstance(value_bytes, (bytes, bytearray))
         pool = StoragePool()
-        pool.setData(1, 10, value_bytes)
-        out_bytes = pool.getData(1, 10, 4)
+        pool.setSlice(1, 10, value_bytes)
+        out_bytes = pool.getSlice(1, 10, 4)
         self.assertEqual(len(out_bytes), 4)
         out_value = struct.unpack(">i", out_bytes)[0]
         self.assertEqual(in_value, out_value)
@@ -76,7 +76,7 @@ class TestStoragePool(unittest.TestCase):
         size = 4
         signed = False
         pool.setInt(1, 10, in_value, size, signed)
-        out_bytes = pool.getData(1, 10, size)
+        out_bytes = pool.getSlice(1, 10, size)
         self.assertEqual(len(out_bytes), size)
         out_value = struct.unpack(">I", out_bytes)[0]
         self.assertEqual(in_value, out_value)
@@ -89,7 +89,7 @@ class TestStoragePool(unittest.TestCase):
         size = 4
         signed = True
         pool.setInt(1, 10, in_value, size, signed)
-        out_bytes = pool.getData(1, 10, size)
+        out_bytes = pool.getSlice(1, 10, size)
         self.assertEqual(len(out_bytes), size)
         out_value = struct.unpack(">i", out_bytes)[0]
         self.assertEqual(in_value, out_value)
@@ -106,7 +106,7 @@ class TestStoragePool(unittest.TestCase):
         in_value = -999
         size = 2
         pool.setFloat(1, 10, in_value, size)
-        out_bytes = pool.getData(1, 10, size)
+        out_bytes = pool.getSlice(1, 10, size)
         self.assertEqual(len(out_bytes), size)
         out_value = struct.unpack(sizeFormats[size], out_bytes)[0]
         self.assertEqual(in_value, out_value)
@@ -116,7 +116,7 @@ class TestStoragePool(unittest.TestCase):
         size = 4
         in_value = -9999999  # NOTE: f32 fits -9999999 f16 does not
         pool.setFloat(1, 10, in_value, size)
-        out_bytes = pool.getData(1, 10, size)
+        out_bytes = pool.getSlice(1, 10, size)
         self.assertEqual(len(out_bytes), size)
         out_value = struct.unpack(sizeFormats[size], out_bytes)[0]
         self.assertEqual(in_value, out_value)
@@ -125,7 +125,7 @@ class TestStoragePool(unittest.TestCase):
 
         size = 8
         pool.setFloat(1, 10, in_value, size)
-        out_bytes = pool.getData(1, 10, size)
+        out_bytes = pool.getSlice(1, 10, size)
         self.assertEqual(len(out_bytes), size)
         out_value = struct.unpack(sizeFormats[size], out_bytes)[0]
         self.assertEqual(in_value, out_value)

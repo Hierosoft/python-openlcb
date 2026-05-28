@@ -23,6 +23,7 @@ To do memory read:
 
 from enum import Enum
 from logging import getLogger
+import struct
 from typing import (
     Callable,
     List,
@@ -58,13 +59,14 @@ class MCOp(Enum):
     Read_Stream_Reply_Failure = 0x78  # 01111000
     Write_Command = 0x00
     Write_Reply = 0x10  # 00010000
+    # or                  00010001 (0x11) and so on
     Write_Reply_Failure = 0x18
     Write_Under_Mask_Command = 0x08  # 00001000
     Write_Stream_Command = 0x20  # 01000000
     Write_Stream_Reply = 0x30  # 00110000
     Write_Stream_Reply_Failure = 0x38  # 0b111000
     Get_Configuration_Options_Command = 0x80  # 10000000
-    # 1 sub-operation (same as above using MCOpMasks.Default):
+    # 1 sub-operation (same as above using MCOpMasks.Default)
     Get_Configuration_Options_Reply = 0x82    # 10000010
     # ^ special datagram format follows (in later bytes)
     Get_Address_Space_Info_Command = 0x84        # 10000100
@@ -102,7 +104,7 @@ class MCOpBits:
 
 
 class MCOpMasks:
-    Default = 0x11111100
+    Default = 0b11111100
     # The following aren't necessary since
     #    they can be broken down with
     #    sub-checks even if Default is used
@@ -114,13 +116,13 @@ class MCOpMasks:
 
 MODE_BYTES = {
     # order determines meaning for lists (See )
-    MCOp.Read_Command.value: {0x40, 0x41, 0x42, 0x43},  # pools
+    MCOp.Read_Command.value: {0x40, 0x41, 0x42, 0x43},  # pool
     MCOp.Read_Reply.value: {0x50, 0x51, 0x52, 0x53},
-    MCOp.Read_Stream_Command.value: {0x60, 0x61, 0x62, 0x63},  # pools
+    MCOp.Read_Stream_Command.value: {0x60, 0x61, 0x62, 0x63},  # pool
     MCOp.Read_Stream_Reply.value: {0x70, 0x71, 0x72, 0x73},  # TODO
-    MCOp.Write_Command.value: [0x00, 0x01, 0x02, 0x03],  # pools
+    MCOp.Write_Command.value: [0x00, 0x01, 0x02, 0x03],  # pool
     MCOp.Write_Reply.value: {0x10, 0x11, 0x12, 0x13},
-    MCOp.Write_Under_Mask_Command.value: {0x08, 0x09, 0x0A, 0x0B},  # pools
+    MCOp.Write_Under_Mask_Command.value: {0x08, 0x09, 0x0A, 0x0B},  # pool
     MCOp.Write_Stream_Command.value: {0x20, 0x21, 0x22, 0x23},
     MCOp.Write_Stream_Reply.value: {0x30, 0x31, 0x32, 0x33},  # TODO
     MCOp.Get_Configuration_Options_Command.value: {0x80, },
@@ -329,10 +331,11 @@ class MemoryService:
         service (DatagramService): See DatagramService.
 
     Attributes:
-        pools (dict[str, StoragePool]): The storage where
-            other nodes can read and write memory. Each element can be
-            changed to a specific nodeid's memory manager. They key is
-            the NodeID in string form (dotted notation).
+        pool (Union[StoragePool, LocalNode]): The storage where
+            other nodes can read and write memory. Since a datagram
+            doesn't have a destination, there must be a MemoryService
+            for each local node (the local Configuration tool or node
+            and any virtual nodes).
     """
 
     def __init__(self, service: DatagramService):
@@ -345,7 +348,7 @@ class MemoryService:
         self.service.registerDatagramReceivedListener(
             self.datagramReceivedListener
         )
-        self.pools = {}  # type: dict[str, StoragePool]
+        self.pool = StoragePool()
 
     def requestMemoryRead(self, memo, stream: bool = False):
         # type: (MemoryReadMemo, Optional[bool]) -> None
@@ -422,9 +425,12 @@ class MemoryService:
             return True  # error, but for our service; sent negative reply
         # Acknowledge the datagram
         self.service.positiveReplyToDatagram(dmemo, 0x0000)
-
+        mcOp = MCOp.fromNumber(dmemo.data[1] & MCOpMasks.Default)
         # decode if read, write or some other reply
         if dmemo.data[1] in (0x50, 0x51, 0x52, 0x53, 0x58, 0x59, 0x5A, 0x5B):
+            assert mcOp is MCOp.Read_Reply, \
+                "self-test failed (bad constant(s))"
+            # MCOp.Read_Reply
             # read or read-error reply
 
             # return data to requestor: first find matching memory read
@@ -459,6 +465,9 @@ class MemoryService:
                         tMemoryMemo.rejectedReply(tMemoryMemo)
                     break
         elif dmemo.data[1] in (0x10, 0x11, 0x12, 0x13, 0x18, 0x19, 0x1A, 0x1B):
+            assert mcOp is MCOp.Write_Reply, \
+                (f"self-test failed (bad constant(s));"
+                 f" got op {mcOp} for sub-op {hex(dmemo.data[1])}")
             # write reply good, bad
 
             # return data to requestor: first find matching memory write
@@ -473,7 +482,64 @@ class MemoryService:
                     else:
                         writeMemo.rejectedReply(writeMemo)
                     break
+        elif dmemo.data[1] == MCOp.Get_Address_Space_Info_Command.value:
+            # 0x84 (A node sent us a command requesting space info)
+            assert mcOp is MCOp.Get_Address_Space_Info_Command, \
+                "self-test failed (bad constant(s))"
+            space = dmemo.data[2]
+            last = self.pool.getLast(space)
+            if last is not None:
+                first = self.pool.getFirst(space)
+                assert isinstance(first, int)
+                assert last - first >= 0, \
+                    (f"{type(self.pool).__name__} incorrectly implemented:"
+                     " first>last")
+                ReadOnly = 0b10000000
+                HasLowestAddress = 0b01000000
+                highestAddrBytes = struct.pack(">I", last)
+                assert len(highestAddrBytes) == 4
+                # TODO: ^ Memory Configuration Standard doesn't say
+                #   unsigned/signed, so assuming unsigned for
+                #   highestAddrBytes (and lowestAddrBytes below)
+                replyData = bytearray([
+                    DatagramService.ProtocolID.MemoryOperation.value,
+                    0x87,  # If 0x86, bytes after first three can be omitted.
+                    space,
+                ])
+                if replyData[1] == 0x87:
+                    replyData += highestAddrBytes  # bytes 3-6 (0 indexed)
+                    replyData.append(0x00)  # flags (set below)
+                    if self.pool.isReadOnly(space):
+                        replyData[-1] |= ReadOnly
+                    if first != 0:
+                        replyData[-1] |= HasLowestAddress
+                        lowestAddrBytes = struct.pack(">I", first)
+                        assert len(lowestAddrBytes) == 4
+                        replyData += lowestAddrBytes
+                    description = self.pool.getDescription(space)
+                    if description:
+                        descBytes = bytearray(description.encode())
+                    else:
+                        descBytes = bytearray()
+                    descBytes.append(0)
+                    # FIXME: is null-terminator is required if no
+                    #   description (See
+                    #   https://github.com/openlcb/documents/issues/190)?
+                    replyData += descBytes
+                    spaceInfoReplyMemo = DatagramWriteMemo(
+                        dmemo.srcID,
+                        replyData
+                    )
+                    self.service.sendDatagram(spaceInfoReplyMemo)
+            else:
+                # TODO: rejected
+                pass
         elif dmemo.data[1] in (0x86, 0x87):  # Address Space Information Reply
+            assert mcOp is MCOp.Get_Address_Space_Info_Command, \
+                "self-test failed (bad constant(s))"
+            # ^ same first 6 bits as Get_Address_Space_Info_Command,
+            #   but in this case actually a reply to a command.
+
             if self.spaceLengthCallback is None:
                 logger.error("Address Space Information Reply"
                              " received with no callback")

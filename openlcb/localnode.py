@@ -4,7 +4,7 @@ from logging import getLogger
 from typing import Union
 from openlcb import emit_cast
 from openlcb.memoryspace import MemorySpace
-from openlcb.storagepool import StoragePool
+from openlcb.storagepool import StoragePool, StorageSpace
 from openlcb.node import PIP, SNIP, Node
 
 from openlcb.localnodeprocessor import LocalNodeProcessor
@@ -94,7 +94,7 @@ class LocalNode(Node, StoragePool):
         #     data = stream.read()
         #     self.tree = etree.fromstring(data)
         self.reserveSpaces()
-        if MemorySpace.CDI.value in self.spaces:
+        if MemorySpace.CDI.value in self._spaces:
             logger.warning(f"CDI defined {MemorySpace.CDI.value}")
 
         # NOTE: self.cdi._data is None after load is done!
@@ -105,7 +105,10 @@ class LocalNode(Node, StoragePool):
         assert isinstance(xml_data, bytearray), \
             f"expected bytearray got {type(xml_data).__name__}"
         # assert isinstance(xml_data, (bytes, bytearray))
-        self.spaces[MemorySpace.CDI.value] = xml_data
+        storage = StorageSpace()
+        self._spaces[MemorySpace.CDI.value] = storage
+        storage.setData(0, xml_data, force=True)
+        storage.markReadOnly(True)
 
     def setMemory(self, memo: CDIMemo, var: CDIVar):
         """Set a memory address at memo to the value in var"""
@@ -119,7 +122,7 @@ class LocalNode(Node, StoragePool):
         assert var is not None
         assert var.data is not None
         assert len(var.data) == memo.getSize()
-        self.setData(memo.space, memo.address, var.data)
+        self.setSlice(memo.space, memo.address, var.data)
         print(f"Set LocalNode {self.id} space {memo.space}"
               f" address {memo.space} (length {len(var.data)}).")
 
@@ -189,11 +192,11 @@ class LocalNode(Node, StoragePool):
                 logger.warning(
                     f"Creating cdiBackupDir {self.cdiBackupDir}")
                 os.makedirs(self.cdiBackupDir)
-            for space, data in self.spaces.items():
+            for space, storage in self._spaces.items():
                 name = f"{self.id}.lcc-link-virtual-node.space={space}.xml"
                 path = os.path.join(self.cdiBackupDir, name)
                 with open(path, "wb") as stream:
-                    stream.write(data)
+                    stream.write(storage._data)
                     print(f"Wrote {d_quote(path)}")
 
     def onCDILoaded(self, memo: MemoryReadMemo):
