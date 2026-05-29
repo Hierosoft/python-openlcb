@@ -623,6 +623,81 @@ class MemoryService:
                        + int(dmemo.data[6]))
             self.spaceLengthCallback(address)
             self.spaceLengthCallback = None
+        elif mcOp is MCOp.Read_Command:
+            # assert dmemo.data[1] in TWO_BIT_PARAMS[MCOp.Read_Command.value], \
+            #     "self-test failed (bad constant(s))"
+            mcHeader = MemoryConfigurationHeader.fromMC2ndByte(dmemo.data[1])
+            addressBytes = dmemo.data[2:6]
+            address = struct.unpack(">I", addressBytes)[0]
+            # ^ [0] since always returns list even when reading 1 value.
+            # ^ capital assumes unsigned, "I" assumes 32-bit (4 bytes)
+            space = dmemo.data[1] & 0b00000011
+            offset = 0
+            if mcHeader.spaceIsCustom():
+                assert space == 0
+                space = dmemo.data[6]
+                offset = 1
+            size = dmemo.data[6+offset]  # requested read count
+            datagramBytes = bytearray([0x20, MCOp.Read_Reply.value])
+            # ^ byte1 (2nd) changed to error below if applicable
+            assert isinstance(space, int), \
+                (f"Logic missing, space should be number here,"
+                    f" got {emit_cast(space)}")
+            assert isinstance(address, int)
+            datagramBytes += addressBytes
+            assert space is not None, \
+                f"space not computed from datagram: {dmemo.data}"
+            if mcHeader.spaceIsCustom():
+                datagramBytes.append(space)
+                assert len(datagramBytes) == 7, "space goes in index [6]"
+            else:
+                spaceIndex = (space & 0b00000011)
+                assert spaceIndex == space
+                assert space is not None
+                datagramBytes[1] = \
+                    datagramBytes[1] | spaceIndex
+                assert len(datagramBytes) == 6, "should not have space in [6]"
+            payload = None
+            try:
+                payload = self.memory.getSlice(space, address, size)
+            except (IndexError, KeyError) as ex:
+                # address out of range (See Segment's getSlice)
+                datagramBytes[1] = MCOp.Read_Reply_Failure.value
+                message = None
+                if isinstance(ex, KeyError):
+                    message = f"space {space} not valid"
+                elif isinstance(ex, KeyError):
+                    if space is not None:
+                        message = (f"address {hex(address)} not valid"
+                                   f" in space {hex(space)}")
+                    else:
+                        raise NotImplementedError(
+                            f"space not computed from datagram: {dmemo.data}")
+                errorCode = 1
+                errorBytes = struct.pack(">H", errorCode)
+                # FIXME: ^ Standard doesn't specify signed/unsigned
+                datagramBytes += errorBytes  # 2 required bytes
+                messageBytes = None
+                if message is not None:
+                    messageBytes = bytearray(message.encode("utf-8"))
+                    messageBytes.append(0x00)  # null terminator
+                    datagramBytes += messageBytes
+                failedRequestedMemoryMemo = DatagramWriteMemo(
+                    dmemo.srcID,
+                    datagramBytes
+                )
+                self.service.sendDatagram(failedRequestedMemoryMemo)
+                return True  # handled (early in this case)
+            assert payload is not None, \
+                ("getSlice failed to raise IndexError or KeyError"
+                 " on invalid request (expected bytes, got None)")
+            assert len(payload) <= 64
+            datagramBytes += payload
+            requestedMemoryMemo = DatagramWriteMemo(
+                dmemo.srcID,
+                datagramBytes
+            )
+            self.service.sendDatagram(requestedMemoryMemo)
         else:
             logger.error("Did not expect reply of type 0x{:02X}"
                          .format(dmemo.data[1]))
