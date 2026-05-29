@@ -53,14 +53,14 @@ class MCOp(Enum):
     """Byte 1 & 0b11111100 values (assumes byte 0 is 0x20)"""
     Read_Command = 0x40  # 01000000
     Read_Reply = 0x50    # 01010000
-    Read_Reply_Failure = 0x58  # 01011000
+    Read_Reply_Failure = 0x58  # 01011000; See OP_FAILURE_BYTES
     Read_Stream_Command = 0x60  # 01100000
     Read_Stream_Reply = 0x70  # 01110000
-    Read_Stream_Reply_Failure = 0x78  # 01111000
+    Read_Stream_Reply_Failure = 0x78  # 01111000; See OP_FAILURE_BYTES
     Write_Command = 0x00
     Write_Reply = 0x10  # 00010000
     # or                  00010001 (0x11) and so on
-    Write_Reply_Failure = 0x18
+    Write_Reply_Failure = 0x18  # 00011000; See OP_FAILURE_BYTES
     Write_Under_Mask_Command = 0x08  # 00001000
     Write_Stream_Command = 0x20  # 01000000
     Write_Stream_Reply = 0x30  # 00110000
@@ -109,22 +109,31 @@ class MCOpMasks:
     #    they can be broken down with
     #    sub-checks even if Default is used
     #    (See any set with more than one entry
-    #    in MODE_BYTES):
+    #    in TWO_BIT_PARAMS):
     # Get_Configuration_Options = 0x11111110
     # Get_Address_Space_Info = 0x11111110
 
 
-MODE_BYTES = {
-    # order determines meaning for lists (See )
-    MCOp.Read_Command.value: {0x40, 0x41, 0x42, 0x43},  # pool
-    MCOp.Read_Reply.value: {0x50, 0x51, 0x52, 0x53},
-    MCOp.Read_Stream_Command.value: {0x60, 0x61, 0x62, 0x63},  # pool
-    MCOp.Read_Stream_Reply.value: {0x70, 0x71, 0x72, 0x73},  # TODO
+TWO_BIT_PARAMS = {
+    # The combined values in these lists include all 6-bit
+    # operation groups *except* those in OP_FAILURE_BYTES
+    # order determines meaning for lists:
+    # - first indicates custom space follows (in later byte)
+    # - Others are standard spaces
+    #    See MemorySpaceIndex enum for meaning of last 2 bits
+    #    (and Configuration Description Information Standard).
+    #   - does *not* apply to *sets* below!
+    # *lists* (last 2 bits are MemorySpaceIndex.fromNumber param)
+    MCOp.Read_Command.value: [0x40, 0x41, 0x42, 0x43],  # pool
+    MCOp.Read_Reply.value: [0x50, 0x51, 0x52, 0x53],
+    MCOp.Read_Stream_Command.value: [0x60, 0x61, 0x62, 0x63],  # pool
+    MCOp.Read_Stream_Reply.value: [0x70, 0x71, 0x72, 0x73],  # TODO
     MCOp.Write_Command.value: [0x00, 0x01, 0x02, 0x03],  # pool
-    MCOp.Write_Reply.value: {0x10, 0x11, 0x12, 0x13},
-    MCOp.Write_Under_Mask_Command.value: {0x08, 0x09, 0x0A, 0x0B},  # pool
-    MCOp.Write_Stream_Command.value: {0x20, 0x21, 0x22, 0x23},
-    MCOp.Write_Stream_Reply.value: {0x30, 0x31, 0x32, 0x33},  # TODO
+    MCOp.Write_Reply.value: [0x10, 0x11, 0x12, 0x13],
+    MCOp.Write_Under_Mask_Command.value: [0x08, 0x09, 0x0A, 0x0B],  # pool
+    MCOp.Write_Stream_Command.value: [0x20, 0x21, 0x22, 0x23],
+    MCOp.Write_Stream_Reply.value: [0x30, 0x31, 0x32, 0x33],  # TODO
+    # *sets* (no standard meaning to last 2 bits)
     MCOp.Get_Configuration_Options_Command.value: {0x80, },
     MCOp.Get_Configuration_Options_Reply.value: {0x82, },
     MCOp.Get_Address_Space_Info_Command.value: {
@@ -132,7 +141,10 @@ MODE_BYTES = {
         MCOp.Get_Address_Space_Info_Reply.value,
         MCOp.Get_Address_Space_Info_Reply_Command.value,
     },
-    MCOp.Lock_or_Reserve_Command.value: {0x88, },
+    MCOp.Lock_or_Reserve_Command.value: {
+        MCOp.Lock_or_Reserve_Command.value,
+        MCOp.Lock_or_Reserve_Reply.value,
+    },
     MCOp.Get_Unique_ID_Command.value: {0x8C, },
     MCOp.Get_Unique_ID_Reply.value: {0x8D, },
     MCOp.Unfreeze_Command.value: {0xA1, 0xA0},  # unfreeze, freeze respectively
@@ -143,11 +155,21 @@ MODE_BYTES = {
     }
 }
 
-MODE_ERROR_BYTES = {
-    MCOp.Read_Reply.value: {0x58, 0x59, 0x5A, 0x5B},
-    MCOp.Read_Stream_Reply.value: {0x78, 0x79, 0x7A, 0x7B},
-    MCOp.Write_Reply.value: {0x18, 0x19, 0x1A, 0x1B},
-    MCOp.Write_Stream_Reply.value: {0x38, 0x39, 0x3A, 0x3B},
+OP_FAILURE_BYTES = {
+    # *lists* (last 2 bits are standard memory space):
+    MCOp.Read_Reply.value: [0x58, 0x59, 0x5A, 0x5B],
+    MCOp.Read_Stream_Reply.value: [0x78, 0x79, 0x7A, 0x7B],
+    MCOp.Write_Reply.value: [0x18, 0x19, 0x1A, 0x1B],
+    MCOp.Write_Stream_Reply.value: [0x38, 0x39, 0x3A, 0x3B],
+    # *sets* (last 2 bits have no special meaning):
+    MCOp.Read_Reply_Failure.value: {
+        MCOp.Read_Reply_Failure.value},
+    MCOp.Write_Reply_Failure.value: {
+        MCOp.Write_Reply_Failure.value},
+    MCOp.Read_Stream_Reply_Failure.value: {
+        MCOp.Read_Stream_Reply_Failure.value},
+    MCOp.Write_Stream_Reply_Failure.value: {
+        MCOp.Write_Stream_Reply_Failure.value},
 }
 
 
@@ -280,7 +302,7 @@ def parseReplyDatagram(memo: Union[MemoryReadMemo, MemoryWriteMemo],
         pass
         # 0x08 (0b00001000) is error bit
         # mode = None
-        # for k, values in MODE_ERROR_BYTES.items():
+        # for k, values in OP_FAILURE_BYTES.items():
         #     if dmemo.data[1] in values:
         #         mode = k
         #         break
@@ -429,6 +451,9 @@ class MemoryService:
         # decode if read, write or some other reply
         if dmemo.data[1] in (0x50, 0x51, 0x52, 0x53, 0x58, 0x59, 0x5A, 0x5B):
             assert mcOp is MCOp.Read_Reply, \
+                "self-test failed (bad constant(s))"
+            assert (dmemo.data[1] in TWO_BIT_PARAMS[mcOp.value]
+                    or dmemo.data[1] in OP_FAILURE_BYTES[mcOp.value]), \
                 "self-test failed (bad constant(s))"
             # MCOp.Read_Reply
             # read or read-error reply

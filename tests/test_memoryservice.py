@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from collections import OrderedDict
 import os
 import struct
 import sys
@@ -30,6 +31,9 @@ from openlcb.linklayer import LinkLayer  # noqa: E402
 from openlcb.mti import MTI  # noqa: E402
 from openlcb.message import Message  # noqa: E402
 from openlcb.memoryservice import (  # noqa: E402
+    OP_FAILURE_BYTES,
+    TWO_BIT_PARAMS,
+    MCOp,
     MemoryReadMemo,
     MemoryWriteMemo,
     MemoryService,
@@ -182,6 +186,70 @@ class TestMemoryServiceClass(unittest.TestCase):
                                1, 2, 3, 4])))
         self.assertEqual(len(LinkMockLayer.sentMessages), 5)  # read reply datagram reply sent and next datagram sent  # noqa: E501
         self.assertEqual(len(self.returnedMemoryReadMemo), 2)  # memory read returned  # noqa: E501
+
+    def testProtocolGroupUniqueness(self):
+        """Ensure each 6-bit field is unique"""
+        opCounts = OrderedDict()
+
+        def incrementKey(key, counts):
+            if key not in counts:
+                counts[key] = 1
+                return
+            raise AssertionError(
+                f"Bitfield {hex(key)} applies to more than one parent op")
+            # counts[key] += 1
+
+        for op in MCOp:
+            incrementKey(op.value, opCounts)
+            # Ensure that 6-bit fields are systematized (correct constants)
+            if ((op.value in OP_FAILURE_BYTES)
+                    and (len(OP_FAILURE_BYTES[op.value]) == 1)):
+                assert op.value not in TWO_BIT_PARAMS, \
+                    (f"{op} last 2 bits are not significant"
+                     " so it should not be in TWO_BIT_PARAMS dict")
+            # elif op.value & 0b11111100 in OP_FAILURE_BYTES:
+            #     for _, failureBytes in \
+            #             OP_FAILURE_BYTES[op.value & 0b11111100].items():
+            #         for failureByte in failureBytes:
+            #             assert failureByte not in TWO_BIT_PARAMS[op.value], \
+            #                 (f"Failure bytes should not be in two-bit"
+            #                  f" params for {op}")
+            #     assert isinstance(OP_FAILURE_BYTES[op.value], list), \
+            #         (f"If {op} use last 2 bits as index,"
+            #          " it should be recorded as a list in OP_FAILURE_BYTES")
+            # elif op.value in OP_FAILURE_BYTES:
+            #     assert isinstance(OP_FAILURE_BYTES[op.value], set), \
+            #         (f"If {op} doesn't use last 2 bits as index,"
+            #          " it should be recorded as a set")
+            elif op.value in TWO_BIT_PARAMS:
+                if op.value in OP_FAILURE_BYTES:
+                    assert isinstance(OP_FAILURE_BYTES[op.value], list), \
+                        (f"If {op} use last 2 bits as index, it"
+                         " should be recorded as a list in OP_FAILURE_BYTES")
+                # elif "Reply" in str(op):
+                #     # commented since not a real problem
+                #     # MCOp.Get_Configuration_Options_Reply doesn't have a
+                #     #    corresponding error for the same 6-bit op field.
+                #     raise AssertionError(
+                #         (f"{op} is a reply but does not have an error reply."
+                #          " Does this follow the standard? If so,"
+                #          "remove this assertion."))
+            else:
+                # assert op.value in TWO_BIT_PARAMS, \
+                #     f"There is no list of two-bit params for {op}"
+                # ^ Incorrect assertion since some share 1st 6 bits and
+                #   don't have params. See below instead.
+                parentValue = op.value & 0b11111100
+                assert (op.value in TWO_BIT_PARAMS
+                        or ((parentValue in TWO_BIT_PARAMS)
+                            and (op.value in TWO_BIT_PARAMS[parentValue]))
+                        ), \
+                    f"There is no list of two-bit params for {op}"
+
+        for opValue, _ in TWO_BIT_PARAMS.items():
+            parentValue = opValue & 0b11111100
+            assert opCounts.get(parentValue) == 1, \
+                f"op {hex(opValue)} is not in MCOp parents enum"
 
 
 if __name__ == '__main__':
