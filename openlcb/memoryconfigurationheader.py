@@ -52,8 +52,10 @@ class MemoryConfigurationHeader:
         else:
             # space is None
             assert datagramByte1 & 0x03 != 0, \
-                'a standard space must be in last 2 bits datagramByte1'
+                'a standard space index must be in last 2 bits datagramByte1'
             space = -1
+        # NOTE: Third option is that space isn't known yet
+        #   (must be set later, if spaceIsCustom())
         # formerly deserializeMC2ndByte
         result = cls(datagramByte1 & 0x03)
         if datagramByte1 & 0x03 == 0:
@@ -62,3 +64,14 @@ class MemoryConfigurationHeader:
             result.customSpace = space
         result.highBits = datagramByte1 & 0xFC  # 0xFC = 0b11111100
         return result
+
+    def spaceIsCustom(self):
+        """Is MemorySpaceIndex.Custom?
+        Detected as True if 0 was in last 2 bits of datagramByte1
+        (2nd byte of datagram bitwise-and 6-high-bit mask),
+        so only use fromMC2ndByte (or MemorySpaceIndex.fromNumber) if
+        `isinstance(TWO_BIT_PARAMS[datagramByte1 & McOpMasks.Default], list)`
+        (list is used as a convention in TWO_BIT_PARAMS values to
+        indicate a meaningful index in last 2 bits).
+        """
+        return self.spaceIndex is MemorySpaceIndex.Custom

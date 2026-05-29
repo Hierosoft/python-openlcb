@@ -50,7 +50,25 @@ logger = getLogger(__name__)
 
 
 class MCOp(Enum):
-    """Byte 1 & 0b11111100 values (assumes byte 0 is 0x20)"""
+    """Byte 1 values where first 6 bits are unique *or*
+    last 2 bits do *not* have a separate meaning
+    (first 6 bits can't be used in isolation to determine
+    meaning, but first 6 bits typically imply a set of
+    more loosely related commands).
+    - Use datagram memo's `data[1] & MCOpMasks.Default` (use
+      "bitwise and" with the 6-high-bit mask) to get first 6 bits, which
+      can be used as a param for fromNumber (For operations where last 2
+      bits do not have a separate meaning, do not use the 6-high-bit
+      mask).
+    - Byte 0 is 0x20 for Memory Configuration.
+    - Byte 1 values not in here (not masked) are in TWO_BIT_PARAMS
+      and/or OP_FAILURE_BYTES.
+      - Any value in here indicating *failure*, whether or not a key in
+        TWO_BIT_PARAMS, is a key in OP_FAILURE_BYTES.
+    - For a full understanding of how the Memory Configuration protocol
+      constants are systematized, See testProtocolGroupUniqueness and/or
+      the constant dicts using these values as keys.
+    """
     Read_Command = 0x40  # 01000000
     Read_Reply = 0x50    # 01010000
     Read_Reply_Failure = 0x58  # 01011000; See OP_FAILURE_BYTES
@@ -114,16 +132,30 @@ class MCOpMasks:
     # Get_Address_Space_Info = 0x11111110
 
 
+"""
+The combined *values* TWO_BIT_PARAMS include all 6-high-bit operation
+groups *except* those in OP_FAILURE_BYTES order determines meaning for
+lists:
+- First ([0]) indicates custom space follows (in later byte)
+- Others are standard spaces. For meaning of last 2 bits see
+  MemorySpaceIndex Enum (derived from Configuration Description
+  Information Standard).
+  - Meaningful last 2 bits are *not* applicable if value of dict is a
+    *set* (set is used by convention here to indicate no ordered
+    meaning)!
+  - Ones with *pool* comment (typically with "Command" in the name)
+    require a StoragePool/subclass. Only setup memoryservice instance's
+    pool if your device itself should be remotely configurable (not
+    required and not typical for a Configuration Tool, since its purpose
+    it to configure other nodes, but for an actual/virtual node, see
+    example_node_memory_implementation). Such a Node should set the
+    MEMORY_CONFIGURATION_PROTOCOL and other applicable protocols in its
+    PIP set (See Node constructor).
+    - Each node must have its own MemoryService instance since
+      DatagramReadMemo does not carry a destination address.
+"""
 TWO_BIT_PARAMS = {
-    # The combined values in these lists include all 6-bit
-    # operation groups *except* those in OP_FAILURE_BYTES
-    # order determines meaning for lists:
-    # - first indicates custom space follows (in later byte)
-    # - Others are standard spaces
-    #    See MemorySpaceIndex enum for meaning of last 2 bits
-    #    (and Configuration Description Information Standard).
-    #   - does *not* apply to *sets* below!
-    # *lists* (last 2 bits are MemorySpaceIndex.fromNumber param)
+    # region *lists* (last 2 bits are MemorySpaceIndex.fromNumber param)
     MCOp.Read_Command.value: [0x40, 0x41, 0x42, 0x43],  # pool
     MCOp.Read_Reply.value: [0x50, 0x51, 0x52, 0x53],
     MCOp.Read_Stream_Command.value: [0x60, 0x61, 0x62, 0x63],  # pool
@@ -133,9 +165,13 @@ TWO_BIT_PARAMS = {
     MCOp.Write_Under_Mask_Command.value: [0x08, 0x09, 0x0A, 0x0B],  # pool
     MCOp.Write_Stream_Command.value: [0x20, 0x21, 0x22, 0x23],
     MCOp.Write_Stream_Reply.value: [0x30, 0x31, 0x32, 0x33],  # TODO
-    # *sets* (no standard meaning to last 2 bits)
-    MCOp.Get_Configuration_Options_Command.value: {0x80, },
-    MCOp.Get_Configuration_Options_Reply.value: {0x82, },
+    # endregion
+
+    # region *sets* (no standard meaning to last 2 bits)
+    MCOp.Get_Configuration_Options_Command.value: {
+        MCOp.Get_Configuration_Options_Command.value,
+        MCOp.Get_Configuration_Options_Reply.value,
+    },
     MCOp.Get_Address_Space_Info_Command.value: {
         MCOp.Get_Address_Space_Info_Command.value,
         MCOp.Get_Address_Space_Info_Reply.value,
@@ -145,14 +181,17 @@ TWO_BIT_PARAMS = {
         MCOp.Lock_or_Reserve_Command.value,
         MCOp.Lock_or_Reserve_Reply.value,
     },
-    MCOp.Get_Unique_ID_Command.value: {0x8C, },
-    MCOp.Get_Unique_ID_Reply.value: {0x8D, },
+    MCOp.Get_Unique_ID_Command.value: {
+        MCOp.Get_Unique_ID_Command.value,
+        MCOp.Get_Unique_ID_Reply.value
+    },
     MCOp.Unfreeze_Command.value: {0xA1, 0xA0},  # unfreeze, freeze respectively
     MCOp.Update_Complete_Command.value: {  # all match using MCOpMasks.Default
         MCOp.Update_Complete_Command.value,
         MCOp.Reset_or_Reboot_Command.value,
         MCOp.Reinitialize_or_Factory_Reset_Command.value,
     }
+    # endregion
 }
 
 OP_FAILURE_BYTES = {
@@ -450,11 +489,11 @@ class MemoryService:
         mcOp = MCOp.fromNumber(dmemo.data[1] & MCOpMasks.Default)
         # decode if read, write or some other reply
         if dmemo.data[1] in (0x50, 0x51, 0x52, 0x53, 0x58, 0x59, 0x5A, 0x5B):
-            assert mcOp is MCOp.Read_Reply, \
-                "self-test failed (bad constant(s))"
-            assert (dmemo.data[1] in TWO_BIT_PARAMS[mcOp.value]
-                    or dmemo.data[1] in OP_FAILURE_BYTES[mcOp.value]), \
-                "self-test failed (bad constant(s))"
+            # assert mcOp is MCOp.Read_Reply, \
+            #     "self-test failed (bad constant(s))"
+            # assert (dmemo.data[1] in TWO_BIT_PARAMS[mcOp.value]
+            #         or dmemo.data[1] in OP_FAILURE_BYTES[mcOp.value]), \
+            #     "self-test failed (bad constant(s))"
             # MCOp.Read_Reply
             # read or read-error reply
 
@@ -490,9 +529,9 @@ class MemoryService:
                         tMemoryMemo.rejectedReply(tMemoryMemo)
                     break
         elif dmemo.data[1] in (0x10, 0x11, 0x12, 0x13, 0x18, 0x19, 0x1A, 0x1B):
-            assert mcOp is MCOp.Write_Reply, \
-                (f"self-test failed (bad constant(s));"
-                 f" got op {mcOp} for sub-op {hex(dmemo.data[1])}")
+            # assert mcOp is MCOp.Write_Reply, \
+            #     (f"self-test failed (bad constant(s));"
+            #      f" got op {mcOp} for sub-op {hex(dmemo.data[1])}")
             # write reply good, bad
 
             # return data to requestor: first find matching memory write
@@ -509,8 +548,8 @@ class MemoryService:
                     break
         elif dmemo.data[1] == MCOp.Get_Address_Space_Info_Command.value:
             # 0x84 (A node sent us a command requesting space info)
-            assert mcOp is MCOp.Get_Address_Space_Info_Command, \
-                "self-test failed (bad constant(s))"
+            # assert mcOp is MCOp.Get_Address_Space_Info_Command, \
+            #     "self-test failed (bad constant(s))"
             space = dmemo.data[2]
             last = self.pool.getLast(space)
             if last is not None:
@@ -560,8 +599,8 @@ class MemoryService:
                 # TODO: rejected
                 pass
         elif dmemo.data[1] in (0x86, 0x87):  # Address Space Information Reply
-            assert mcOp is MCOp.Get_Address_Space_Info_Command, \
-                "self-test failed (bad constant(s))"
+            # assert mcOp is MCOp.Get_Address_Space_Info_Command, \
+            #     "self-test failed (bad constant(s))"
             # ^ same first 6 bits as Get_Address_Space_Info_Command,
             #   but in this case actually a reply to a command.
 

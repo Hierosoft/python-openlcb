@@ -34,6 +34,7 @@ from openlcb.memoryservice import (  # noqa: E402
     OP_FAILURE_BYTES,
     TWO_BIT_PARAMS,
     MCOp,
+    MCOpMasks,
     MemoryReadMemo,
     MemoryWriteMemo,
     MemoryService,
@@ -188,7 +189,7 @@ class TestMemoryServiceClass(unittest.TestCase):
         self.assertEqual(len(self.returnedMemoryReadMemo), 2)  # memory read returned  # noqa: E501
 
     def testProtocolGroupUniqueness(self):
-        """Ensure each 6-bit field is unique"""
+        """Ensure each 6-high-bit field is unique"""
         opCounts = OrderedDict()
 
         def incrementKey(key, counts):
@@ -201,7 +202,8 @@ class TestMemoryServiceClass(unittest.TestCase):
 
         for op in MCOp:
             incrementKey(op.value, opCounts)
-            # Ensure that 6-bit fields are systematized (correct constants)
+            # Ensure that 6-high-bit fields are systematized (correct
+            #   constants)
             if ((op.value in OP_FAILURE_BYTES)
                     and (len(OP_FAILURE_BYTES[op.value]) == 1)):
                 assert op.value not in TWO_BIT_PARAMS, \
@@ -229,7 +231,8 @@ class TestMemoryServiceClass(unittest.TestCase):
                 # elif "Reply" in str(op):
                 #     # commented since not a real problem
                 #     # MCOp.Get_Configuration_Options_Reply doesn't have a
-                #     #    corresponding error for the same 6-bit op field.
+                #     #    corresponding error for the same 6-high-bit
+                #     #    op field.
                 #     raise AssertionError(
                 #         (f"{op} is a reply but does not have an error reply."
                 #          " Does this follow the standard? If so,"
@@ -250,6 +253,17 @@ class TestMemoryServiceClass(unittest.TestCase):
             parentValue = opValue & 0b11111100
             assert opCounts.get(parentValue) == 1, \
                 f"op {hex(opValue)} is not in MCOp parents enum"
+
+    def testProtocolGroupCompleteness(self):
+        for statedParentValue, values in TWO_BIT_PARAMS.items():
+            for byte1 in values:
+                # second byte.
+                computableParentValue = byte1 & MCOpMasks.Default
+                assert computableParentValue == statedParentValue, \
+                    (f"parent value of {hex(byte1)} is computed as"
+                     f" {hex(computableParentValue)} but dict records it under"
+                     f" {hex(statedParentValue)},"
+                     " so constants aren't systematized")
 
 
 if __name__ == '__main__':

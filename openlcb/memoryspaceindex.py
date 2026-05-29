@@ -14,6 +14,14 @@ class MemorySpaceIndex(Enum):
     def fromNumber(cls, num: int):
         """Return the MemorySpace member with the given numeric value,
         or None if no match is found.
+        Args:
+            num (int): Typically datagramByte1 & McOpMasks.Default
+                (2nd byte of datagram bitwise-and 6-high-bit mask), so
+                only use this method if if
+                `isinstance(TWO_BIT_PARAMS[datagramByte1 &
+                McOpMasks.Default], list)`
+                (list is used as a convention in TWO_BIT_PARAMS values
+                to indicate a meaningful index in last 2 bits).
         """
         assert isinstance(num, int)
         for member in cls:
