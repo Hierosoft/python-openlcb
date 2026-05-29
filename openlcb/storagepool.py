@@ -8,7 +8,7 @@ from openlcb.memoryspace import MemorySpace
 logger = getLogger(__name__)
 
 
-class StorageSpace:
+class Segment:
     def __init__(self, size=0, readOnly=False):
         assert isinstance(size, int)
         assert size >= 0
@@ -105,9 +105,9 @@ class StorageSpace:
             self._data[address:end] = data
 
 
-class StoragePool:
+class MemoryManager:
     def __init__(self):
-        self._spaces = {}  # type: dict[int, StorageSpace]
+        self._segments = {}  # type: dict[int, Segment]
 
     def set(self, var: CDIVar):
         assert isinstance(var, CDIVar)
@@ -121,52 +121,52 @@ class StoragePool:
         """Get first address"""
         if isinstance(space, MemorySpace):
             space = space.value
-        storage = self._spaces.get(space)
-        if storage is None:
+        segment = self._segments.get(space)
+        if segment is None:
             return None
-        return storage.getFirst()
+        return segment.getFirst()
 
     def markReadOnly(self, space: Union[MemorySpace, int], readOnly):
         if isinstance(space, MemorySpace):
             space = space.value
-        storage = self._spaces.get(space)
-        if storage is None:
+        segment = self._segments.get(space)
+        if segment is None:
             return
-        return storage.markReadOnly(readOnly)
+        return segment.markReadOnly(readOnly)
 
     def isReadOnly(self, space: Union[MemorySpace, int]):
         if isinstance(space, MemorySpace):
             space = space.value
 
-        storage = self._spaces.get(space)
-        if storage is None:
+        segment = self._segments.get(space)
+        if segment is None:
             return True  # True since can't write if not present
-        return storage.isReadOnly()
+        return segment.isReadOnly()
 
     def getDescription(self, space):
         if isinstance(space, MemorySpace):
             space = space.value
-        storage = self._spaces.get(space)
-        if storage is None:
+        segment = self._segments.get(space)
+        if segment is None:
             return None
-        return storage.getDescription()
+        return segment.getDescription()
 
     def setDescription(self, space, description: str):
         if isinstance(space, MemorySpace):
             space = space.value
         assert isinstance(description, str)
-        storage = self._spaces.get(space)
-        if storage is None:
+        segment = self._segments.get(space)
+        if segment is None:
             return
-        storage.setDescription(description)
+        segment.setDescription(description)
 
     def getLength(self, space: Union[MemorySpace, int]):
         """Get size of space"""
         if isinstance(space, MemorySpace):
             space = space.value
-        if space not in self._spaces:
+        if space not in self._segments:
             return None
-        return self._spaces[space].getLength()
+        return self._segments[space].getLength()
 
     def getLast(self, space: Union[MemorySpace, int]):
         """Get last address
@@ -174,18 +174,18 @@ class StoragePool:
         """
         if isinstance(space, MemorySpace):
             space = space.value
-        storage = self._spaces.get(space)
-        if storage is None:
+        segment = self._segments.get(space)
+        if segment is None:
             return None
-        return storage.getLast()
+        return segment.getLast()
 
-    def getStorage(self, space: Union[MemorySpace, int]) -> Union[StorageSpace, None]:  # noqa: E501
+    def getStorage(self, space: Union[MemorySpace, int]) -> Union[Segment, None]:  # noqa: E501
         """Get last address
         (may differ from length-1 on actual hardware)
         """
         if isinstance(space, MemorySpace):
             space = space.value
-        return self._spaces.get(space)
+        return self._segments.get(space)
 
     def get(self, var: CDIVar) -> CDIVar:
         """Modify var in place.
@@ -215,11 +215,11 @@ class StoragePool:
             size = len(data)
         else:
             assert size <= len(data)
-        storage = self._spaces.get(space)
-        if storage is None:
-            storage = StorageSpace()
-            self._spaces[space] = storage
-        storage.setData(address, data, size=size)
+        segment = self._segments.get(space)
+        if segment is None:
+            segment = Segment()
+            self._segments[space] = segment
+        segment.setData(address, data, size=size)
 
     def getSlice(self, space: Union[MemorySpace, int], address: int,
                  size: int, force=False) -> bytearray:
@@ -228,15 +228,15 @@ class StoragePool:
         assert isinstance(space, int)
         assert isinstance(address, int)
         assert isinstance(size, int)
-        storage = self._spaces.get(space)
-        if storage is None:
+        segment = self._segments.get(space)
+        if segment is None:
             if force:
-                storage = StorageSpace(size=address+size)
-                storage.setData(address, b"\0"*size, force=True)
-                self._spaces[space] = storage
+                segment = Segment(size=address+size)
+                segment.setData(address, b"\0"*size, force=True)
+                self._segments[space] = segment
             else:
                 raise KeyError(f"Space {hex(space)} does not exist.")
-        return storage.getSlice(address, size, force=force)
+        return segment.getSlice(address, size, force=force)
 
     def setInt(self, space: Union[MemorySpace, int], address: int,
                value: int, size: int, signed: bool):

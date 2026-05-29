@@ -105,7 +105,7 @@
 			"settingtypes",
 			"setuptools",
 			"SOCK_DGRAM",
-			"StoragePool",
+			"MemoryManager",
 			"sysdirs",
 			"tcplink",
 			"tcpsocket",

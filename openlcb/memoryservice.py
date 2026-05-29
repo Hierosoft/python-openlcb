@@ -43,7 +43,7 @@ from openlcb.datagramservice import (
 from openlcb.convert import Convert
 from openlcb.memoryconfigurationheader import MemoryConfigurationHeader
 from openlcb.memoryspaceindex import MemorySpaceIndex
-from openlcb.storagepool import StoragePool
+from openlcb.storagepool import MemoryManager
 from openlcb.nodeid import NodeID
 
 logger = getLogger(__name__)
@@ -143,9 +143,9 @@ lists:
   - Meaningful last 2 bits are *not* applicable if value of dict is a
     *set* (set is used by convention here to indicate no ordered
     meaning)!
-  - Ones with *pool* comment (typically with "Command" in the name)
-    require a StoragePool/subclass. Only setup memoryservice instance's
-    pool if your device itself should be remotely configurable (not
+  - Ones with *remote* comment (typically with "Command" in the name)
+    require a MemoryManager/subclass. Only setup memoryservice instance's
+    .memory if your device itself should be remotely configurable (not
     required and not typical for a Configuration Tool, since its purpose
     it to configure other nodes, but for an actual/virtual node, see
     example_node_memory_implementation). Such a Node should set the
@@ -156,13 +156,13 @@ lists:
 """
 TWO_BIT_PARAMS = {
     # region *lists* (last 2 bits are MemorySpaceIndex.fromNumber param)
-    MCOp.Read_Command.value: [0x40, 0x41, 0x42, 0x43],  # pool
+    MCOp.Read_Command.value: [0x40, 0x41, 0x42, 0x43],  # remote
     MCOp.Read_Reply.value: [0x50, 0x51, 0x52, 0x53],
-    MCOp.Read_Stream_Command.value: [0x60, 0x61, 0x62, 0x63],  # pool
+    MCOp.Read_Stream_Command.value: [0x60, 0x61, 0x62, 0x63],  # remote
     MCOp.Read_Stream_Reply.value: [0x70, 0x71, 0x72, 0x73],  # TODO
-    MCOp.Write_Command.value: [0x00, 0x01, 0x02, 0x03],  # pool
+    MCOp.Write_Command.value: [0x00, 0x01, 0x02, 0x03],  # remote
     MCOp.Write_Reply.value: [0x10, 0x11, 0x12, 0x13],
-    MCOp.Write_Under_Mask_Command.value: [0x08, 0x09, 0x0A, 0x0B],  # pool
+    MCOp.Write_Under_Mask_Command.value: [0x08, 0x09, 0x0A, 0x0B],  # remote
     MCOp.Write_Stream_Command.value: [0x20, 0x21, 0x22, 0x23],
     MCOp.Write_Stream_Reply.value: [0x30, 0x31, 0x32, 0x33],  # TODO
     # endregion
@@ -392,11 +392,14 @@ class MemoryService:
         service (DatagramService): See DatagramService.
 
     Attributes:
-        pool (Union[StoragePool, LocalNode]): The storage where
-            other nodes can read and write memory. Since a datagram
-            doesn't have a destination, there must be a MemoryService
-            for each local node (the local Configuration tool or node
-            and any virtual nodes).
+        memory (Union[MemoryManager, LocalNode]): The storage
+            (all segments specific to this node) where other nodes can
+            read and write memory. Since a datagram doesn't have a
+            destination, there must be a MemoryService for each local
+            node (the local Configuration Tool or node and any virtual
+            nodes. Though typically a Configuration Tool isn't itself
+            configured remotely, that is technically possible, and
+            more typical in cases where it generates virtual nodes).
     """
 
     def __init__(self, service: DatagramService):
@@ -409,7 +412,7 @@ class MemoryService:
         self.service.registerDatagramReceivedListener(
             self.datagramReceivedListener
         )
-        self.pool = StoragePool()
+        self.memory = MemoryManager()
 
     def requestMemoryRead(self, memo, stream: bool = False):
         # type: (MemoryReadMemo, Optional[bool]) -> None
@@ -551,12 +554,12 @@ class MemoryService:
             # assert mcOp is MCOp.Get_Address_Space_Info_Command, \
             #     "self-test failed (bad constant(s))"
             space = dmemo.data[2]
-            last = self.pool.getLast(space)
+            last = self.memory.getLast(space)
             if last is not None:
-                first = self.pool.getFirst(space)
+                first = self.memory.getFirst(space)
                 assert isinstance(first, int)
                 assert last - first >= 0, \
-                    (f"{type(self.pool).__name__} incorrectly implemented:"
+                    (f"{type(self.memory).__name__} incorrectly implemented:"
                      " first>last")
                 ReadOnly = 0b10000000
                 HasLowestAddress = 0b01000000
@@ -573,14 +576,14 @@ class MemoryService:
                 if replyData[1] == 0x87:
                     replyData += highestAddrBytes  # bytes 3-6 (0 indexed)
                     replyData.append(0x00)  # flags (set below)
-                    if self.pool.isReadOnly(space):
+                    if self.memory.isReadOnly(space):
                         replyData[-1] |= ReadOnly
                     if first != 0:
                         replyData[-1] |= HasLowestAddress
                         lowestAddrBytes = struct.pack(">I", first)
                         assert len(lowestAddrBytes) == 4
                         replyData += lowestAddrBytes
-                    description = self.pool.getDescription(space)
+                    description = self.memory.getDescription(space)
                     if description:
                         descBytes = bytearray(description.encode())
                     else:

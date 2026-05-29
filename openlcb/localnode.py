@@ -4,7 +4,7 @@ from logging import getLogger
 from typing import Union
 from openlcb import emit_cast
 from openlcb.memoryspace import MemorySpace
-from openlcb.storagepool import StoragePool, StorageSpace
+from openlcb.storagepool import MemoryManager, Segment
 from openlcb.node import PIP, SNIP, Node
 
 from openlcb.localnodeprocessor import LocalNodeProcessor
@@ -24,14 +24,14 @@ from openlcb.xmldataprocessor import (
 logger = getLogger(__name__)
 
 
-class LocalNode(Node, StoragePool):
+class LocalNode(Node, MemoryManager):
     """A Node with its own virtual memory
     (emulate memory spaces such as for creating a virtual
     signal node with settings)"""
     def __init__(self, id: NodeID, snip: SNIP, pipSet: set,
                  linkLayer: CanLink):
         Node.__init__(self, id, snip, pipSet)
-        StoragePool.__init__(self)
+        MemoryManager.__init__(self)
         self.cdi = None  # type: XMLDataProcessor|None
         self._replicated_cdi_tree = None  # type: CDIMemo|None
         if PIP.CONFIGURATION_DESCRIPTION_INFORMATION in pipSet:
@@ -94,7 +94,7 @@ class LocalNode(Node, StoragePool):
         #     data = stream.read()
         #     self.tree = etree.fromstring(data)
         self.reserveSpaces()
-        if MemorySpace.CDI.value in self._spaces:
+        if MemorySpace.CDI.value in self._segments:
             logger.warning(f"CDI defined {MemorySpace.CDI.value}")
 
         # NOTE: self.cdi._data is None after load is done!
@@ -105,10 +105,10 @@ class LocalNode(Node, StoragePool):
         assert isinstance(xml_data, bytearray), \
             f"expected bytearray got {type(xml_data).__name__}"
         # assert isinstance(xml_data, (bytes, bytearray))
-        storage = StorageSpace()
-        self._spaces[MemorySpace.CDI.value] = storage
-        storage.setData(0, xml_data, force=True)
-        storage.markReadOnly(True)
+        segment = Segment()
+        self._segments[MemorySpace.CDI.value] = segment
+        segment.setData(0, xml_data, force=True)
+        segment.markReadOnly(True)
 
     def setMemory(self, memo: CDIMemo, var: CDIVar):
         """Set a memory address at memo to the value in var"""
@@ -192,11 +192,11 @@ class LocalNode(Node, StoragePool):
                 logger.warning(
                     f"Creating cdiBackupDir {self.cdiBackupDir}")
                 os.makedirs(self.cdiBackupDir)
-            for space, storage in self._spaces.items():
+            for space, segment in self._segments.items():
                 name = f"{self.id}.lcc-link-virtual-node.space={space}.xml"
                 path = os.path.join(self.cdiBackupDir, name)
                 with open(path, "wb") as stream:
-                    stream.write(storage._data)
+                    stream.write(segment._data)
                     print(f"Wrote {d_quote(path)}")
 
     def onCDILoaded(self, memo: MemoryReadMemo):

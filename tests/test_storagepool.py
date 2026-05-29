@@ -5,7 +5,7 @@ import unittest
 
 from openlcb import emit_cast
 from openlcb.cdivar import SIGNED_INT_MINIMUMS, CDIVar
-from openlcb.storagepool import StoragePool
+from openlcb.storagepool import MemoryManager
 
 
 from logging import getLogger
@@ -27,11 +27,11 @@ if __name__ == "__main__":
             .format(repr(REPO_DIR)))
 
 
-class TestStoragePool(unittest.TestCase):
+class TestMemoryManager(unittest.TestCase):
 
     def testGetNothing(self):
-        pool = StoragePool()
-        value_bytes = pool.getSlice(4, 40, 4, force=True)
+        memory = MemoryManager()
+        value_bytes = memory.getSlice(4, 40, 4, force=True)
         self.assertEqual(len(value_bytes), 4)
         value = struct.unpack(">I", value_bytes)[0]
         assert isinstance(value, int)
@@ -40,20 +40,20 @@ class TestStoragePool(unittest.TestCase):
         self.assertEqual(value, 0)
 
     def test_get_raises_keyerror(self):
-        pool = StoragePool()
+        memory = MemoryManager()
         with self.assertRaises(KeyError):
             # KeyError is necessary because space 4 was not defined
-            #   (pool.set* is not called above, so no spaces exist).
-            pool.getSlice(4, 40, 4)        # adjust arguments as needed
+            #   (memory.set* is not called above, so no spaces exist).
+            memory.getSlice(4, 40, 4)        # adjust arguments as needed
 
     def testUnsignedIntData(self):
         in_value = 9999999
         value_bytes = struct.pack(">I", in_value)
         self.assertEqual(len(value_bytes), 4)
         assert isinstance(value_bytes, (bytes, bytearray))
-        pool = StoragePool()
-        pool.setSlice(1, 10, value_bytes)
-        out_bytes = pool.getSlice(1, 10, 4)
+        memory = MemoryManager()
+        memory.setSlice(1, 10, value_bytes)
+        out_bytes = memory.getSlice(1, 10, 4)
         self.assertEqual(len(out_bytes), 4)
         out_value = struct.unpack(">I", out_bytes)[0]
         self.assertEqual(in_value, out_value)
@@ -63,41 +63,41 @@ class TestStoragePool(unittest.TestCase):
         value_bytes = struct.pack(">i", in_value)
         self.assertEqual(len(value_bytes), 4)
         assert isinstance(value_bytes, (bytes, bytearray))
-        pool = StoragePool()
-        pool.setSlice(1, 10, value_bytes)
-        out_bytes = pool.getSlice(1, 10, 4)
+        memory = MemoryManager()
+        memory.setSlice(1, 10, value_bytes)
+        out_bytes = memory.getSlice(1, 10, 4)
         self.assertEqual(len(out_bytes), 4)
         out_value = struct.unpack(">i", out_bytes)[0]
         self.assertEqual(in_value, out_value)
 
     def testUnsignedInt(self):
         in_value = 9999999
-        pool = StoragePool()
+        memory = MemoryManager()
         size = 4
         signed = False
-        pool.setInt(1, 10, in_value, size, signed)
-        out_bytes = pool.getSlice(1, 10, size)
+        memory.setInt(1, 10, in_value, size, signed)
+        out_bytes = memory.getSlice(1, 10, size)
         self.assertEqual(len(out_bytes), size)
         out_value = struct.unpack(">I", out_bytes)[0]
         self.assertEqual(in_value, out_value)
-        out_value = pool.getInt(1, 10, size, signed)
+        out_value = memory.getInt(1, 10, size, signed)
         self.assertEqual(in_value, out_value)
 
     def testSignedInt(self):
         in_value = -9999999
-        pool = StoragePool()
+        memory = MemoryManager()
         size = 4
         signed = True
-        pool.setInt(1, 10, in_value, size, signed)
-        out_bytes = pool.getSlice(1, 10, size)
+        memory.setInt(1, 10, in_value, size, signed)
+        out_bytes = memory.getSlice(1, 10, size)
         self.assertEqual(len(out_bytes), size)
         out_value = struct.unpack(">i", out_bytes)[0]
         self.assertEqual(in_value, out_value)
-        out_value = pool.getInt(1, 10, size, signed)
+        out_value = memory.getInt(1, 10, size, signed)
         self.assertEqual(in_value, out_value)
 
     def testFloat(self):
-        pool = StoragePool()
+        memory = MemoryManager()
         sizeFormats = {
             2: ">e",
             4: ">f",
@@ -105,31 +105,31 @@ class TestStoragePool(unittest.TestCase):
         }
         in_value = -999
         size = 2
-        pool.setFloat(1, 10, in_value, size)
-        out_bytes = pool.getSlice(1, 10, size)
+        memory.setFloat(1, 10, in_value, size)
+        out_bytes = memory.getSlice(1, 10, size)
         self.assertEqual(len(out_bytes), size)
         out_value = struct.unpack(sizeFormats[size], out_bytes)[0]
         self.assertEqual(in_value, out_value)
-        out_value = pool.getFloat(1, 10, size)
+        out_value = memory.getFloat(1, 10, size)
         self.assertEqual(in_value, out_value)
 
         size = 4
         in_value = -9999999  # NOTE: f32 fits -9999999 f16 does not
-        pool.setFloat(1, 10, in_value, size)
-        out_bytes = pool.getSlice(1, 10, size)
+        memory.setFloat(1, 10, in_value, size)
+        out_bytes = memory.getSlice(1, 10, size)
         self.assertEqual(len(out_bytes), size)
         out_value = struct.unpack(sizeFormats[size], out_bytes)[0]
         self.assertEqual(in_value, out_value)
-        out_value = pool.getFloat(1, 10, size)
+        out_value = memory.getFloat(1, 10, size)
         self.assertEqual(in_value, out_value)
 
         size = 8
-        pool.setFloat(1, 10, in_value, size)
-        out_bytes = pool.getSlice(1, 10, size)
+        memory.setFloat(1, 10, in_value, size)
+        out_bytes = memory.getSlice(1, 10, size)
         self.assertEqual(len(out_bytes), size)
         out_value = struct.unpack(sizeFormats[size], out_bytes)[0]
         self.assertEqual(in_value, out_value)
-        out_value = pool.getFloat(1, 10, size)
+        out_value = memory.getFloat(1, 10, size)
         self.assertEqual(in_value, out_value)
 
     def testCDIVarUInt(self):
@@ -141,15 +141,15 @@ class TestStoragePool(unittest.TestCase):
         # signed = False
         var.setInt(in_value)
         self.assertEqual(var.getInt(), in_value)
-        pool = StoragePool()
-        pool.set(var)
-        var = pool.get(var)
+        memory = MemoryManager()
+        memory.set(var)
+        var = memory.get(var)
         self.assertEqual(var.getInt(), in_value)
         assert var.space is not None
         assert var.address is not None
         assert var.size is not None
         assert var.signed is not None
-        out_value = pool.getInt(var.space, var.address, var.size, var.signed)
+        out_value = memory.getInt(var.space, var.address, var.size, var.signed)
         self.assertEqual(out_value, in_value)
 
     def testCDIVarSInt(self):
@@ -180,15 +180,15 @@ class TestStoragePool(unittest.TestCase):
         # signed = False
         var.setInt(in_value)
         self.assertEqual(var.getInt(), in_value)
-        pool = StoragePool()
-        pool.set(var)
-        var = pool.get(var)
+        memory = MemoryManager()
+        memory.set(var)
+        var = memory.get(var)
         self.assertEqual(var.getInt(), in_value)
         assert var.space is not None
         assert var.address is not None
         assert var.size is not None
         assert var.signed is True
-        out_value = pool.getInt(var.space, var.address, var.size, var.signed)
+        out_value = memory.getInt(var.space, var.address, var.size, var.signed)
         self.assertEqual(out_value, in_value)
 
 

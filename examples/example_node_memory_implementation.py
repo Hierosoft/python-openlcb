@@ -26,7 +26,7 @@ import struct
 from examples_settings import Settings
 from openlcb.localnode import LocalNode
 from openlcb.memoryspace import MemorySpace
-from openlcb.storagepool import StorageSpace  # do 1st to fix path if no pip install
+from openlcb.storagepool import Segment  # do 1st to fix path if no pip install
 settings = Settings()
 
 if __name__ == "__main__":
@@ -197,17 +197,17 @@ localNode = LocalNode(
     ]),
     canLink
 )
-memoryService.pool = localNode
+memoryService.memory = localNode
 my_conf_dir = os.path.join(get_config_dir("python-openlcb"))
 backup_name = "example_node_memory_implementation.cdi.xml"
 backup_path = os.path.join(my_conf_dir, backup_name)
 
 localNode.loadCDIString(cdi, backup_path)
 # NOTE: loadCDI or loadCDIString sets Element tree and
-#   localNode._spaces[MemorySpace.CDI.value]
-storage = localNode.getStorage(MemorySpace.CDI.value)
-assert isinstance(storage, StorageSpace)
-assert isinstance(storage._data, (bytearray, bytes))
+#   localNode._segments[MemorySpace.CDI.value]
+segment = localNode.getStorage(MemorySpace.CDI.value)
+assert isinstance(segment, Segment)
+assert isinstance(segment._data, (bytearray, bytes))
 # localNodeProcessor = LocalNodeProcessor(canLink, localNode)
 # canLink.registerMessageReceivedListener(localNodeProcessor.process)
 localNodeProcessor = localNode.localNodeProcessor

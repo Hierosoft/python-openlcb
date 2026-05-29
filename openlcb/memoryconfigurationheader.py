@@ -65,7 +65,7 @@ class MemoryConfigurationHeader:
         result.highBits = datagramByte1 & 0xFC  # 0xFC = 0b11111100
         return result
 
-    def spaceIsCustom(self):
+    def spaceIsCustom(self) -> bool:
         """Is MemorySpaceIndex.Custom?
         Detected as True if 0 was in last 2 bits of datagramByte1
         (2nd byte of datagram bitwise-and 6-high-bit mask),
@@ -74,4 +74,6 @@ class MemoryConfigurationHeader:
         (list is used as a convention in TWO_BIT_PARAMS values to
         indicate a meaningful index in last 2 bits).
         """
+        assert self.spaceIndex is not None, \
+            "Constructor failed (space index not computed)"
         return self.spaceIndex is MemorySpaceIndex.Custom
