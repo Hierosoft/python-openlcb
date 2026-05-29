@@ -5,7 +5,7 @@ import unittest
 
 from openlcb import emit_cast
 from openlcb.cdivar import SIGNED_INT_MINIMUMS, CDIVar
-from openlcb.storagepool import MemoryManager
+from openlcb.memorymanager import MemoryManager
 
 
 from logging import getLogger

@@ -26,7 +26,7 @@ import struct
 from examples_settings import Settings
 from openlcb.localnode import LocalNode
 from openlcb.memoryspace import MemorySpace
-from openlcb.storagepool import Segment  # do 1st to fix path if no pip install
+from openlcb.memorymanager import Segment  # do 1st to fix path if no pip install
 settings = Settings()
 
 if __name__ == "__main__":

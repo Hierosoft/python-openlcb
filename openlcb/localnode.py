@@ -4,7 +4,7 @@ from logging import getLogger
 from typing import Union
 from openlcb import emit_cast
 from openlcb.memoryspace import MemorySpace
-from openlcb.storagepool import MemoryManager, Segment
+from openlcb.memorymanager import MemoryManager, Segment
 from openlcb.node import PIP, SNIP, Node
 
 from openlcb.localnodeprocessor import LocalNodeProcessor
