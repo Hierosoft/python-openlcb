@@ -1,0 +1,99 @@
+from logging import getLogger
+import xml.sax
+
+from openlcb.convert import Convert
+from openlcb.dataprocessor import DataFormat
+
+logger = getLogger(__name__)
+
+
+class MemoryReadJob:
+    """Reusable multi-chunk memory read job.
+    Callbacks get results of memory read
+    (override in subclass for specific behavior such as progress).
+    """
+    def __init__(self, memoryService, dataFormat: DataFormat, handler=None):
+        assert isinstance(dataFormat, DataFormat)
+        if dataFormat is DataFormat.XML:
+            assert handler is not None, \
+                "XML needs handler (xml.sax.handler.ContentHandler/subclass)"
+        self.memoryService = memoryService
+        # accumulate the CDI information
+        self.resultingCDI = bytearray()
+
+        self.handler = handler
+        self.dataFormat = dataFormat
+
+        self.completeData = False
+        self.failed = False
+
+    def memoryReadSuccess(self, memo):
+        """Handle a successful read
+        Invoked when the memory read successfully returns,
+        this queues a new read until the entire CDI has been
+        returned.  At that point, it invokes the XML processing below.
+
+        Args:
+            memo (MemoryReadMemo): Successful MemoryReadMemo
+        """
+        # print("successful memory read: {}".format(memo.data))
+
+        # is this done?
+        if len(memo.data) == 64 and 0 not in memo.data:
+            # save content
+            self.resultingCDI += memo.data
+            logger.debug(
+                f"[{memo.address}] successful read"
+                f" {Convert.arrayToString(memo.data, len(memo.data))}"
+                "; next = address + 64")
+            # update the address
+            memo.address = memo.address+64
+            # and read again
+            self.memoryService.requestMemoryRead(memo)
+            # The last packet is not yet reached, so don't parse (However,
+            #   parser.feed could be called for realtime processing).
+        else :
+            # and we're done!
+            # save content
+            self.resultingCDI += memo.data
+            # concert resultingCDI to a string up to 1st zero
+            cdiString = ""
+            null_i = self.resultingCDI.find(b'\0')
+            terminate_i = len(self.resultingCDI)
+            if null_i > -1:
+                terminate_i = min(null_i, terminate_i)
+            cdiString = self.resultingCDI[:terminate_i].decode("utf-8")
+            # print (cdiString)
+
+            # and process that
+            if self.dataFormat is DataFormat.XML:
+                self.processXML(cdiString)
+            else:
+                print(
+                    f"Skipping processing for misc. format: {self.dataFormat}")
+            self.completeData = True
+            # done
+
+    def memoryReadFail(self, memo):
+        print("memory read failed: {}".format(memo.data))
+        self.failed = True
+
+    def processXML(self, content: str) :
+        """process the XML and invoke callbacks
+
+        Args:
+            content (str): Raw XML data
+        """
+        # NOTE: The data is complete in this example since processXML is
+        #   only called when there is a null terminator, which indicates the
+        #   last packet was reached for the requested read.
+        #   - See memoryReadSuccess comments for details.
+        with open("cached-cdi.xml", 'w') as stream:
+            # NOTE: Actual caching should key by all SNIP info that could
+            #   affect CDI/FDI: manufacturer, model, and version. Without
+            #   all 3 being present in SNIP, the cache may be incorrect.
+            stream.write(content)
+        assert self.handler is not None, \
+            "XML needs handler (xml.sax.handler.ContentHandler/subclass)"
+        xml.sax.parseString(content, self.handler)
+        print("\nParser done")

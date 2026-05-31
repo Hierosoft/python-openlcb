@@ -3,7 +3,8 @@ from enum import Enum
 
 
 class DataFormat(Enum):
-    EOF = 0
+    EOF = -1
+    Blob = 0
     XML = 1
 
 
