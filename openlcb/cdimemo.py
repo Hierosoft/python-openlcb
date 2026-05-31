@@ -221,6 +221,16 @@ class CDIMemo(DataProcessorMemo):
                 # result_default = bytearray(default_var.data)
         # Size must be gotten ahead of time since CDIVar constructor
         #   enforces size:
+        if result_min is not None:
+            assert result_size is not None, \
+                f"size is required with min (className={className})"
+            result_min = CDIVar.fromNumber(result_min, className,
+                                           _size=result_size)
+        if result_max is not None:
+            assert result_size is not None, \
+                f"size is required with min (className={className})"
+            result_max = CDIVar.fromNumber(result_max, className,
+                                           _size=result_size)
         result = CDIVar(self.tag, _min=result_min, _max=result_max,
                         _size=result_size, _default=result_default)
         result.address = self.address  # only set in replicatedTree()

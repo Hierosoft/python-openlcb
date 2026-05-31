@@ -176,7 +176,8 @@ class CDIVar:
         thisType = CLASSNAME_TYPES.get(className)
         num_types = tuple(NUM_TYPES.values())
         if _min is not None:
-            assert isinstance(_min, CDIVar)
+            assert isinstance(_min, CDIVar), \
+                f"Expected CDIVar got {emit_cast(_min)}"
             _min.assertNumberFormat()
             assert thisType is not None
             min_value = _min.value()
