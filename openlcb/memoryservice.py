@@ -41,6 +41,7 @@ from openlcb.datagramservice import (
     DatagramService,
 )
 from openlcb.convert import Convert
+# from openlcb.localnode import LocalNode  # circular import
 from openlcb.memoryconfigurationheader import MemoryConfigurationHeader
 from openlcb.memoryspaceindex import MemorySpaceIndex
 from openlcb.memorymanager import MemoryManager
@@ -412,7 +413,7 @@ class MemoryService:
         self.service.registerDatagramReceivedListener(
             self.datagramReceivedListener
         )
-        self.memory = MemoryManager()
+        self.memory = MemoryManager()  # type: MemoryManager|LocalNode
 
     def requestMemoryRead(self, memo, stream: bool = False):
         # type: (MemoryReadMemo, Optional[bool]) -> None
