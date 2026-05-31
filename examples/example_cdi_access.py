@@ -13,6 +13,8 @@ host|host:port            (optional) Set the address (or using a colon,
 # region same code as other examples
 import copy
 import sys
+import time
+from typing import Union
 import xml.sax
 import xml.sax.handler
 import xml.sax.xmlreader  # for static type hints, autocomplete in this case
@@ -22,8 +24,10 @@ from logging import getLogger
 from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb import precise_sleep
 from openlcb.dataprocessor import DataFormat
+from openlcb.dataprocessormemo import DataProcessorMemo
 from openlcb.memoryreadjob import MemoryReadJob
 from openlcb.convert import Convert
+from openlcb.memoryspace import MemorySpace
 from openlcb.xmldataprocessor import attrs_to_dict
 from openlcb.tcplink.tcpsocket import TcpSocket
 settings = Settings()
@@ -231,43 +235,43 @@ while canLink.pollState() != CanLink.State.Permitted:
 print("      SENT frames : link up")
 
 
-job = MemoryReadJob(memoryService, DataFormat.XML, handler=handler)
+job = MemoryReadJob(memoryService)
 
 
-def memoryRead():
-    """Create and send a read datagram.
-    This is a read of 20 bytes from the start of CDI space.
-    We will fire it on a separate thread to give time for other nodes to reply
-    to AME
-    """
-    import time
-    time.sleep(.21)
-    # ^ 200ms: See section 6.2.1 of CAN Frame Transfer Standard
-    #   (CanLink.State.Permitted will only occur after that, but waiting
-    #   now will reduce output & delays below in this example).
-    while canLink.getState() != CanLink.State.Permitted:
-        print("Waiting for connection sequence to complete...")
-        # This delay could be .2 (per alias collision), but longer to
-        #   reduce console messages:
-        time.sleep(.5)
-    farNodeID = NodeID(settings['farNodeID'])
-    waited = 0
-    delaySec = 1
-    while farNodeID not in canLink.nodeIdToAlias:
-        time.sleep(delaySec)
-        waited += delaySec
-        print(f"Connected nodes: {canLink.nodeIdToAlias}")
-        print(f"Waiting for {farNodeID} ({waited}s)...")
-    print("Requesting memory read. Please wait...")
-    # read 64 bytes from the CDI space starting at address zero
-    memMemo = MemoryReadMemo(farNodeID, 64, 0xFF, 0,
-                             job.memoryReadFail, job.memoryReadSuccess)
-    memoryService.requestMemoryRead(memMemo)
+def statusCallback(memo: DataProcessorMemo):
+    if memo.status:
+        print(memo.status)
 
 
-import threading  # noqa E402
-thread = threading.Thread(target=memoryRead)
-thread.start()
+farNodeID = NodeID(settings['farNodeID'])
+
+time.sleep(.21)
+# ^ 200ms: See section 6.2.1 of CAN Frame Transfer Standard
+#   (CanLink.State.Permitted will only occur after that, but waiting
+#   now will reduce output & delays below in this example).
+while canLink.getState() != CanLink.State.Permitted:
+    print("Waiting for connection sequence to complete...")
+    # This delay could be .2 (per alias collision), but longer to
+    #   reduce console messages:
+    time.sleep(.5)
+
+print(f"CanLink state={canLink.getState()}")
+
+waited = 0
+delaySec = 1
+while farNodeID not in canLink.nodeIdToAlias:
+    # canLink.pollState()
+    physicalLayer.receiveAll(sock)
+    physicalLayer.sendAll(sock)
+    time.sleep(delaySec)
+    waited += delaySec
+    print(f"Connected nodes: {canLink.nodeIdToAlias}")
+    print(f"Waiting for {farNodeID} ({waited}s)...")
+
+job.readMemory(canLink, farNodeID, MemorySpace.CDI,
+               handler=handler,
+               callback=statusCallback)
+
 previous_nodes = copy.deepcopy(canLink.nodeIdToAlias)
 # process resulting activity
 print()

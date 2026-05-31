@@ -1,8 +1,14 @@
 from logging import getLogger
+from typing import Callable, Union
 import xml.sax
 
+from openlcb.canbus.canlink import CanLink
 from openlcb.convert import Convert
 from openlcb.dataprocessor import DataFormat
+from openlcb.dataprocessormemo import DataProcessorMemo
+from openlcb.memoryservice import MemoryReadMemo
+from openlcb.memoryspace import MemorySpace
+from openlcb.nodeid import NodeID
 
 logger = getLogger(__name__)
 
@@ -12,20 +18,57 @@ class MemoryReadJob:
     Callbacks get results of memory read
     (override in subclass for specific behavior such as progress).
     """
-    def __init__(self, memoryService, dataFormat: DataFormat, handler=None):
+    def __init__(self, memoryService, ):
+        self.memoryService = memoryService
+        # accumulate the CDI information
+        self.resultingCDI = bytearray()
+        self.handler = None
+        self.dataFormat = None
+        self.completeData = False
+        self.failed = False
+        self.memMemo = None
+        self.statusCallback = None
+
+    def readMemory(self, canLink, farNodeID: NodeID,
+                   space: Union[int, MemorySpace],
+                   dataFormat: Union[DataFormat, None] = None, handler=None,
+                   callback: Union[Callable[[DataProcessorMemo], None], None] = None):  # noqa: E501
+        """Create and send a read datagram.
+        This is a read of 20 bytes from the start of CDI space. We will
+        fire it on a separate thread to give time for other nodes to
+        reply to AME.
+        """
+        memo = DataProcessorMemo()
+        self.handler = handler
+        if dataFormat is None:
+            if isinstance(space, int):
+                spaceID = MemorySpace.fromNumber(space)
+            else:
+                assert isinstance(space, MemorySpace)
+                spaceID = space
+            if spaceID in (MemorySpace.CDI, MemorySpace.FDI):
+                dataFormat = DataFormat.XML
         assert isinstance(dataFormat, DataFormat)
         if dataFormat is DataFormat.XML:
             assert handler is not None, \
                 "XML needs handler (xml.sax.handler.ContentHandler/subclass)"
-        self.memoryService = memoryService
-        # accumulate the CDI information
-        self.resultingCDI = bytearray()
-
-        self.handler = handler
         self.dataFormat = dataFormat
+        self.statusCallback = callback
 
-        self.completeData = False
-        self.failed = False
+        def echoS(message: str):
+            """push a message"""
+            memo.status = message
+            if callback is not None:
+                callback(memo)
+
+        if isinstance(space, MemorySpace):
+            space = space.value
+        echoS("Requesting memory read. Please wait...")
+        # read 64 bytes from the CDI space starting at address zero
+        self.memMemo = MemoryReadMemo(farNodeID, 64, space, 0,
+                                      self.memoryReadFail,
+                                      self.memoryReadSuccess)
+        self.memoryService.requestMemoryRead(self.memMemo)
 
     def memoryReadSuccess(self, memo):
         """Handle a successful read
@@ -72,6 +115,9 @@ class MemoryReadJob:
                 print(
                     f"Skipping processing for misc. format: {self.dataFormat}")
             self.completeData = True
+            memo = DataProcessorMemo()
+            memo.status = ""
+            memo.done = True
             # done
 
     def memoryReadFail(self, memo):
