@@ -599,6 +599,7 @@ class MemoryService:
                     #   description (See
                     #   https://github.com/openlcb/documents/issues/190)?
                     replyData += descBytes
+                    # FIXME: Need to send Datagram Received OK datagram 1st?
                     spaceInfoReplyMemo = DatagramWriteMemo(
                         dmemo.srcID,
                         replyData
@@ -629,9 +630,8 @@ class MemoryService:
                        + int(dmemo.data[6]))
             self.spaceLengthCallback(address)
             self.spaceLengthCallback = None
-        elif mcOp is MCOp.Read_Command:
-            # assert dmemo.data[1] in TWO_BIT_PARAMS[MCOp.Read_Command.value],\
-            #     "self-test failed (bad constant(s))"
+        elif mcOp in (MCOp.Read_Command, MCOp.Write_Command):
+            # See OpenLCB Memory Configuration Standard, section 4.4 & 4.8
             mcHeader = MemoryConfigurationHeader.fromMC2ndByte(dmemo.data[1])
             addressBytes = dmemo.data[2:6]
             address = struct.unpack(">I", addressBytes)[0]
@@ -644,88 +644,150 @@ class MemoryService:
                 assert spaceIndex == 0
                 space = dmemo.data[6]
                 offset = 1
-            size = dmemo.data[6+offset]  # requested read count
-            datagramBytes = bytearray([0x20, MCOp.Read_Reply.value])
+            replyHighBits = MCOp.Read_Reply.value
+            if mcOp is MCOp.Write_Command:
+                replyHighBits = MCOp.Write_Reply.value
+            replyBytes = bytearray([0x20, replyHighBits])
             # ^ byte1 (2nd) changed to error below if applicable
             assert isinstance(spaceIndex, int), \
                 (f"Logic missing, spaceIndex should be number here,"
-                    f" got {emit_cast(spaceIndex)}")
+                 f" got {emit_cast(spaceIndex)}")
             assert isinstance(address, int)
-            datagramBytes += addressBytes
+            replyBytes += addressBytes
             if mcHeader.spaceIsCustom():
                 assert space is not None
-                datagramBytes.append(space)
-                assert len(datagramBytes) == 7, "space goes in index [6]"
+                replyBytes.append(space)
+                assert len(replyBytes) == 7, "space goes in index [6]"
             else:
                 space = MemorySpace.fromIndex(MemorySpaceIndex(spaceIndex))
                 assert space is not None
                 space = space.value
                 spaceIndex = (space & 0b00000011)
                 assert space is not None
-                datagramBytes[1] = \
-                    datagramBytes[1] | spaceIndex
-                assert len(datagramBytes) == 6, "should not have space in [6]"
+                replyBytes[1] = \
+                    replyBytes[1] | spaceIndex
+                assert len(replyBytes) == 6, "should not have space in [6]"
             assert space is not None, \
                 f"space not computed from datagram: {dmemo.data}"
-            payload = None
-            try:
-                segment = self.memory.getSegment(space)
-                if segment is None:
-                    raise KeyError(f"space {space} is not valid")
-                if address >= segment.size():
-                    raise IndexError(
-                        f"address {address} past end of {hex(space)}")
-                payload = self.memory.getSlice(space, address, size,
-                                               force=True)
-                # ^ force=True because reading past end is normal
-                #   (pad with zeroes to indicate end)
-            except (IndexError, KeyError) as ex:
-                # address out of range (See Segment's getSlice)
-                datagramBytes[1] = MCOp.Read_Reply_Failure.value
-                message = None
-                if isinstance(ex, KeyError):
-                    message = f"space {space} not valid"
-                elif isinstance(ex, KeyError):
-                    if space is not None:
-                        message = (f"address {hex(address)} not valid"
-                                   f" in space {hex(space)}")
-                    else:
-                        raise NotImplementedError(
-                            f"space not computed from datagram: {dmemo.data}")
-                errorCode = 1
-                errorBytes = struct.pack(">H", errorCode)
-                # FIXME: ^ Standard doesn't specify signed/unsigned
-                datagramBytes += errorBytes  # 2 required bytes
-                messageBytes = None
-                if message is not None:
-                    messageBytes = bytearray(message.encode("utf-8"))
-                    messageBytes.append(0x00)  # null terminator
-                    datagramBytes += messageBytes
-                failedRequestedMemoryMemo = DatagramWriteMemo(
+            if mcOp is MCOp.Read_Command:
+                # assert dmemo.data[1] \
+                #         in TWO_BIT_PARAMS[MCOp.Read_Command.value],\
+                #     "self-test failed (bad constant(s))"
+                size = dmemo.data[6+offset]  # requested read count
+                size = size & 0b01111111  # upper bit is reserved
+
+                payload = None
+                try:
+                    segment = self.memory.getSegment(space)
+                    if segment is None:
+                        raise KeyError(f"space {space} is not valid")
+                    if address >= segment.size():
+                        raise IndexError(
+                            f"address {address} past end of {hex(space)}")
+                    payload = self.memory.getSlice(space, address, size,
+                                                   force=True)
+                    # ^ force=True because reading past end is normal
+                    #   (pad with zeroes to indicate end)
+                except (IndexError, KeyError) as ex:
+                    # address out of range (See Segment's getSlice)
+                    replyBytes[1] = MCOp.Read_Reply_Failure.value
+                    message = None
+                    if isinstance(ex, KeyError):
+                        message = f"space {space} not valid"
+                    elif isinstance(ex, KeyError):
+                        if space is not None:
+                            message = (f"address {hex(address)} not valid"
+                                       f" in space {hex(space)}")
+                        else:
+                            raise NotImplementedError(
+                                f"space not computed from datagram:"
+                                f" {dmemo.data}")
+                    errorCode = 1
+                    failedMemo = MemoryService.failedMemo(mcOp, dmemo.srcID,
+                                                          address,
+                                                          space, errorCode,
+                                                          message)
+                    self.service.sendDatagram(failedMemo)
+                    return True  # handled (early, in error case)
+                assert payload is not None, \
+                    ("getSlice failed to raise IndexError or KeyError"
+                     " on invalid request (expected bytes, got None)")
+                assert len(payload) <= 64
+                replyBytes += payload
+                requestedMemoryMemo = DatagramWriteMemo(
                     dmemo.srcID,
-                    datagramBytes
+                    replyBytes
                 )
-                self.service.sendDatagram(failedRequestedMemoryMemo)
+                # FIXME: Must we manually send Datagram Received OK first?
+                self.service.sendDatagram(requestedMemoryMemo)
                 return True  # handled (early in this case)
-            assert payload is not None, \
-                ("getSlice failed to raise IndexError or KeyError"
-                 " on invalid request (expected bytes, got None)")
-            assert len(payload) <= 64
-            datagramBytes += payload
-            requestedMemoryMemo = DatagramWriteMemo(
-                dmemo.srcID,
-                datagramBytes
-            )
-            # hexStrings = []
-            # for b in datagramBytes:
-            #     hexStrings.append(hex(b))
-            # print(f"Sending read reply: {hexStrings}")
-            self.service.sendDatagram(requestedMemoryMemo)
+            elif mcOp is MCOp.Write_Command:
+                try:
+                    segment = self.memory.getSegment(space)
+                    if segment is None:
+                        raise KeyError(f"space {space} is not valid")
+                    if address >= segment.size():
+                        raise IndexError(
+                            f"address {address} past end of {hex(space)}")
+                    receivedPayload = dmemo.data[6+offset:]
+                    if len(receivedPayload) < 1:
+                        logger.warning(f"Got {mcOp} with payload size of 0")
+                    self.memory.setSlice(space, address, receivedPayload)
+                    # TODO: force=true is ok for read, not sure if ok for write
+                except (IndexError, KeyError) as ex:
+                    # address out of range (See Segment's getSlice)
+                    replyBytes[1] = MCOp.Read_Reply_Failure.value
+                    message = None
+                    if isinstance(ex, KeyError):
+                        message = f"space {space} not valid"
+                    elif isinstance(ex, KeyError):
+                        if space is not None:
+                            message = (f"address {hex(address)} not valid"
+                                       f" in space {hex(space)}")
+                        else:
+                            raise NotImplementedError(
+                                f"space not computed from datagram:"
+                                f" {dmemo.data}")
+                    errorCode = 1
+                    failedMemo = MemoryService.failedMemo(mcOp, dmemo.srcID,
+                                                          address,
+                                                          space, errorCode,
+                                                          message)
+                    self.service.sendDatagram(failedMemo)
+                    return True  # handled (early, in error case)
         else:
             logger.error("Did not expect reply of type 0x{:02X}"
                          .format(dmemo.data[1]))
-
         return True
+
+    @staticmethod
+    def failedMemo(mcOp: MCOp, srcID: NodeID, address: int, space: int,
+                   errorCode: int, message) -> DatagramWriteMemo:
+        assert isinstance(mcOp, MCOp)
+        assert isinstance(srcID, NodeID)
+        assert isinstance(address, int)
+        if isinstance(space, MemorySpaceIndex):
+            space = space.value
+        elif isinstance(space, MemorySpace):
+            space = space.value
+        assert isinstance(space, int)
+        assert isinstance(errorCode, int)
+        space = space & 0b00000011
+        replyBytes = bytearray([0x20, mcOp.value | space])
+        assert errorCode <= 65535
+        errorBytes = struct.pack(">H", errorCode)
+        # FIXME: ^ Standard doesn't specify signed/unsigned
+        replyBytes += errorBytes  # 2 required bytes
+
+        messageBytes = None
+        if message is not None:
+            messageBytes = bytearray(message.encode("utf-8"))
+            messageBytes.append(0x00)  # null terminator
+            replyBytes += messageBytes
+        return DatagramWriteMemo(
+            srcID,
+            replyBytes
+        )
 
     def requestMemoryWrite(self, memo: MemoryWriteMemo, stream: bool = False):
         # type: (MemoryWriteMemo, Optional[bool]) -> None
