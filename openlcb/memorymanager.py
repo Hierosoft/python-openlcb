@@ -104,6 +104,9 @@ class Segment:
         else:
             self._data[address:end] = data
 
+    def size(self) -> int:
+        return len(self._data)
+
 
 class MemoryManager:
     def __init__(self):

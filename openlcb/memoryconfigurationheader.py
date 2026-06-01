@@ -51,8 +51,11 @@ class MemoryConfigurationHeader:
                 'custom space requires datagramByte1 with last 2 bits 00'
         else:
             # space is None
-            assert datagramByte1 & 0x03 != 0, \
-                'a standard space index must be in last 2 bits datagramByte1'
+            # assert datagramByte1 & 0x03 != 0, \
+            #     ("standard space index req. in low 2 bits of datagramByte1"
+            #      f" but got {hex(datagramByte1)}")
+            # ^ commented to allow indeterminate state,
+            #   so caller can set space later from the later space byte
             space = -1
         # NOTE: Third option is that space isn't known yet
         #   (must be set later, if spaceIsCustom())

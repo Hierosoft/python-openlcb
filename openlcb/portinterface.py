@@ -69,7 +69,8 @@ class PortInterface:
 
     def _settimeout(self, seconds):
         """Abstract method. Return: implementation-specific or None."""
-        raise NotImplementedError("Subclass must implement this.")
+        raise NotImplementedError(
+            f"{type(self).__name__} subclass must implement _settimeout.")
 
     def settimeout(self, seconds):
         return self._settimeout(seconds)
@@ -79,7 +80,8 @@ class PortInterface:
         See connect for details.
         raise exception on failure to prevent self._open = True.
         """
-        raise NotImplementedError("Subclass must implement this.")
+        raise NotImplementedError(
+            f"{type(self).__name__} subclass must implement _connect.")
 
     def connect(self, host, port, device=None):
         """Connect to a port.
@@ -109,7 +111,8 @@ class PortInterface:
 
     def _send(self, data: Union[bytes, bytearray]) -> None:
         """Abstract method. Return: implementation-specific or None"""
-        raise NotImplementedError("Subclass must implement this.")
+        raise NotImplementedError(
+            f"{type(self).__name__} subclass must implement _send.")
 
     def send(self, data: Union[bytes, bytearray]) -> None:
         """
@@ -132,7 +135,8 @@ class PortInterface:
 
     def _receive(self) -> Union[bytearray, bytes, None]:
         """Abstract method. Return (bytes): data"""
-        raise NotImplementedError("Subclass must implement this.")
+        raise NotImplementedError(
+            f"{type(self).__name__} subclass must implement _receive.")
 
     def receive(self) -> Union[bytearray, bytes, None]:
         self._setBusy("receive")
@@ -147,7 +151,8 @@ class PortInterface:
 
     def _close(self) -> None:
         """Abstract method. Return: implementation-specific or None"""
-        raise NotImplementedError("Subclass must implement this.")
+        raise NotImplementedError(
+            f"{type(self).__name__} subclass must implement _close.")
 
     def setOpen(self, is_open):
         if self._open != is_open:

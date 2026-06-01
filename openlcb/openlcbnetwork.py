@@ -368,7 +368,8 @@ class OpenLCBNetwork:
             print("OpenLCBNetwork callback_msg({})".format(repr(status)))
             callback(CDIMemo(status=status))
         else:
-            logger.warning("No callback, but set status: {}".format(status))
+            logger.warning(
+                f"[OpenLCBNetwork] No callback, but set status: {status}")
 
     def _memoryReadSuccess(self, memo: MemoryReadMemo, force_end=False):
         """Handle a successful read

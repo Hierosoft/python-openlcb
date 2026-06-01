@@ -226,15 +226,18 @@ class PhysicalLayer:
 
     def physicalLayerUp(self):
         """abstract method"""
-        raise NotImplementedError("Each subclass must implement this.")
+        raise NotImplementedError(
+            f"{type(self).__name__} subclass must implement physicalLayerUp.")
 
     def physicalLayerRestart(self):
         """abstract method"""
-        raise NotImplementedError("Each subclass must implement this.")
+        raise NotImplementedError(
+            f"{type(self).__name__} subclass must implement physicalLayerRestart.")
 
     def physicalLayerDown(self):
         """abstract method"""
-        raise NotImplementedError("Each subclass must implement this.")
+        raise NotImplementedError(
+            f"{type(self).__name__} subclass must implement physicalLayerDown.")
 
     def handleData(self, data: Union[bytes, bytearray]) -> int:
         """abstract method (accept data, return # of frames created)"""

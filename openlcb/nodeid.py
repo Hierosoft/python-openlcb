@@ -1,5 +1,9 @@
+from logging import getLogger
+
 from openlcb import emit_cast
 from openlcb.conventions import generate_node_id_str
+
+logger = getLogger(__name__)
 
 
 class NodeID:
@@ -88,7 +92,7 @@ class NodeID:
         return hash(self.value)
 
 
-def generate_node_id(id_range_prefix):
+def generate_node_id(id_range_prefix, increment=False):
     """Generate a unique NodeID for the session to ensure each
     instance (even of python-openlcb on same device) or
     locally-generated virtual node is unique.
@@ -99,7 +103,9 @@ def generate_node_id(id_range_prefix):
             python-openlcb (or as otherwise assigned by OpenLCB Group
             which reserves 05.* range). See
             <https://registry.openlcb.org/uniqueidranges>.
+        increment (bool): Increment such as more multiple
+            local IDs (virtual node(s) aside from local Node).
     Returns:
         NodeID: A NodeID that is unique (very likely...).
     """
-    return NodeID(generate_node_id_str(id_range_prefix))
+    return NodeID(generate_node_id_str(id_range_prefix, increment=increment))

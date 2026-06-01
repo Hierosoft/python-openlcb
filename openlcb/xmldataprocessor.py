@@ -290,7 +290,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             logger.info(f"OpenLCBNetwork callback_msg({statusMemo})")
             callback(statusMemo)
         else:
-            logger.warning(f"No callback, but set status: {statusMemo}")
+            logger.warning(f"No callback, but set status memo: {statusMemo}")
 
     def _feedNext(self, memo: MemoryReadMemo):
         """Handle partial CDI XML (any packet except last)

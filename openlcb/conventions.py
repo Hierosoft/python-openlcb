@@ -146,6 +146,7 @@ def get_local_ip() -> Optional[str]:
 
 previous_three_octets = None
 initial_three_octets = None
+used_ids = set()
 
 
 def increment_octets(octets: bytearray):
@@ -241,6 +242,8 @@ def generate_node_id_str(id_range_prefix: str, increment: bool = False) -> str:
             python-openlcb (or as otherwise assigned by OpenLCB Group
             which reserves 05.* range). See
             <https://registry.openlcb.org/uniqueidranges>.
+        increment (bool): Increment such as more multiple
+            local IDs (virtual node(s) aside from local Node).
     Returns:
         str: Full 48-bit node ID in dotted hex string notation (Example:
             '05.01.01.4A.B7.19') that is unique (very likely...).
@@ -260,5 +263,10 @@ def generate_node_id_str(id_range_prefix: str, increment: bool = False) -> str:
             " (preferably less to increase likelihood of uniqueness). Got {}"
             .format(id_range_prefix))
     uniqueCount = 6 - len(prefixParts)
-    return ".".join(prefixParts+lastParts[-uniqueCount:])
+    id_str = ".".join(prefixParts+lastParts[-uniqueCount:])
     # ^ negative to keep last uniqueCount pairs
+    if used_ids in used_ids:
+        logger.warning(f"{id_str} was already used. Set increment=True"
+                       " if there is more than one local node!")
+    used_ids.add(id_str)
+    return id_str

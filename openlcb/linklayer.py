@@ -48,7 +48,9 @@ class LinkLayer:
     #   (enforced using type(self).__name__ != "LinkLayer" checks in methods)
 
     def __init__(self, physicalLayer: PhysicalLayer, localNodeID):
-        assert isinstance(physicalLayer, PhysicalLayer)  # allows any subclass
+        assert isinstance(physicalLayer, PhysicalLayer), \
+            f"Expected PhysicalLayer/subclass, got a(n) {type(physicalLayer)}"
+        # ^ allows any subclass
         # subclass should check type of localNodeID technically
         self.localNodeID = localNodeID
         self._messageReceivedListeners = []

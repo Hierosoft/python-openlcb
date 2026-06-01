@@ -43,6 +43,7 @@ from openlcb.datagramservice import (
 from openlcb.convert import Convert
 # from openlcb.localnode import LocalNode  # circular import
 from openlcb.memoryconfigurationheader import MemoryConfigurationHeader
+from openlcb.memoryspace import MemorySpace
 from openlcb.memoryspaceindex import MemorySpaceIndex
 from openlcb.memorymanager import MemoryManager
 from openlcb.nodeid import NodeID
@@ -328,13 +329,17 @@ def parseReplyDatagram(memo: Union[MemoryReadMemo, MemoryWriteMemo],
     )
     offset = 6
     error = None
-    assert mcHeader.spaceIndex is not MemorySpaceIndex.Uninitialized
-    if mcHeader.spaceIndex is MemorySpaceIndex.Custom:
+    if mcHeader.spaceIndex in (MemorySpaceIndex.Custom,
+                               MemorySpaceIndex.Uninitialized):
         # mcHeader.customSpace = memo.space
         mcHeader.customSpace = dmemo.data[6]
         offset = 7
+    else:
+        assert mcHeader.customSpace is None, \
+            "fromMC2ndByte should not set customSpace in this case"
     memo.error = None
     memo.errorCode = None
+    print(f"reply datagram: {mcHeader.spaceIndex} customSpace={mcHeader.customSpace}")
     if (dmemo.data[1] & 0x08 == 0):
         # ok reply
         return
@@ -625,42 +630,55 @@ class MemoryService:
             self.spaceLengthCallback(address)
             self.spaceLengthCallback = None
         elif mcOp is MCOp.Read_Command:
-            # assert dmemo.data[1] in TWO_BIT_PARAMS[MCOp.Read_Command.value], \
+            # assert dmemo.data[1] in TWO_BIT_PARAMS[MCOp.Read_Command.value],\
             #     "self-test failed (bad constant(s))"
             mcHeader = MemoryConfigurationHeader.fromMC2ndByte(dmemo.data[1])
             addressBytes = dmemo.data[2:6]
             address = struct.unpack(">I", addressBytes)[0]
             # ^ [0] since always returns list even when reading 1 value.
             # ^ capital assumes unsigned, "I" assumes 32-bit (4 bytes)
-            space = dmemo.data[1] & 0b00000011
+            spaceIndex = dmemo.data[1] & 0b00000011
             offset = 0
+            space = None
             if mcHeader.spaceIsCustom():
-                assert space == 0
+                assert spaceIndex == 0
                 space = dmemo.data[6]
                 offset = 1
             size = dmemo.data[6+offset]  # requested read count
             datagramBytes = bytearray([0x20, MCOp.Read_Reply.value])
             # ^ byte1 (2nd) changed to error below if applicable
-            assert isinstance(space, int), \
-                (f"Logic missing, space should be number here,"
-                    f" got {emit_cast(space)}")
+            assert isinstance(spaceIndex, int), \
+                (f"Logic missing, spaceIndex should be number here,"
+                    f" got {emit_cast(spaceIndex)}")
             assert isinstance(address, int)
             datagramBytes += addressBytes
-            assert space is not None, \
-                f"space not computed from datagram: {dmemo.data}"
             if mcHeader.spaceIsCustom():
+                assert space is not None
                 datagramBytes.append(space)
                 assert len(datagramBytes) == 7, "space goes in index [6]"
             else:
+                space = MemorySpace.fromIndex(MemorySpaceIndex(spaceIndex))
+                assert space is not None
+                space = space.value
                 spaceIndex = (space & 0b00000011)
-                assert spaceIndex == space
                 assert space is not None
                 datagramBytes[1] = \
                     datagramBytes[1] | spaceIndex
                 assert len(datagramBytes) == 6, "should not have space in [6]"
+            assert space is not None, \
+                f"space not computed from datagram: {dmemo.data}"
             payload = None
             try:
-                payload = self.memory.getSlice(space, address, size)
+                segment = self.memory.getStorage(space)
+                if segment is None:
+                    raise KeyError(f"space {space} is not valid")
+                if address >= segment.size():
+                    raise IndexError(
+                        f"address {address} past end of {hex(space)}")
+                payload = self.memory.getSlice(space, address, size,
+                                               force=True)
+                # ^ force=True because reading past end is normal
+                #   (pad with zeroes to indicate end)
             except (IndexError, KeyError) as ex:
                 # address out of range (See Segment's getSlice)
                 datagramBytes[1] = MCOp.Read_Reply_Failure.value
@@ -698,6 +716,10 @@ class MemoryService:
                 dmemo.srcID,
                 datagramBytes
             )
+            # hexStrings = []
+            # for b in datagramBytes:
+            #     hexStrings.append(hex(b))
+            # print(f"Sending read reply: {hexStrings}")
             self.service.sendDatagram(requestedMemoryMemo)
         else:
             logger.error("Did not expect reply of type 0x{:02X}"

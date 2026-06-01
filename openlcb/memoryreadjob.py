@@ -63,7 +63,8 @@ class MemoryReadJob:
 
         if isinstance(space, MemorySpace):
             space = space.value
-        echoS("Requesting memory read. Please wait...")
+        echoS("")
+        echoS(f"Requesting memory read (space={space}). Please wait...")
         # read 64 bytes from the CDI space starting at address zero
         self.memMemo = MemoryReadMemo(farNodeID, 64, space, 0,
                                       self.memoryReadFail,
@@ -85,9 +86,9 @@ class MemoryReadJob:
         if len(memo.data) == 64 and 0 not in memo.data:
             # save content
             self.resultingCDI += memo.data
-            logger.debug(
+            logger.info(
                 f"[{memo.address}] successful read"
-                f" {Convert.arrayToString(memo.data, len(memo.data))}"
+                f" `{Convert.arrayToString(memo.data, len(memo.data))}`"
                 "; next = address + 64")
             # update the address
             memo.address = memo.address+64
@@ -120,8 +121,11 @@ class MemoryReadJob:
             memo.done = True
             # done
 
-    def memoryReadFail(self, memo):
-        print("memory read failed: {}".format(memo.data))
+    def memoryReadFail(self, memo: MemoryReadMemo):
+        assert isinstance(memo, MemoryReadMemo)
+        print(f"memory read failed: id={memo.nodeID}"
+              f" data={memo.data} space={memo.space} address={memo.address}"
+              f" error={memo.error} code={memo.errorCode}")
         self.failed = True
 
     def processXML(self, content: str) :
