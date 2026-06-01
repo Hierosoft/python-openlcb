@@ -107,7 +107,7 @@ class LocalNode(Node, MemoryManager):
         # assert isinstance(xml_data, (bytes, bytearray))
         segment = Segment()
         self._segments[MemorySpace.CDI.value] = segment
-        segment.setData(0, xml_data, force=True)
+        segment.setSlice(0, xml_data, force=True)
         segment.markReadOnly(True)
 
     def setMemory(self, memo: CDIMemo, var: CDIVar):

@@ -43,7 +43,7 @@ class Segment:
         if address >= len(self._data):
             if force:
                 data = bytearray(size*b"\0")
-                self.setData(address, data, force=force)
+                self.setSlice(address, data, force=force)
                 return data
             else:
                 raise IndexError(
@@ -53,7 +53,7 @@ class Segment:
             slack = end - len(self._data)
             offset = size - slack
             if force:
-                self.setData(address + offset, slack*b"\0")
+                self.setSlice(address + offset, slack*b"\0")
             else:
                 raise IndexError(
                     f"Tried to get address {address}"
@@ -77,7 +77,7 @@ class Segment:
     def extend(self, data):
         self._data += data
 
-    def setData(self, address: int, data: Union[bytearray, bytes],
+    def setSlice(self, address: int, data: Union[bytearray, bytes],
                 size: Union[int, None] = None, force=True):
         assert isinstance(data, (bytearray, bytes))
         assert isinstance(address, int)
@@ -222,7 +222,7 @@ class MemoryManager:
         if segment is None:
             segment = Segment()
             self._segments[space] = segment
-        segment.setData(address, data, size=size)
+        segment.setSlice(address, data, size=size)
 
     def getSlice(self, space: Union[MemorySpace, int], address: int,
                  size: int, force=False) -> bytearray:
@@ -235,7 +235,7 @@ class MemoryManager:
         if segment is None:
             if force:
                 segment = Segment(size=address+size)
-                segment.setData(address, b"\0"*size, force=True)
+                segment.setSlice(address, b"\0"*size, force=True)
                 self._segments[space] = segment
             else:
                 raise KeyError(f"Space {hex(space)} does not exist.")
