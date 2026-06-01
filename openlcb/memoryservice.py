@@ -669,7 +669,7 @@ class MemoryService:
                 f"space not computed from datagram: {dmemo.data}"
             payload = None
             try:
-                segment = self.memory.getStorage(space)
+                segment = self.memory.getSegment(space)
                 if segment is None:
                     raise KeyError(f"space {space} is not valid")
                 if address >= segment.size():

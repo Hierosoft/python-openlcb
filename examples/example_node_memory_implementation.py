@@ -205,7 +205,7 @@ backup_path = os.path.join(my_conf_dir, backup_name)
 localNode.loadCDIString(cdi, backup_path)
 # NOTE: loadCDI or loadCDIString sets Element tree and
 #   localNode._segments[MemorySpace.CDI.value]
-segment = localNode.getStorage(MemorySpace.CDI.value)
+segment = localNode.getSegment(MemorySpace.CDI.value)
 assert isinstance(segment, Segment)
 assert isinstance(segment._data, (bytearray, bytes))
 # localNodeProcessor = LocalNodeProcessor(canLink, localNode)

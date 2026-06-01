@@ -374,7 +374,7 @@ class TestMemoryManager(unittest.TestCase):
         got = virtualNode.getSlice(MemorySpace.CDI,
                                    0, len(demo_virtual_node_cdi))
         assert got.decode() == demo_virtual_node_cdi
-        segment = virtualNode.getStorage(MemorySpace.CDI)
+        segment = virtualNode.getSegment(MemorySpace.CDI)
         assert segment._data == demo_virtual_node_cdi.encode()
         # ^ not itself threaded, so no memo for callback is necessary
         #   network.startListening(mockLocalPort)

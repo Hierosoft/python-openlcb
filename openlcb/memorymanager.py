@@ -182,7 +182,7 @@ class MemoryManager:
             return None
         return segment.getLast()
 
-    def getStorage(self, space: Union[MemorySpace, int]) -> Union[Segment, None]:  # noqa: E501
+    def getSegment(self, space: Union[MemorySpace, int]) -> Union[Segment, None]:  # noqa: E501
         """Get last address
         (may differ from length-1 on actual hardware)
         """
