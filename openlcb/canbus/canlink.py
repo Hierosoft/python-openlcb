@@ -693,7 +693,8 @@ class CanLink(LinkLayer):
             raise
         except Exception as ex:
             unmapped = frame.header & 0xFFF
-            logger.warning("[CanLink]" + formatted_ex(ex))
+            if not isinstance(ex, KeyError):
+                logger.warning(f"[CanLink] aliasToNodeID {formatted_ex(ex)}")
             #    special case for JMRI before 5.1.5 which sends
             #    VerifiedNodeID but not AMD
             if mti == MTI.Verified_NodeID:
