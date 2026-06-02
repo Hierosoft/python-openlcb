@@ -67,16 +67,36 @@ print("RR, SR are raw socket interface receive and send;"
 #     physicalLayer.onFrameSent(frame)
 
 
+def prDim(s: str):
+    """Show extra debugging information in darker text so special cases
+    are readable (resets to 00 [default colors] for text after prDim).
+    Note: 0;30;40 is non-bold dim, but that's invisible in cmd.exe.
+    """
+    print("\033[1;30;40m {}\033[00m".format(s))
+    # - `\033[` (or `\e[`, see
+    #   https://gist.github.com/JBlond/2fea43a3049b38287e5e9cefc87b2124)
+    #   starts ansi escape sequence
+    # - 30 for gray
+    # - 00 to reset to white
+
+
 def printFrame(frame):
-    print("   RL: {}".format(frame))
+    prDim("   RL: {}".format(frame))
 
 
 physicalLayer = CanPhysicalLayerGridConnect()
 physicalLayer.registerFrameReceivedListener(printFrame)
 
 
-def printMessage(message):
-    print("RM: {} from {}".format(message, message.source))
+def printMessage(message: Message):
+    prDim("RM: {} from {}".format(message, message.source))
+    if message.mti is MTI.Verified_NodeID:
+        # REPLY
+        # Use source as destination (Get more info about verified node)
+        message = Message(MTI.Simple_Node_Ident_Info_Request,
+                          localNodeID, message.source)
+        print(f"[{__file__}] Sending {message.mti} to {message.destination}...")
+        canLink.sendMessage(message)
 
 
 localNodeID = NodeID(settings['localNodeID'])
@@ -125,7 +145,8 @@ def memoryReadFail(memo):
 localNode = Node(
     NodeID(settings['localNodeID']),
     SNIP("python-openlcb", "example_node_implementation",
-         "0.1", "0.2", "User Name Here", "User Description Here"),
+         "0.1", "0.2", "Example Node Implementation",
+         "Example from python-openlcb"),
     set([PIP.SIMPLE_NODE_IDENTIFICATION_PROTOCOL, PIP.DATAGRAM_PROTOCOL])
 )
 
@@ -133,16 +154,16 @@ localNodeProcessor = LocalNodeProcessor(canLink, localNode)
 canLink.registerMessageReceivedListener(localNodeProcessor.process)
 
 
-def displayOtherNodeIds(message) :
+def displayOtherNodeIds(message: Message) :
     """Listener to identify connected nodes
 
     Args:
         message (Message): A response from the network
     """
-    print("[displayOtherNodeIds] type(message): {}"
-          "".format(type(message).__name__))
     if message.mti == MTI.Verified_NodeID :
-        print("Detected farNodeID is {}".format(message.source))
+        print(f"[displayOtherNodeIds] Detected farNodeID {message.source}")
+    else:
+        print(f"[displayOtherNodeIds] {message.mti} from {message.source}")
 
 
 canLink.registerMessageReceivedListener(displayOtherNodeIds)
@@ -156,8 +177,10 @@ print("      SL : link up...")
 physicalLayer.physicalLayerUp()
 print("      SL : link up...waiting...")
 while canLink.pollState() != CanLink.State.Permitted:
-    physicalLayer.receiveAll(sock, verbose=settings['trace'])
-    physicalLayer.sendAll(sock, verbose=True)
+    physicalLayer.receiveAll(sock, verbose=settings['trace'],
+                             verbose_fn=prDim)
+    physicalLayer.sendAll(sock, verbose=True,
+                          verbose_fn=prDim)
     precise_sleep(.02)
 print("      SL : link up")
 # request that nodes identify themselves so that we can print their node IDs
@@ -168,10 +191,13 @@ canLink.sendMessage(message)
 # process resulting activity
 while True:
     count = 0
-    count += physicalLayer.sendAll(sock, verbose=True)
-    count += physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    count += physicalLayer.sendAll(sock, verbose=True,
+                                   verbose_fn=prDim)
+    count += physicalLayer.receiveAll(sock, verbose=settings['trace'],
+                                      verbose_fn=prDim)
     if count < 1:
         precise_sleep(.01)
     # else skip sleep to avoid latency (port already delayed)
 
+print("Calling physicalLayerDown...")
 physicalLayer.physicalLayerDown()

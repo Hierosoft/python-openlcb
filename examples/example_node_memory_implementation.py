@@ -78,17 +78,27 @@ print("RR, SR are raw socket interface receive and send;"
 #     sock.sendString(string)
 #     physicalLayer.onFrameSent(frame)
 
+def prDim(s: str):
+    """Show extra debugging information in darker text so special cases
+    are readable (resets to 00 [default colors] for text after prDim).
+    Note: 0;30;40 is non-bold dim, but that's invisible in cmd.exe.
+    """
+    print("\033[1;30;40m {}\033[00m".format(s))
+    # - `\033` starts ansi escape sequence
+    # - 30 for gray
+    # - 00 to reset to white
+
 
 def printFrame(frame):
-    print("   RL: {}".format(frame))
+    prDim("   RL: {}".format(frame))
 
 
 physicalLayer = CanPhysicalLayerGridConnect()
 physicalLayer.registerFrameReceivedListener(printFrame)
 
 
-def printMessage(message):
-    print("RM: {} from {}".format(message, message.source))
+def printMessage(message: Message):
+    prDim("RM: {} from {}".format(message.mti, message.source))
 
 
 localNodeID = NodeID(settings['localNodeID'])
@@ -213,16 +223,16 @@ assert isinstance(segment._data, (bytearray, bytes))
 localNodeProcessor = localNode.localNodeProcessor
 
 
-def displayOtherNodeIds(message) :
+def displayOtherNodeIds(message: Message) :
     """Listener to identify connected nodes
 
     Args:
         message (Message): A response from the network
     """
-    print("[displayOtherNodeIds] type(message): {}"
-          "".format(type(message).__name__))
     if message.mti == MTI.Verified_NodeID :
-        print("Detected farNodeID is {}".format(message.source))
+        print(f"[displayOtherNodeIds] Detected farNodeID {message.source}")
+    else:
+        print(f"[displayOtherNodeIds] {message.mti} from {message.source}")
 
 
 canLink.registerMessageReceivedListener(displayOtherNodeIds)
@@ -236,7 +246,8 @@ print("      SL : link up...")
 physicalLayer.physicalLayerUp()
 print("      SL : link up...waiting...")
 while canLink.pollState() != CanLink.State.Permitted:
-    physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    physicalLayer.receiveAll(sock, verbose=settings['trace'],
+                             verbose_fn=prDim)
     physicalLayer.sendAll(sock, verbose=True)
     precise_sleep(.02)
 print("      SL : link up")
@@ -248,8 +259,10 @@ canLink.sendMessage(message)
 # process resulting activity
 while True:
     count = 0
-    count += physicalLayer.sendAll(sock, verbose=True)
-    count += physicalLayer.receiveAll(sock, verbose=settings['trace'])
+    count += physicalLayer.sendAll(sock, verbose=True,
+                                   verbose_fn=prDim)
+    count += physicalLayer.receiveAll(sock, verbose=settings['trace'],
+                                      verbose_fn=prDim)
     if count < 1:
         precise_sleep(.01)
     # else skip sleep to avoid latency (port already delayed)
