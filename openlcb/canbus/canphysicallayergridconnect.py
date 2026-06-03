@@ -55,6 +55,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         #   so CanLink now requires a PhysicalLayer instance
         #   such as this in its constructor.
         CanPhysicalLayer.__init__(self)  # creates self._send_frames
+        FrameEncoder.__init__(self)
         self.assertValidData = False
         # region moved to CanLink constructor
         # from canLink.linkPhysicalLayer(self)  # self.setCallBack(callback):
