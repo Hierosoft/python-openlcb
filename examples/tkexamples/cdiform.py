@@ -204,13 +204,13 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
     def indent(self):
         return len(self._tag_stack) * "  "
 
-    def setStatus(self, message: str):
+    def setStatus(self, text: str):
         # See also MainForm
         if self._status_callback:
             self._status_var.set("")
-            self._status_callback(message)
+            self._status_callback(text)
             return
-        self._status_var.set(message)
+        self._status_var.set(text)
 
     def setStatusCallback(self, callback: Callable):
         self._status_callback = callback

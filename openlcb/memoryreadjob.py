@@ -55,9 +55,9 @@ class MemoryReadJob:
         self.dataFormat = dataFormat
         self.statusCallback = callback
 
-        def echoS(message: str):
+        def echoS(text: str):
             """push a message"""
-            memo.status = message
+            memo.status = text
             if callback is not None:
                 callback(memo)
 
