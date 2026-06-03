@@ -6,6 +6,7 @@ import time
 
 from collections import OrderedDict
 from typing import (
+    Any,
     List,  # in case list doesn't support `[` in this Python version
     Union,  # in case `|` doesn't support 'type' in this Python version
 )
@@ -173,3 +174,39 @@ def d_quote(value) -> str:
     attribute debug messages or any other technical/literary use.
     """
     return hr_repr(value, always_quote=True)
+
+
+def prBold(text: Any):
+    """Print in bold
+    (or if not available, more intense if available).
+    See echoC for details"""
+    # echoC(message, "1:37:40")
+    ansiP(text, 1)
+
+
+def prDim(text: Any):
+    """Show dim text in console.
+    (resets to 00 [default colors] for text after prDim).
+    Note: 0;30;40 is non-bold dim, but that's invisible in cmd.exe.
+    """
+    ansiP(text, 2)
+
+
+def ansiP(text: Any, ansiColor: Union[int, str]):
+    """Print color text to consoles that support ANSI color codes.
+    Args:
+        message (Any): Any message (will be cast to str).
+        ansiColor: Numerical or multi-number (str) ansi
+            color code (semi-colon separated--same codes but allows
+            multiple codes in a row). See
+            <https://en.wikipedia.org/wiki/ANSI_escape_code> for a full
+            list. Examples:
+            - "1;30;40" for dim (NOTE: 0;30;40 is gray, but is invisible
+              in cmd.exe)
+            - "96": Cyan
+    """
+    # - `\033[` starts the ANSI escape sequence.
+    # - 91m, 92m, ... etc., are color codes for different foreground colors.
+    # - \033[00m resets the text style so the terminal returns to normal
+    #   formatting after each print.
+    print(f"\033[{ansiColor}m {str(text)}\033[00m")
