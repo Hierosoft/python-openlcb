@@ -370,7 +370,10 @@ class TestMemoryManager(unittest.TestCase):
 
         virtualMemoryService = MemoryService(virtualDGService)
         virtualMemoryService.memory = virtualNode
-        virtualNode.loadCDIString(demo_virtual_node_cdi, __file__)
+        # virtualNode.loadCDIString(demo_virtual_node_cdi, __file__)
+        # ^ commented since creates unnecessary files in this case,
+        #   such as tests/05.01.05.BB.B4.2A.lcc-link-virtual-node.space=0.xml
+        virtualNode.loadCDIString(demo_virtual_node_cdi, None)
         got = virtualNode.getSlice(MemorySpace.CDI,
                                    0, len(demo_virtual_node_cdi))
         assert got.decode() == demo_virtual_node_cdi

@@ -32,6 +32,7 @@ class LocalNode(Node, MemoryManager):
                  linkLayer: CanLink):
         Node.__init__(self, id, snip, pipSet)
         MemoryManager.__init__(self)
+        self.cdiBackupDir = None  # type: str|None
         self.cdi = None  # type: XMLDataProcessor|None
         self._replicated_cdi_tree = None  # type: CDIMemo|None
         if PIP.CONFIGURATION_DESCRIPTION_INFORMATION in pipSet:
@@ -81,7 +82,8 @@ class LocalNode(Node, MemoryManager):
                 since LocalNode assumes local data is loaded,
                 not network data.
         """
-        self.cdiBackupDir = os.path.dirname(path)
+        if path:
+            self.cdiBackupDir = os.path.dirname(path)
         assert self.cdi is not None, \
             ("PIP.CONFIGURATION_DESCRIPTION_INFORMATION is not in pipSet"
              f" for LocalNode {self.id}")

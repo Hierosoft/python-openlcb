@@ -54,6 +54,7 @@ class LinkLayer:
         # subclass should check type of localNodeID technically
         self.localNodeID = localNodeID
         self._messageReceivedListeners = []
+        self._messageSentListeners = []
         self._state = None  # LinkLayer.State.Undefined
         # region moved from CanLink linkPhysicalLayer
         self.physicalLayer = physicalLayer  # formerly self.link = cpl
@@ -158,7 +159,15 @@ class LinkLayer:
     def registerMessageReceivedListener(self, listener):
         self._messageReceivedListeners.append(listener)
 
+    def registerMessageSentListener(self, listener):
+        self._messageSentListeners.append(listener)
+
     def fireMessageReceived(self, msg: Message):
         """Fire *Message received* listeners."""
         for listener in self._messageReceivedListeners:
+            listener(msg)
+
+    def fireMessageSent(self, msg: Message):
+        """Fire *Message received* listeners."""
+        for listener in self._messageSentListeners:
             listener(msg)

@@ -713,6 +713,7 @@ class CanLink(LinkLayer):
 
             #    register that internally-generated nodeID-alias association
             self.aliasToNodeID[frame.header & 0xFFF] = sourceID
+            logger.info(f"MAPPED ALIAS {(frame.header & 0xFFF)} -> {sourceID}")
             logger.info(
                 "handleReceivedData setting nodeIdToAlias[{}]"
                 " from a datagram from an unknown source"
@@ -867,7 +868,7 @@ class CanLink(LinkLayer):
                 standards), the node became disconnected, or a NodeID
                 was entered incorrectly such as in a GUI.
         """
-        error = None
+        error = None  # Leave/reset as None for fireMessageSent to run.
         #    special case for datagram
         if msg.mti == MTI.Datagram:
             header = 0x10_00_00_00
@@ -961,6 +962,7 @@ class CanLink(LinkLayer):
                         #    send the resulting frame
                         frame = CanFrame(header, content)
                         self.physicalLayer.sendFrameAfter(frame)
+                        error = None
                 else:
                     error = (
                         "Don't know alias for destination = {}"
@@ -971,6 +973,9 @@ class CanLink(LinkLayer):
                 #    protocol send the resulting frame
                 frame = CanFrame(header, msg.data)
                 self.physicalLayer.sendFrameAfter(frame)
+                error = None  # clear non-fatal error to allow fireMessageSent
+        if error is None:
+            self.fireMessageSent(msg)
 
     def segmentDatagramDataArray(self, data: bytearray) -> List[bytearray]:
         """Segment data into zero or more arrays
