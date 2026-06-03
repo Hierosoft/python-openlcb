@@ -694,7 +694,7 @@ class MemoryService:
                     message = None
                     if isinstance(ex, KeyError):
                         message = f"space {space} not valid"
-                    elif isinstance(ex, KeyError):
+                    elif isinstance(ex, IndexError):
                         if space is not None:
                             message = (f"address {hex(address)} not valid"
                                        f" in space {hex(space)}")
@@ -740,7 +740,7 @@ class MemoryService:
                     message = None
                     if isinstance(ex, KeyError):
                         message = f"space {space} not valid"
-                    elif isinstance(ex, KeyError):
+                    elif isinstance(ex, IndexError):
                         if space is not None:
                             message = (f"address {hex(address)} not valid"
                                        f" in space {hex(space)}")
