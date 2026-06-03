@@ -26,6 +26,12 @@ class Message:
         if data is None:
             data = bytearray()
         self.mti = mti
+        assert isinstance(mti, MTI)
+        if self.mti in (MTI.Verified_NodeID, MTI.Initialization_Complete):
+            # Requires node.id in data for these MTIs (See
+            #   7.3.3.1 and 7.3.3.3 in Message Network Standard)
+            assert data is not None, \
+                f"Expected node.id.toArray() for data of {mti}, got {data}"
         self.source = source
         self.destination = destination  # Union[NodeID, None]
         self.originalMTI = None  # type: Union[int, None]
