@@ -60,9 +60,9 @@ class PhysicalLayer:
         self._send_frames = deque()
         # self._send_chunks = deque()
         self.onQueuedFrame = None
-        self.linkLayer = None  # type: Any
+        self.linkLayer = None  # type: LinkLayer|None
         # ^ LinkLayer would be circular import,
-        #   so can't have type hint...Move it (or LinkLayer's
+        #   so can't have non-comment hint...Move it (or LinkLayer's
         #   physicalLayer) to subclass?
 
     def sendDataAfter(self, data: Union[bytes, bytearray], verbose=False):
