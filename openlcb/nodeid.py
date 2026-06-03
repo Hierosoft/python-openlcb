@@ -70,6 +70,9 @@ class NodeID:
         else:
             print("invalid data type to nodeid constructor", data)
 
+    def copy(self) -> 'NodeID':
+        return NodeID(self.value)
+
     def toArray(self) -> bytearray:
         return bytearray([
             (self.value >> 40) & 0xFF,

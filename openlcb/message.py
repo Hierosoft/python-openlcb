@@ -2,6 +2,7 @@
 based on Message.swift
 Created by Bob Jacobsen on 6/1/22.
 '''
+import copy
 from typing import Union
 
 from openlcb import emit_cast
@@ -40,6 +41,21 @@ class Message:
             raise TypeError("Expected bytearray, got {}"
                             .format(type(data).__name__))
         self.data = data
+
+    def copy(self) -> 'Message':
+        source = None
+        if self.source is not None:
+            source = NodeID(self.source.value)
+        destination = None
+        if self.destination is not None:
+            destination = NodeID(self.destination.value)
+        assert source is not None
+        return Message(
+            self.mti,  # Enums are assigned by value not reference
+            source,
+            destination=destination,
+            data=copy.deepcopy(self.data),  # returns copy or None
+        )
 
     def assertTypes(self):
         assert isinstance(self.mti, MTI)

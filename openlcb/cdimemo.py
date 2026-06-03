@@ -106,7 +106,7 @@ class CDIMemo(DataProcessorMemo):
                 return child.content.strip()
         return None
 
-    def copy(self):
+    def copy(self) -> 'CDIMemo':
         return self.__copy__()
 
     def __copy__(self):

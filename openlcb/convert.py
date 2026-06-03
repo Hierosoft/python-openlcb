@@ -37,6 +37,19 @@ class Convert:
         return result
 
     @staticmethod
+    def toHex(data: Union[bytearray, bytes, List[int]], separator="_"):
+        text = ""
+        for num in data:
+            if not text:
+                text = "0x"
+            else:
+                text += separator
+            assert isinstance(num, int), \
+                f"Expected byte/int array, got {type(data).__name__}"
+            text += hex(num)
+        return text
+
+    @staticmethod
     def arrayToUInt64(data):
         """Parse a MSB-first order 64-bit integer
         (Python auto-sizes int, so this is same as arrayToInt).
