@@ -3,6 +3,7 @@ import os
 import platform
 import re
 import time
+import xml.etree.ElementTree as ET
 
 from collections import OrderedDict
 from typing import (
@@ -210,3 +211,20 @@ def ansiP(text: Any, ansiColor: Union[int, str]):
     # - \033[00m resets the text style so the terminal returns to normal
     #   formatting after each print.
     print(f"\033[{ansiColor}m {str(text)}\033[00m")
+
+
+def assert_xml(xml_string):
+    """Validate XML string.
+    Returns:
+        the parsed ElementTree root if valid.
+    Raises:
+        ET.ParseError: XML is invalid.
+    """
+    if not isinstance(xml_string, str) or not xml_string.strip():
+        raise ValueError("XML input must be a non-empty string.")
+
+    # try:
+    root = ET.fromstring(xml_string)  # Try parsing
+    return root
+    # except ET.ParseError as e:
+    #     raise ValueError(f"Invalid XML: {e}") from None
