@@ -306,6 +306,7 @@ class OpenLCBNetwork:
                 logger.warning(
                     "Listen loop ended, but _dataProcessor not set"
                     " (DataProcessorMemo will not be used to notify caller).")
+            raise
         finally:
             self.physicalLayer.physicalLayerDown()  # Link_Layer_Down, setState
         self._listenThread: Union[threading.Thread, None] = None
