@@ -39,14 +39,14 @@ class Convert:
     @staticmethod
     def toHex(data: Union[bytearray, bytes, List[int]], separator="_"):
         text = ""
-        for num in data:
+        for i, num in enumerate(data):
             if not text:
                 text = "0x"
             else:
                 text += separator
             assert isinstance(num, int), \
-                f"Expected byte/int array, got {type(data).__name__}"
-            text += hex(num)
+                f"Expected byte/int array, got {type(data).__name__} at [{i}]"
+            text += f"{num:#04x}"[2:]  # 4 for padded to 4 (2 excluding "0x")
         return text
 
     @staticmethod
