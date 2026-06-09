@@ -100,6 +100,8 @@ def generate_node_id(id_range_prefix, increment=False):
     instance (even of python-openlcb on same device) or
     locally-generated virtual node is unique.
 
+    See _generateNodeID for generating dummy IDs for internal use.
+
     Args:
         id_range_prefix (str): NodeID prefix in dotted hex notation.
             Warning: 05.01.01 is *only* for Bob Jacobsen's

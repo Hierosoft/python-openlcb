@@ -235,6 +235,8 @@ def generate_node_id_str(id_range_prefix: str, increment: bool = False) -> str:
     instance (even of python-openlcb on same device) or
     locally-generated virtual node is unique.
 
+    See _generateNodeID for generating dummy IDs for internal use.
+
     Args:
         id_range_prefix (str): NodeID prefix in dotted hex notation
             (3 to 5. 3 at most recommended to make uniqueness more
