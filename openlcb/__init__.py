@@ -228,3 +228,22 @@ def assert_xml(xml_string):
     return root
     # except ET.ParseError as e:
     #     raise ValueError(f"Invalid XML: {e}") from None
+
+
+def valid_xml(xml_string):
+    try:
+        assert_xml(xml_string)
+        return True
+    except Exception as ex:
+        print(f"[valid_xml] not valid: {formatted_ex(ex)}")
+    return False
+
+
+def valid_xml_file(path):
+    if not os.path.isfile(path):
+        raise FileNotFoundError(path)
+    data = None
+    with open(path, 'r') as stream:
+        data = stream.read()
+    assert data is not None
+    return valid_xml(data)
