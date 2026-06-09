@@ -8,6 +8,8 @@ class DataProcessorMemo:
     This superclass can be used for progress notification.
 
     Attributes:
+        complete_data (bytearray|None): Set if done, for debugging
+            (such as parser error without details).
         done (bool): If True, download such as downloadCDI is finished.
             Though document itself may be incomplete if 'error' is also
             set, stop tracking status of download regardless.
@@ -21,6 +23,7 @@ class DataProcessorMemo:
     """
     def __init__(self, status: Union[str, None] = None):
         self.done = False  # type: bool
+        self.complete_data = None  # type: bytearray|None
         self.end = False  # type: bool
         self.error = None  # type: str|None
         self.message: Union[Message, None] = None  # type: Message|None

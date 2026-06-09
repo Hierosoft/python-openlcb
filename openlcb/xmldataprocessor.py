@@ -437,6 +437,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             cm.done = True  # 'done' and not 'error' means got all
             cm.progress_count = self.progress_count
             cm.expected_size = self.expected_size
+            cm.complete_data = self._data
             self.onStatusMemo(cm)
         else:
             # *not* realtime (but got to end, so parse all at once)
@@ -470,7 +471,7 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
                 if cdiString is None:
                     cdiString = self._data.rstrip(b'\0').decode("utf-8")
                 stream.write(cdiString)
-                print('Saved {}'.format(repr(path)))
+                print('[XMLDataProcessor] Saved {}'.format(repr(path)))
         self._data = None  # Ensure isn't reused for more than one doc
 
     def cacheFilePathCustom(self, item_id: Union[NodeID, str], **kwargs):
@@ -730,8 +731,10 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             ET.Element: Root of the new replicated tree.
         """
         root_memo = self.getRootMemo()
-        assert root_memo is not None
-        assert root_memo.element is not None
+        assert root_memo is not None, \
+            "root_memo is None after parsing XML"
+        assert root_memo.element is not None, \
+            "root_memo.element is None after parsing XML"
 
         new_root = ET.Element("cdi")  # always new: children added from memos
         new_root.attrib.update(root_memo.element.attrib)
