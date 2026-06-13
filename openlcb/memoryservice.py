@@ -339,7 +339,8 @@ def parseReplyDatagram(memo: Union[MemoryReadMemo, MemoryWriteMemo],
             "fromMC2ndByte should not set customSpace in this case"
     memo.error = None
     memo.errorCode = None
-    print(f"reply datagram: {mcHeader.spaceIndex} customSpace={mcHeader.customSpace}")
+    logger.info(f"reply datagram: {mcHeader.spaceIndex}"
+                f" customSpace={mcHeader.customSpace}")
     if (dmemo.data[1] & 0x08 == 0):
         # ok reply
         return
@@ -559,9 +560,12 @@ class MemoryService:
             # 0x84 (A node sent us a command requesting space info)
             # assert mcOp is MCOp.Get_Address_Space_Info_Command, \
             #     "self-test failed (bad constant(s))"
+            logger.info("[MemoryService datagramReceivedListener]"
+                        " Get_Address_Space_Info_Command")
             space = dmemo.data[2]
             last = self.memory.getLast(space)
             if last is not None:
+                logger.info("Found populated segment...")
                 first = self.memory.getFirst(space)
                 assert isinstance(first, int)
                 assert last - first >= 0, \
@@ -605,9 +609,27 @@ class MemoryService:
                         replyData
                     )
                     self.service.sendDatagram(spaceInfoReplyMemo)
+                    logger.info("- added extended info")
+                else:
+                    logger.info("- skipping simple reply")
             else:
-                # TODO: rejected
-                pass
+                error = (f"- rejected (No last address for space"
+                         f" {hex(space)}): {Convert.toHex(dmemo.data)}")
+                logger.info(error)
+                if isinstance(self.memory, MemoryManager):
+                    if space == 0xFF:
+                        logger.warning(
+                            "MemoryManager does not have CDI by default."
+                            " Use its subclass LocalNode to load CDI XML.")
+                errorCode = 1
+                address = 0
+                # FIXME: Is this the right error reply? If not make memo here
+                failedMemo = MemoryService.failedMemo(
+                    MCOp.Read_Reply_Failure, dmemo.srcID, address, space,
+                    errorCode, error)
+                self.service.sendDatagram(failedMemo)
+                return True  # handled (early, in error case)
+
         elif dmemo.data[1] in (0x86, 0x87):  # Address Space Information Reply
             # assert mcOp is MCOp.Get_Address_Space_Info_Command, \
             #     "self-test failed (bad constant(s))"
