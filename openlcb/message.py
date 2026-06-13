@@ -28,16 +28,11 @@ class Message:
             data = bytearray()
         self.mti = mti
         assert isinstance(mti, MTI)
-        if self.mti in (MTI.Verified_NodeID, MTI.Initialization_Complete):
-            # Requires node.id in data for these MTIs (See
-            #   7.3.3.1 and 7.3.3.3 in Message Network Standard)
-            assert data is not None, \
-                f"Expected node.id.toArray() for data of {mti}, got {data}"
         self.source = source
         self.destination = destination  # Union[NodeID, None]
         self.originalMTI = None  # type: Union[int, None]
         self.assertTypes()
-        if not isinstance(data, bytearray):
+        if not isinstance(data, bytearray):  # None becomes bytearray() above
             raise TypeError("Expected bytearray, got {}"
                             .format(type(data).__name__))
         self.data = data
@@ -71,6 +66,9 @@ class Message:
         return self.mti.value & 0x0008 == 0
 
     def isAddressed(self) -> bool:
+        """Contains destination alias
+        (not necessarily NodeID)
+        """
         return self.mti.value & 0x0008 != 0
 
     def __str__(self):
