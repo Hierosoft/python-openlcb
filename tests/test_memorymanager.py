@@ -330,18 +330,18 @@ class TestMemoryManager(unittest.TestCase):
 
         virtualNode = LocalNode(
             virtualNodeID,
-            SNIP("python-openlcb authors",
-                 "test_memorymanager VN",
-                 "1.0", "1.0", "test_memorymanager VN",
-                 "python-openlcb virtual node with memory for test_memorymanager"),  # noqa: E501
-            set([
+            virtualCanLink,
+            snip=SNIP("python-openlcb authors",
+                      "test_memorymanager VN",
+                      "1.0", "1.0", "test_memorymanager VN",
+                      "python-openlcb virtual node with memory for test_memorymanager"),  # noqa: E501
+            pipSet=set([
                 PIP.SIMPLE_NODE_IDENTIFICATION_PROTOCOL,
                 PIP.DATAGRAM_PROTOCOL,
                 PIP.CONFIGURATION_DESCRIPTION_INFORMATION,
                 PIP.ADCDI_PROTOCOL,
                 PIP.MEMORY_CONFIGURATION_PROTOCOL,
             ]),
-            virtualCanLink
         )
         # dgService = DatagramService(canLink)
         # localMemoryService = MemoryService(dgService)

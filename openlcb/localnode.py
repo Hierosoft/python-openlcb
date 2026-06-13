@@ -3,6 +3,7 @@ import os
 from logging import getLogger
 from typing import Union
 from openlcb import emit_cast
+from openlcb.linklayer import LinkLayer
 from openlcb.memoryspace import MemorySpace
 from openlcb.memorymanager import MemoryManager, Segment
 from openlcb.node import PIP, SNIP, Node
@@ -28,9 +29,14 @@ class LocalNode(Node, MemoryManager):
     """A Node with its own virtual memory
     (emulate memory spaces such as for creating a virtual
     signal node with settings)"""
-    def __init__(self, id: NodeID, snip: SNIP, pipSet: set,
-                 linkLayer: CanLink):
-        Node.__init__(self, id, snip, pipSet)
+    def __init__(self, id: NodeID, linkLayer: CanLink,
+                 snip: Union[SNIP, None] = None,
+                 pipSet: Union[set, None] = None):
+        if not issubclass(type(linkLayer), LinkLayer):
+            raise TypeError("Expected LinkLayer/subclass,"
+                            f" got a {type(linkLayer).__name__}")
+        Node.__init__(self, id, snip=snip, pipSet=pipSet)
+        pipSet = self.pipSet  # ensured non-None by Node init.
         MemoryManager.__init__(self)
         self.cdiBackupDir = None  # type: str|None
         self.cdi = None  # type: XMLDataProcessor|None
