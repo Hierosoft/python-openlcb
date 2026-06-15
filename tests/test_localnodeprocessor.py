@@ -24,8 +24,9 @@ class LinkMockLayer(LinkLayer):
 
     DisconnectedState = State.Disconnected
 
-    def sendMessage(self, msg, verbose=False):
+    def sendMessage(self, msg, verbose=False) -> bool:
         LinkMockLayer.sentMessages.append(msg)
+        return True
 
     def _onStateChanged(self, oldState, newState):
         print(f"[TcpLink] _onStateChanged from {oldState} to {newState}"

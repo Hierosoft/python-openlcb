@@ -194,7 +194,7 @@ class TcpLink(LinkLayer):
         msg = Message(MTI.Link_Layer_Down, NodeID(0), None, bytearray())
         self.fireMessageReceived(msg)
 
-    def sendMessage(self, msg: Message, verbose=False):
+    def sendMessage(self, msg: Message, verbose=False) -> bool:
         """
         The message level calls this with an OpenLCB
         message.  That is then converted to a byte
@@ -234,6 +234,8 @@ class TcpLink(LinkLayer):
         outputBytes.extend(msg.source.toArray())
 
         if mti.addressPresent() :
+            assert not self.isGeneratedNodeID(msg.destination), \
+                f"NodeID not known (({msg.destination} is a temporary NodeID)"
             outputBytes.extend(msg.destination.toArray())
 
         outputBytes.extend(msg.data)
@@ -241,3 +243,4 @@ class TcpLink(LinkLayer):
         self.physicalLayer.sendDataAfter(outputBytes, verbose=verbose)
         # ^ The physical layer should be one with "Raw" in the name
         # since takes bytes. See example_tcp_message_interface.
+        return True

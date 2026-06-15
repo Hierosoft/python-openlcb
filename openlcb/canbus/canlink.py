@@ -139,7 +139,6 @@ class CanLink(LinkLayer):
         self._localAliasSeed = localNodeID.value
         self._localAlias = self.createAlias12(self._localAliasSeed)
         self.localNodeID = localNodeID
-        self._state = CanLink.State.Initial
         self._frameCount = 0
         self._aliasCollisionCount = 0
         self._errorCount = 0
@@ -564,11 +563,15 @@ class CanLink(LinkLayer):
             return
         #    This defines an alias, so store it
         alias = frame.header & 0xFFF
+        releaseID = None
+        if alias not in self.aliasToNodeID:
+            releaseID = nodeID
         self.aliasToNodeID[alias] = nodeID
-        logger.info(
-            "handleReceivedAMD setting nodeIdToAlias[{}]"
-            .format(nodeID))
+        logger.info(f"handleReceivedAMD setting nodeIdToAlias[{nodeID}]")
         self.nodeIdToAlias[nodeID] = alias
+        if releaseID is not None:
+            # Send *after* mapped, in case using a realtime PhysicalLayer
+            self._onNodeMapped(releaseID)
 
     def handleGlobalAME(self, frame: CanFrame):
         """If no data, clear all except self from maps
@@ -591,7 +594,7 @@ class CanLink(LinkLayer):
             if otherNodeID == self.localNodeID:
                 continue
             try:
-                del self.nodeIdToAlias[otherNodeID]
+                del self.aliasToNodeID[alias]
             except KeyError:
                 pass  # concurrent modification?
             # TODO: clear matching _send_frames??
@@ -686,12 +689,17 @@ class CanLink(LinkLayer):
         #    get proper MTI
         mti = self.canHeaderToFullFormat(frame)
         sourceID = NodeID(0)
+        releaseDelayedIDs = []
         try:
             mapped = self.aliasToNodeID[frame.header & 0xFFF]
             sourceID = mapped
-        except KeyboardInterrupt:
-            raise
-        except Exception as ex:
+            if sourceID is None:
+                raise AssertionError(
+                    "Tried to assume we already had the ID but we do not")
+            # if not self.isGeneratedNodeID(sourceID):
+            assert sourceID in self.nodeIdToAlias
+            assert self.nodeIdToAlias[sourceID] == frame.header & 0xFFF
+        except KeyError as ex:
             unmapped = frame.header & 0xFFF
             if not isinstance(ex, KeyError):
                 logger.warning(f"[CanLink] aliasToNodeID {formatted_ex(ex)}")
@@ -700,25 +708,25 @@ class CanLink(LinkLayer):
             if mti == MTI.Verified_NodeID:
                 sourceID = NodeID(frame.data)
                 logger.info(
-                    "Verified_NodeID frame {} from unknown source alias: {},"
-                    " continue with observed ID {}"
-                    .format(frame, unmapped, sourceID))
+                    f"Verified_NodeID frame {frame} from unknown source alias:"
+                    f" {unmapped}, continue with observed ID {sourceID}")
+                self._unmarkGeneratedID(sourceID)
+                self._unmarkGeneratedIDOfAlias(unmapped)
+                if unmapped not in self.aliasToNodeID:
+                    releaseDelayedIDs.append(sourceID)
             else:
-                sourceID = NodeID(self.nextInternallyAssignedNodeID)
-                self.nextInternallyAssignedNodeID += 1
+                sourceID = self._generateNodeID(unmapped)
                 logger.warning(
-                    "message frame {} from unknown source alias: {},"
-                    " continue with created ID {}"
-                    .format(frame, unmapped, sourceID))
+                    f"message frame {frame} from unknown source alias:"
+                    f" {unmapped}, continue with created ID {sourceID}")
 
             #    register that internally-generated nodeID-alias association
-            self.aliasToNodeID[frame.header & 0xFFF] = sourceID
-            logger.info(f"MAPPED ALIAS {(frame.header & 0xFFF)} -> {sourceID}")
+            self.aliasToNodeID[unmapped] = sourceID
+            logger.info(f"MAPPED ALIAS {(unmapped)} -> {sourceID}")
             logger.info(
-                "handleReceivedData setting nodeIdToAlias[{}]"
-                " from a datagram from an unknown source"
-                .format(sourceID))
-            self.nodeIdToAlias[sourceID] = frame.header & 0xFFF
+                f"handleReceivedData setting nodeIdToAlias[{sourceID}]"
+                " from a datagram from an unknown source")
+            self.nodeIdToAlias[sourceID] = unmapped
 
         destID = NodeID(0)
         #    handle destination for addressed messages
@@ -738,16 +746,15 @@ class CanLink(LinkLayer):
                     destID = NodeID(self.nextInternallyAssignedNodeID)
                     self.nextInternallyAssignedNodeID += 1
                     logger.warning(
-                        "message from unknown dest alias: {},"
-                        " continue with {}"
-                        .format(str(frame), str(destID)))
+                        f"message from unknown dest alias: {frame},"
+                        f" continue with {destID}")
                     #    register that internally-generated nodeID-alias
                     #    association
+                    self._generatedNodeIDs[destID] = destAlias
                     self.aliasToNodeID[destAlias] = destID
                     logger.info(
-                        "handleReceivedData setting nodeIdToAlias[{}]"
-                        " from a datagram from an unknown node"
-                        .format(destID))
+                        f"handleReceivedData setting nodeIdToAlias[{destID}]"
+                        " from a datagram from an unknown node")
                     self.nodeIdToAlias[destID] = destAlias
 
                 #    check for start and end bits
@@ -762,12 +769,12 @@ class CanLink(LinkLayer):
                         #    have not-start frame, but never started
                         logger.warning(
                             "Dropping non-start datagram frame"
-                            " without accumulation started:"
-                            " {}".format(frame)
+                            f" without accumulation started: {frame}"
                             # TODO: ^ more necessary to show same output
                             #   as Swift? Formerly:
                             #   " \(frame, privacy: .public)"
                         )
+                        self._fireNodesMapped(releaseDelayedIDs)
                         return  # early return to stop processing of this frame
 
                 # add this data
@@ -777,6 +784,8 @@ class CanLink(LinkLayer):
                 if dgCode == 0x0_0A_00_00_00 or dgCode == 0x0_0D_00_00_00:
                     #    is end, ship and remove accumulation
                     msg = Message(mti, sourceID, destID, self.accumulator[key])
+                    # assert destID in self.nodeIdToAlias
+                    # print(f"NodeID IS MAPPED: {destID}")
                     self.fireMessageReceived(msg)
 
                     #    remove accumulation
@@ -793,8 +802,7 @@ class CanLink(LinkLayer):
                     mapped = self.aliasToNodeID[destAlias]
                     destID = mapped
                 except KeyError:
-                    destID = NodeID(self.nextInternallyAssignedNodeID)
-                    self.nextInternallyAssignedNodeID += 1
+                    destID = self._generateNodeID(destAlias)
                     logger.warning(
                         "message from unknown dest alias:"
                         " 0x{:04X}, continue with 0x{}"
@@ -803,9 +811,8 @@ class CanLink(LinkLayer):
                     #    association
                     self.aliasToNodeID[destAlias] = destID
                     logger.info(
-                        "handleReceivedData setting nodeIdToAlias[{}]"
-                        " to destID due to message from unknown dest."
-                        .format(destID))
+                        f"handleReceivedData setting nodeIdToAlias[{destID}]"
+                        " to destID due to message from unknown dest.")
                     self.nodeIdToAlias[destID] = destAlias
 
                 # check for start and end bits
@@ -818,10 +825,10 @@ class CanLink(LinkLayer):
                     # check for first bit set never seen
                     if key not in self.accumulator:
                         #    have not-start frame, but never started
+                        self._fireNodesMapped(releaseDelayedIDs)
                         logger.warning(
                             "Dropping non-start frame without"
-                            " accumulation started: {}"
-                            .format(frame))
+                            f" accumulation started: {frame}")
                         return  # early return to stop processing of this gram
 
                 #    add this data
@@ -850,15 +857,29 @@ class CanLink(LinkLayer):
             # to carry its original MTI value
             if mti is MTI.Unknown :
                 msg.originalMTI = ((frame.header >> 12) & 0xFFF)
-            self.fireMessageReceived(msg)
 
-    def sendMessage(self, msg: Message, verbose=False):
+            # assert sourceID in self.nodeIdToAlias, \
+            #     f"Unknown {sourceID} for {msg.mti}"
+            # NODE: ^ This is ok to not be true (source ID optional for some)
+            self.fireMessageReceived(msg)
+        self._fireNodesMapped(releaseDelayedIDs)
+        return
+
+    def sendMessage(self, msg: Message, verbose=False,
+                    assert_sendable=False) -> bool:
         """Send a message using the physicalLayer.
 
         Args:
             msg (Message): Any message.
             verbose (bool, optional): (Reserved argument). Defaults to
                 False.
+            assert_sendable (bool, optional): Raise AssertionError if
+                the message is addressed and the destination NodeID is
+                not in the alias map.
+
+        Returns:
+            bool: True if sent, false if delayed (will be sent after
+                message.destination NodeID is mapped to an alias).
 
         Raises:
             IndexError: If the source or destination address in the
@@ -867,6 +888,9 @@ class CanLink(LinkLayer):
                 didn't announce itself properly (as per OpenLCB
                 standards), the node became disconnected, or a NodeID
                 was entered incorrectly such as in a GUI.
+            KeyError: If assert_sendable, the message is addressed, and
+                the destination address is not known (alias is not known
+                for the NodeID).
         """
         error = None  # Leave/reset as None for fireMessageSent to run.
         #    special case for datagram
@@ -891,6 +915,7 @@ class CanLink(LinkLayer):
                 raise
 
             try:
+                assert msg.destination is not None
                 dddAlias = self.nodeIdToAlias[msg.destination]
                 header |= ((dddAlias) & 0xFFF) << 12
             except KeyboardInterrupt:
@@ -965,9 +990,13 @@ class CanLink(LinkLayer):
                         error = None
                 else:
                     error = (
-                        "Don't know alias for destination = {}"
-                        .format(msg.destination or NodeID(0)))
+                        "Delaying {}: Don't know alias for destination = {}"
+                        .format(msg.mti, msg.destination or NodeID(0)))
+                    if assert_sendable:
+                        raise KeyError(error)
                     logger.error(error)
+                    self.delayMessage(msg)
+                    return False  # skip fireMessageSent
             else:
                 #    global still can hold data; assume length is correct by
                 #    protocol send the resulting frame
@@ -976,6 +1005,16 @@ class CanLink(LinkLayer):
                 error = None  # clear non-fatal error to allow fireMessageSent
         if error is None:
             self.fireMessageSent(msg)
+        return True
+
+    def _releaseMessagesIfMapped(self):
+        """Release each Message that was held due alias unknown for NodeID.
+        See LinkLayer (superclass) for related methods.
+        """
+        for nodeID in self._unmappedNodeQueues.keys():
+            if self.nodeIdToAlias.get(nodeID) is None:
+                continue  # No alias yet, can't send.
+            self._releaseMessages(nodeID)
 
     def segmentDatagramDataArray(self, data: bytearray) -> List[bytearray]:
         """Segment data into zero or more arrays
