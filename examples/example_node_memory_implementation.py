@@ -145,16 +145,26 @@ cdi = """<?xml version="1.0" encoding="utf-8"?>
   </identification>
   <acdi/>
   <segment space='0' origin='0'>
-    <int size="2">
-      <name>Port</name>
-      <description>Network port of remote hub (2-byte unsigned short)</description>
-      <default>12021</default>
-    </int>
-    <float size="2">
-      <name>Timeout</name>
-      <description>Network timeout (2-byte binary16 value).</description>
-      <default>0.5</default>
-    </float>
+    <name>Network Settings</name>
+    <description>Behavior of sockets used to connect to the TCP/IP (or serial) to LCC bridge device.</description>
+    <group>
+      <name>Hub</name>
+      <description>How this device connects to the hub.</description>
+      <int size="2">
+        <name>Port</name>
+        <description>Network port of remote hub (2-byte unsigned short)</description>
+        <default>12021</default>
+      </int>
+    </group>
+    <group>
+      <name>General</name>
+      <description>How this device's local socket (TCP/IP or serial) behaves.</description>
+      <float size="2">
+        <name>Timeout</name>
+        <description>Network timeout (2-byte binary16 value).</description>
+        <default>0.5</default>
+      </float>
+    </group>
   </segment>
 </cdi>
 """  # noqa: E501
