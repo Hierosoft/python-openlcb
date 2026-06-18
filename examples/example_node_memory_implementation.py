@@ -110,29 +110,6 @@ canLink.registerMessageReceivedListener(printMessage)
 
 datagramService = DatagramService(canLink)
 canLink.registerMessageReceivedListener(datagramService.process)
-port = 12021
-spaces = {  # big endian (most significant byte sent first) as per openlcb
-    # 0: bytearray([
-    #     0x01, 0x00, # 0x1000 = 4096 (unsigned int 16)
-    # ])
-    0: bytearray(struct.pack(">H", port)),
-}
-# bytearray allows in-place append (from pack bytes does not)
-# H: short (capitalized means unsigned)
-# >: big endian (required for openlcb)
-# e: float16 (IEEE 754 binary16, 2-bytes)
-# For other symbols see Python documentation or SUBTYPE_FORMATS in cdivar.py.
-
-spaces[0] += struct.pack(">e", 0.5)  # save at address 3 (size 2)
-# NOTE: 0.5 can be stored precisely, as b'\x008'
-#   but not all numbers can be represented by IEEE float.
-#   For example, 2.4 is stored as b'\xcd@' which is ~2.400390625
-
-# Additional pack examples:
-neg2_float_ba = bytearray(b'\xc0\x00')
-neg2_float_b = struct.pack(">e", -2)
-assert bytes(neg2_float_ba) == bytes(neg2_float_b), \
-    f"expected b'\xc0\x00', b'\xc0\x00', got {neg2_float_ba}, {neg2_float_b}"
 
 cdi = """<?xml version="1.0" encoding="utf-8"?>
 <cdi
@@ -168,7 +145,6 @@ cdi = """<?xml version="1.0" encoding="utf-8"?>
   </segment>
 </cdi>
 """  # noqa: E501
-
 
 assert_xml(cdi)
 
@@ -229,20 +205,11 @@ backup_path = os.path.join(my_conf_dir, backup_name)
 localNode.loadCDIString(cdi, backup_path)
 # NOTE: loadCDI or loadCDIString sets Element tree and
 #   localNode._segments[MemorySpace.CDI.value]
-segment = localNode.getSegment(MemorySpace.CDI.value)
-assert isinstance(segment, Segment)
-assert isinstance(segment._data, (bytearray, bytes))
-last = localNode.getLast(0xFF)
-assert last is not None
-last = localNode.getLast(MemorySpace.CDI)
-assert last is not None
 # localNodeProcessor = LocalNodeProcessor(canLink, localNode)
 # canLink.registerMessageReceivedListener(localNodeProcessor.process)
 localNodeProcessor = localNode.localNodeProcessor
-localNode.setInt(0, 0, port, 2, False)
-localNode.setFloat(0, 2, 0.5, 2)
-assert localNode.getSlice(0, 0, 2) == spaces[0][0:2]
-assert localNode.getSlice(0, 2, 2) == spaces[0][2:]
+localNode.setInt(0, 0, settings['port'], 2, False)
+localNode.setFloat(0, 2, settings['timeout'], 2)
 
 
 def displayOtherNodeIds(message: Message) :

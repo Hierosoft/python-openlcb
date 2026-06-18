@@ -15,7 +15,7 @@ from openlcb.datagramservice import DatagramService, DatagramWriteMemo
 from openlcb.dataprocessormemo import DataProcessorMemo
 from openlcb.localnode import LocalNode
 from openlcb.localnodeprocessor import LocalNodeProcessor
-from openlcb.memorymanager import MemoryManager
+from openlcb.memorymanager import MemoryManager, Segment
 from openlcb.memoryspace import MemorySpace
 
 from logging import getLogger
@@ -376,13 +376,22 @@ class TestMemoryManager(unittest.TestCase):
         virtualNode.loadCDIString(demo_virtual_node_cdi, None)
         got = virtualNode.getSlice(MemorySpace.CDI,
                                    0, len(demo_virtual_node_cdi))
+        segment = virtualNode.getSegment(MemorySpace.CDI)  # type: Segment|None
+        assert isinstance(segment, Segment)
+        assert isinstance(segment._data, (bytearray, bytes))
         assert got.decode() == demo_virtual_node_cdi
-        segment = virtualNode.getSegment(MemorySpace.CDI)
+
         assert segment._data == demo_virtual_node_cdi.encode()
         # ^ not itself threaded, so no memo for callback is necessary
         #   network.startListening(mockLocalPort)
         #   commenting this requires your own physicalLayerUp
         #   and listen loop (sendAll and receiveAll calls)
+
+        last = virtualNode.getLast(0xFF)
+        assert last is not None
+        last = virtualNode.getLast(MemorySpace.CDI)
+        assert last is not None
+
         network.physicalLayer.physicalLayerUp()
         virtualPhysicalLayer.physicalLayerUp()
 
