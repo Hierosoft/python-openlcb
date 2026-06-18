@@ -110,12 +110,12 @@ canLink.registerMessageReceivedListener(printMessage)
 
 datagramService = DatagramService(canLink)
 canLink.registerMessageReceivedListener(datagramService.process)
-
+port = 12021
 spaces = {  # big endian (most significant byte sent first) as per openlcb
     # 0: bytearray([
     #     0x01, 0x00, # 0x1000 = 4096 (unsigned int 16)
     # ])
-    0: bytearray(struct.pack(">H", 12021)),
+    0: bytearray(struct.pack(">H", port)),
 }
 # bytearray allows in-place append (from pack bytes does not)
 # H: short (capitalized means unsigned)
@@ -239,6 +239,10 @@ assert last is not None
 # localNodeProcessor = LocalNodeProcessor(canLink, localNode)
 # canLink.registerMessageReceivedListener(localNodeProcessor.process)
 localNodeProcessor = localNode.localNodeProcessor
+localNode.setInt(0, 0, port, 2, False)
+localNode.setFloat(0, 2, 0.5, 2)
+assert localNode.getSlice(0, 0, 2) == spaces[0][0:2]
+assert localNode.getSlice(0, 2, 2) == spaces[0][2:]
 
 
 def displayOtherNodeIds(message: Message) :
