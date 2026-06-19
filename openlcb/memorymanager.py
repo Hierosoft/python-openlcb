@@ -253,12 +253,6 @@ class MemoryManager:
         segment.setSlice(address, data, size=size)
         if callbackVar is None:
             callbackVar = self.getWatchVar(space, address)
-            if callbackVar is not None:
-                print(f"[setSlice] getWatchVar {callbackVar.className}")
-            else:
-                print(f"[setSlice] getWatchVar (None)")
-        else:
-            print(f"[setSlice] callbackVar {callbackVar.className}")
         if callbackVar is not None:
             callbackVar.setData(data)
             self.fireWriteListeners(callbackVar)

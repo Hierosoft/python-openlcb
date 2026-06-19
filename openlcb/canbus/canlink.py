@@ -707,9 +707,8 @@ class CanLink(LinkLayer):
                 sourceID = NodeID(self.nextInternallyAssignedNodeID)
                 self.nextInternallyAssignedNodeID += 1
                 logger.warning(
-                    "message frame {} from unknown source alias: {},"
-                    " continue with created ID {}"
-                    .format(frame, unmapped, sourceID))
+                    f"message frame {frame} from unknown source alias:"
+                    f" {unmapped}, continue with created ID {sourceID}")
 
             #    register that internally-generated nodeID-alias association
             self.aliasToNodeID[frame.header & 0xFFF] = sourceID
