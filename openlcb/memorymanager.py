@@ -1,6 +1,6 @@
 from logging import getLogger
 import struct
-from typing import Union
+from typing import Callable, Union
 
 from openlcb.cdivar import SUBTYPE_FORMATS, CDIVar
 from openlcb.memoryspace import MemorySpace
@@ -9,6 +9,8 @@ logger = getLogger(__name__)
 
 
 class Segment:
+    """A memory segment that is contiguous or behaves as such.
+    """
     def __init__(self, size=0, readOnly=False):
         assert isinstance(size, int)
         assert size >= 0
@@ -78,7 +80,7 @@ class Segment:
         self._data += data
 
     def setSlice(self, address: int, data: Union[bytearray, bytes],
-                size: Union[int, None] = None, force=True):
+                 size: Union[int, None] = None, force=True):
         assert isinstance(data, (bytearray, bytes))
         assert isinstance(address, int)
         assert address >= 0
@@ -109,16 +111,37 @@ class Segment:
 
 
 class MemoryManager:
+    """A collection of memory segments.
+    Attributes:
+        watchVars (Dict[int, Dict[int, CDIVar]]): Variables that will be
+            used as the argument to callbacks, as well as set when
+            memory is set, at the address corresponding to the 2nd
+            tier's integer key. The 1st tier of the dict is keyed by a
+            space int.
+            - If not present, and setSlice is used (without the optional
+              callbackVar) no registered callbacks will be called (Not
+              enough information).
+
+    """
+
     def __init__(self):
         self._segments = {}  # type: dict[int, Segment]
+        self._writeListeners = []
+        self.watchVars = {}  # type: dict[int, dict[int, CDIVar]]
 
     def set(self, var: CDIVar):
-        assert isinstance(var, CDIVar)
+        assert issubclass(type(var), CDIVar)
         assert var.space is not None
-        assert var.address
+        assert var.address is not None
         data = var.getData()
         assert data is not None
-        self.setSlice(var.space, var.address, data, size=var.size)
+        watchVar = self.getWatchVar(var.space, var.address)
+        if watchVar is not None:
+            var = watchVar
+            assert var.space is not None
+            assert var.address is not None
+        self.setSlice(var.space, var.address, data, size=var.size,
+                      callbackVar=var)
 
     def getFirst(self, space: Union[MemorySpace, int]):
         """Get first address"""
@@ -196,7 +219,7 @@ class MemoryManager:
         Returns:
             CDIVar: Same var instance (returned by reference) modified.
         """
-        assert isinstance(var, CDIVar)
+        assert issubclass(type(var), CDIVar)
         assert var.space is not None
         assert var.address
         assert var.size is not None
@@ -206,8 +229,13 @@ class MemoryManager:
         return var
 
     def setSlice(self, space: Union[MemorySpace, int], address: int,
-                 data: Union[bytes, bytearray], size=None):
-        """Set address in virtual memory space to data"""
+                 data: Union[bytes, bytearray], size=None,
+                 callbackVar: Union[CDIVar, None] = None) -> Segment:
+        """Set address in virtual memory space to data.
+        fireWriteListeners can only be called if
+        callbackVar is known, otherwise type information
+        is not available at this level.
+        """
         assert isinstance(data, (bytearray, bytes))
         if isinstance(space, MemorySpace):
             space = space.value
@@ -223,6 +251,18 @@ class MemoryManager:
             segment = Segment()
             self._segments[space] = segment
         segment.setSlice(address, data, size=size)
+        if callbackVar is None:
+            callbackVar = self.getWatchVar(space, address)
+            if callbackVar is not None:
+                print(f"[setSlice] getWatchVar {callbackVar.className}")
+            else:
+                print(f"[setSlice] getWatchVar (None)")
+        else:
+            print(f"[setSlice] callbackVar {callbackVar.className}")
+        if callbackVar is not None:
+            callbackVar.setData(data)
+            self.fireWriteListeners(callbackVar)
+        return segment
 
     def getSlice(self, space: Union[MemorySpace, int], address: int,
                  size: int, force=False) -> bytearray:
@@ -255,7 +295,14 @@ class MemoryManager:
         data = struct.pack(dataFormat, value)
         assert len(data) == size, \
             f"Expected {size} byte(s) for {typeStr}, got {len(data)}"
-        return self.setSlice(space, address, data)
+        var = self.getWatchVar(space, address)
+        if var is None:
+            var = CDIVar("int", _size=size, _no_min=True, _no_max=True,
+                         space=space, address=address)
+        result = self.setSlice(space, address, data, callbackVar=var)
+        if self._writeListeners:
+            self.fireWriteListeners(var)
+        return result
 
     def getInt(self, space: Union[MemorySpace, int], address: int,
                size: int, signed: bool) -> int:
@@ -289,7 +336,14 @@ class MemoryManager:
         data = struct.pack(dataFormat, value)
         assert len(data) == size, \
             f"Expected {size} byte(s) for {typeStr}, got {len(data)}"
-        return self.setSlice(space, address, data)
+        var = self.getWatchVar(space, address)
+        if var is None:
+            var = CDIVar("float", _size=size, _no_min=True, _no_max=True,
+                         space=space, address=address)
+        result = self.setSlice(space, address, data, callbackVar=var)
+        if self._writeListeners:
+            self.fireWriteListeners(var)
+        return result
 
     def getFloat(self, space: Union[MemorySpace, int], address: int,
                  size: int) -> float:
@@ -306,3 +360,80 @@ class MemoryManager:
         assert len(values) == 1, f"Expected 1 {typeStr}, got {len(values)}"
         assert isinstance(values[0], float)
         return values[0]
+
+    def registerWriteListener(self, callback: Callable[[CDIVar], None]):
+        """Register a function to call when a value is written.
+        NOTE: You must also call registerWatchVar or low-level
+        (setSlice) calls will not trigger a callback due to not enough
+        information (callback takes a CDIVar).
+        """
+        self._writeListeners.append(callback)
+
+    def registerWatchVar(self, var: CDIVar):
+        """Register a CDIVar to track writes.
+
+        Arguments:
+            var (CDIVar): Must have var.space
+                and var.address in order to be tracked. This var's value
+                will be edited remotely, and will allow write listeners
+                to fire even when setting memory of a non-number or
+                unspecified type (using setSlice).
+        Raises:
+            AssertionError: space or address is None.
+        """
+        # a.k.a. setWatchVar
+        assert var.space is not None, \
+            'cdivar.space is required in order to listen for change'
+        if isinstance(var.space, MemorySpace):
+            var.space = var.space.value
+        assert isinstance(var.space, int)
+        assert var.address is not None, \
+            'cdivar.address is required in order to listen for change'
+        assert isinstance(var.address, int)
+        if var.space not in self.watchVars:
+            self.watchVars[var.space] = {}
+        if var.address in self.watchVars[var.space]:
+            raise KeyError(
+                f"Address {var.address} of space {var.space}"
+                " is already registered.")
+        self.watchVars[var.space][var.address] = var
+
+    def getWatchVar(self, space: Union[MemorySpace, int], address: int,
+                    default: Union[CDIVar, None] = None):
+        assert space is not None
+        assert address is not None
+        if isinstance(space, MemorySpace):
+            space = space.value
+        assert isinstance(space, int)
+        assert isinstance(address, int)
+        if default is not None:
+            assert issubclass(type(default), CDIVar)
+        spaceVars = self.watchVars.get(space)
+        if spaceVars is None:
+            return None
+        var = spaceVars.get(address, default)
+        if var is not None:
+            # Fix space & address so fireWriteListeners works correctly
+            if var.space is None:
+                logger.warning(
+                    f"Setting var.space={space} using its location")
+                var.space = space
+            elif var.space != space:
+                logger.warning(
+                    f"Setting incorrect var.space {var.space}"
+                    f" to {space} using its location")
+                var.space = space
+            if var.address is None:
+                logger.warning(
+                    f"Setting var.address={address} using its location")
+                var.address = address
+            elif var.address != address:
+                logger.warning(
+                    f"Setting incorrect var.address {var.address}"
+                    f" to {address} using its location")
+                var.address = address
+        return var
+
+    def fireWriteListeners(self, var: CDIVar):
+        for writeListener in self._writeListeners:
+            writeListener(var)

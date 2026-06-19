@@ -10,6 +10,7 @@ from typing import Any, List, Type, Union
 
 from openlcb import emit_cast, formatted_ex
 from openlcb.eventid import EventID
+from openlcb.memoryspace import MemorySpace
 from openlcb.openlcbaction import OpenLCBAction
 
 logger = getLogger(__name__)
@@ -104,6 +105,9 @@ class CDIVar:
             .signed = True)
         _max (int): Maximum value (only for int/float className)
         _size (int): Size of int/float (not allowed for other className).
+        tag (str): A key that can be used to access the var externally
+            such as if in a dictionary, or any other data useful to
+            the application.
 
     Attributes:
         className (str): An OpenLCB CDI type. Must be a key in
@@ -131,13 +135,28 @@ class CDIVar:
     """
     TYPED_KEYS = ['min', 'max', 'default']
 
-    def __init__(self, className, _min=None, _max=None,
-                 _size=None, _default=None, assert_range=False,
-                 _no_min=False, _no_max=False, _default_data=None,
-                 signed=None):
+    def __init__(self, className,
+                 _min: Union['CDIVar', None] = None,
+                 _max: Union['CDIVar', None] = None,
+                 _size: Union[int, None] = None,
+                 _default: Union['CDIVar', None] = None,
+                 assert_range=False,
+                 _no_min=False, _no_max=False,
+                 _default_data: Union[bytearray, bytes, None] = None,
+                 signed: Union[bool, None] = None,
+                 space: Union[MemorySpace, int, None] = None,
+                 address: Union[int, None] = None,
+                 tag: Union[str, None] = None):
         self.data = None  # type: bytes|None
         self.min = _min  # type: CDIVar|None
         self.max = _max  # type: CDIVar|None
+        self.tag = tag  # type: str|None
+        if space is not None:
+            assert isinstance(space, (MemorySpace, int))
+        self.space = space.value if isinstance(space, MemorySpace) else space
+        if address is not None:
+            assert isinstance(address, int)
+        self.address = address
 
         assert isinstance(className, str), \
             f"Expected {CLASSNAME_TYPES.keys()} got {emit_cast(className)}"
@@ -196,7 +215,7 @@ class CDIVar:
                         logger.error(error)
         elif (className in NUM_TYPES) and not _no_min:
             # self.min = CDIVar(className, _size=_size,
-            #                   _no_min=True, _no_max=True)  # prevent inf recurs
+            #                   _no_min=True, _no_max=True)  # prevent inf rec
             # Set minimum based on size,
             #   as per Configuration Description Information Standard.
             assert _size is not None
@@ -267,9 +286,17 @@ class CDIVar:
                 (f"Expected size in {sizes}"
                  f" for {self.className} but got {self.size}")
         self.floatFormat = None  # type: str|None
-        self.address = None  # type: int|None
         self.element = None  # type: Any|None
-        self.space = None  # type: int|None
+
+    def copy(self, assert_range=False) -> 'CDIVar':
+        default = None
+        if self.default is not None:
+            default = self.default.copy()
+        return CDIVar(self.className, _min=self.min, _max=self.max,
+                      _size=self.size, _default=default,
+                      assert_range=assert_range, _no_min=self._no_min,
+                      _no_max=self._no_max, signed=self.signed,
+                      space=self.space, address=self.address)
 
     @staticmethod
     def cmp_float(left: 'CDIVar', right: Union['CDIVar', float]) -> CompareOp:
@@ -606,15 +633,22 @@ class CDIVar:
         return result
 
     def setInt(self, value: int):
+        if self.className != "int":
+            logger.warning(
+                f"setInt called on {self.className} CDIVar (may be wrong)!")
         self.data = self.intToData(value)
 
     def floatToData(self, value: float) -> bytes:
-        assert self.className == "float", \
-            f"floatToData attempted on non-float: {self.className}"
+        if self.className != "float":
+            logger.warning(
+                f"floatToData on {self.className} CDIVar (may be wrong)!")
         assert isinstance(value, float)
         return struct.pack(self.packFormat(), value)
 
     def setFloat(self, value: float):
+        if self.className != "float":
+            logger.warning(
+                f"setFloat called on {self.className} CDIVar (may be wrong)!")
         self.data = self.floatToData(value)
 
     def stringToData(self, value: str) -> bytes:

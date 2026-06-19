@@ -18,6 +18,7 @@ host|host:port            (optional) Set the address (or using a colon,
                           the address and port). Defaults to a hard-coded test
                           address and port.
 '''
+from collections import OrderedDict
 import os
 import socket
 import struct
@@ -28,6 +29,7 @@ from typing import Set
 
 # region same code as other examples
 from examples_settings import Settings
+from openlcb.cdivar import CDIVar
 from openlcb.convert import Convert
 from openlcb.localnode import LocalNode
 from openlcb.memoryspace import MemorySpace
@@ -208,8 +210,47 @@ localNode.loadCDIString(cdi, backup_path)
 # localNodeProcessor = LocalNodeProcessor(canLink, localNode)
 # canLink.registerMessageReceivedListener(localNodeProcessor.process)
 localNodeProcessor = localNode.localNodeProcessor
-localNode.setInt(0, 0, settings['port'], 2, False)
-localNode.setFloat(0, 2, settings['timeout'], 2)
+
+# region simple local configuration
+# localNode.setInt(0, 0, settings['port'], 2, False)
+# localNode.setFloat(0, 2, settings['timeout'], 2)
+# endregion simple local configuration
+
+
+# region observable configuration
+
+
+def valueChangedRemotely(var: CDIVar):
+    # f"REMOTE memory configuration: set value={repr(var.getSerializable())}"
+    value = var.getInt() if (var.className == "int") else var.getFloat()
+    data = var.getData()
+    if data is None:
+        data = bytearray([])
+    print()
+    print(
+        f"[valueChangedRemotely] set {type(value).__name__}"
+        f" value={repr(value)} ({Convert.toHex(data)})"
+        f" at address {var.address} (tag={var.tag})")
+    return
+
+
+vars = OrderedDict()
+vars['port'] = CDIVar("int", space=0, address=0, _size=2,
+                      _default=CDIVar.fromInt(12021, 2))
+port = settings['port']
+assert port is not None
+vars['port'].setInt(port)
+vars['timeout'] = CDIVar("float", space=0, address=2, _size=2,
+                         _default=CDIVar.fromFloat(0.5, 2))
+timeout = settings['timeout']
+assert timeout is not None
+vars['timeout'].setFloat(timeout)
+# assert vars['timeout'].getData() == bytearray([0x38, 0])
+for name, var in vars.items():
+    var.tag = name  # optional application-specific data
+    memoryService.memory.registerWatchVar(var)
+memoryService.memory.registerWriteListener(valueChangedRemotely)
+# endregion observable configuration
 
 
 def displayOtherNodeIds(message: Message) :
