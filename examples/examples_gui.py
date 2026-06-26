@@ -382,7 +382,7 @@ class MainForm(ttk.Frame):
             "Local Node ID",
             command=self.fillDefaultLocalNodeId,
             command_text="Default",
-            tooltip=('("05.01.01.01.03.01 for Python openlcb examples only:'),
+            tooltip=('"05.*.*.*.*.*" Node IDs are for OpenLCB only:'),
         )
 
         self.unique_ranges_url = "https://registry.openlcb.org/uniqueidranges"
@@ -394,7 +394,7 @@ class MainForm(ttk.Frame):
         #   a tk.Font instance.
         self.local_node_url_label = ttk.Label(
             self,
-            text='See ({})'.format(underlined_url),
+            text='See {}.'.format(underlined_url),
         )
         # A label is not a button, so must bind to mouse button event manually:
         self.local_node_url_label.bind(
