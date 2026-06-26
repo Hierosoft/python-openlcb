@@ -384,6 +384,7 @@ class MainForm(ttk.Frame):
             command_text="Default",
             tooltip=('("05.01.01.01.03.01 for Python openlcb examples only:'),
         )
+
         self.unique_ranges_url = "https://registry.openlcb.org/uniqueidranges"
         underlined_url = \
             ''.join([letter+'\u0332' for letter in self.unique_ranges_url])
@@ -751,7 +752,7 @@ class MainForm(ttk.Frame):
 
         # return field
         if tooltip is not None:
-            # Even if "", still add it.
+            # Even if "", still add it (used to provide feedback at runtime)
             field.tooltip = ttk.Label(self, text=tooltip)
             field.tooltip.grid(row=self.row, column=self.tooltip_column,
                                columnspan=self.tooltip_columnspan, sticky=tk.N)
@@ -759,6 +760,8 @@ class MainForm(ttk.Frame):
             #   field.widget above it.
             # ^ **self.gridargs is not necessary here (sticky is always tk.N).
             self.row += 1
+            if self.tooltip_column >= self.column:
+                self.column = self.tooltip_column + 1
 
         if self.column > self.column_count:
             self.column_count = self.column
