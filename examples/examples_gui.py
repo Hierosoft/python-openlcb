@@ -539,6 +539,7 @@ class MainForm(ttk.Frame):
 
         # Can't communicate with LCC network, so disable related widget(s):
         self.cdi_refresh_button.configure(state=tk.DISABLED)
+        self.cdi_connect_button.configure(state=tk.NORMAL)
         self.setStatus("LCC network disconnected.")
 
     def _handleConnect(self):
@@ -589,11 +590,13 @@ class MainForm(ttk.Frame):
                 self._tcp_socket,
             )
             self._connect_thread = None
+            self.cdi_connect_button.configure(state=tk.NORMAL)
         except Exception as ex:
             if self.cdi_form.getStatus() == msg:
                 # If error wasn't shown, clear startup message.
                 self.cdi_form.setStatus("")
             self.setStatus("Connect failed. {}".format(formatted_ex(ex)))
+            self.cdi_connect_button.configure(state=tk.NORMAL)
             raise  # show traceback still, in case in an IDE or Terminal.
         return result
 
@@ -659,6 +662,7 @@ class MainForm(ttk.Frame):
         self.setStatus(
             "Far Node ID has been set to {} portion of service name."
             .format(repr(id)))
+        self.cdi_connect_button.configure(state=tk.NORMAL)
 
     def getIdFromName(self, update_button=False):
         lcc_id = id_from_tcp_service_name(
