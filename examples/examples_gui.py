@@ -517,7 +517,7 @@ class MainForm(ttk.Frame):
         by the socket loop thread, so we must use self.root.after to
         trigger methods which affect the GUI (such as _handleMessage).
         """
-        self.root.after(0, self._handleMessage(message))
+        self.root.after_idle(self._handleMessage, message)
 
     def _handleMessage(self, message: Message):
         """Main thread Message handler.
@@ -590,7 +590,7 @@ class MainForm(ttk.Frame):
                 self._tcp_socket,
             )
             self._connect_thread = None
-            self.cdi_connect_button.configure(state=tk.NORMAL)
+            # self.cdi_connect_button.configure(state=tk.NORMAL)
         except Exception as ex:
             if self.cdi_form.getStatus() == msg:
                 # If error wasn't shown, clear startup message.

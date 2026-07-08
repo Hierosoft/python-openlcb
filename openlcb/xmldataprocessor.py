@@ -688,6 +688,8 @@ class XMLDataProcessor(xml.sax.handler.ContentHandler, DataProcessor):
             cm.parent.children.append(cm)
         _ = self.checkDone(cm)
         cm.content = self._flushCharBuffer()
+        if cm.element is not None:
+            cm.element.text = cm.content
         self._ended_memo = cm
         self.onPopScope(cm)
 

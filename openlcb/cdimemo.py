@@ -3,11 +3,12 @@ import copy
 import json
 import math
 import xml.etree.ElementTree
-# import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET
 
 from typing import Dict, List, Optional, Union
 from logging import getLogger
 
+from openlcb import formatted_ex
 from openlcb.cdivar import CLASSNAME_TYPES, FLOAT_MAXIMUMS, NUM_TYPES, CDIVar
 from openlcb.message import Message
 from openlcb.dataprocessormemo import DataProcessorMemo
@@ -106,12 +107,57 @@ class CDIMemo(DataProcessorMemo):
                 return child.content.strip()
         return None
 
-    def copy(self) -> 'CDIMemo':
-        return self.__copy__()
+    def copy(self, parent=None) -> 'CDIMemo':
+        """See __copy__"""
+        return self.__copy__(parent=parent)
 
-    def __copy__(self):
+    def __copy__(self, parent: Union['CDIMemo', None] = None):
+        """Copy an object neatly including tag structure.
+        Args:
+            parent (Union[CDIMemo,None]): The parent object
+                such as for attaching copied child to a copied parent
+                rather than self.parent and self.parent.element.
+        """
+        # See also __deepcopy__
         cm = CDIMemo()
+        cm.tag = self.getTag()
+        if parent is None:
+            parent = self.parent
+        if cm.tag:
+            if parent and (parent.element is not None):
+                attrib = {}
+                if self.element:
+                    attrib = self.element.attrib.copy()
+                cm.element = ET.SubElement(
+                    parent.element,
+                    cm.tag,
+                    attrib,
+                )
         for k, v in self.__dict__.items():
+            # if isinstance(v, (ET.Element, ET.ElementTree)):
+            if k == 'children':
+                children = []
+                for child in v:
+                    # Set parent to copy, not original child.parent
+                    child2 = child.copy(parent=cm)
+                    child2.iid = None  # GUI key, N/A for copy
+                    children.append(child2)
+                setattr(cm, k, children)
+                continue
+            if k not in ("document", "parent"):
+                try:
+                    v = copy.deepcopy(v)
+                except TypeError as ex:
+                    logger.warning(
+                        f"Cannot copy {type(self).__name__}().{repr(k)},"
+                        f" so using instance for copy ({formatted_ex(ex)})")
+            # else do not copy--Use reference instead for:
+            # - parent: same actual parent is expected, such as when
+            #   copying for replication.
+            # - document: citing the document is ok (and may be a socket, which
+            #   cannot be copied).
+            if k == "iid":  # This is a GUI key, N/A for copies.
+                continue
             setattr(cm, k, v)
         return cm
 
@@ -122,13 +168,26 @@ class CDIMemo(DataProcessorMemo):
         See <https://stackoverflow.com/a/15774013/4541104>.
         """
         cm = type(self)()
-        memo[id(self)] = cm
+        memo[id(self)] = cm  # recursion guard
         for k, v in self.__dict__.items():
-            if k == 'parent':
-                # prevent invalid container
+            if k == 'children':
+                children = []
+                for child in v:
+                    # Set parent to copy, not original child.parent
+                    child2 = child.copy(parent=cm)
+                    child2.iid = None  # GUI key, N/A for copy
+                    children.append(child2)
+                setattr(cm, k, children)
                 continue
-            if k == "document":
+            if k == 'parent':
+                # prevent invalid container (copy of container)
+                setattr(cm, k, v)
+                continue
+            if k == 'document':
                 # prevent un-pickle-able object (& invalid container)
+                setattr(cm, k, v)
+                continue
+            if k == 'iid':  # This is a GUI key, N/A for copies.
                 continue
             setattr(cm, k, copy.deepcopy(v, memo))
         return cm
@@ -164,7 +223,8 @@ class CDIMemo(DataProcessorMemo):
         return repr(self.__dict__)
 
     @staticmethod
-    def to_dict(cm):
+    def to_dict(cm, trim_blank=False):
+        assert isinstance(trim_blank, bool)
         d = OrderedDict()
         for k, v in cm.__dict__.items():
             # if k == 'children':
@@ -176,11 +236,46 @@ class CDIMemo(DataProcessorMemo):
             if isinstance(v, xml.etree.ElementTree.Element):
                 d[k] = element_ordered(v)
                 continue
+            if trim_blank:
+                if v is None:
+                    continue
+                if issubclass(type(v), (list, set, dict, OrderedDict)):
+                    if not v:
+                        continue
+            if k == 'children':
+                children = []
+                for item in v:
+                    children.append(
+                        CDIMemo.to_dict(item, trim_blank=trim_blank))
+                v = children
             d[k] = v
         return d
 
     def __str__(self):
         return json.dumps(CDIMemo.to_dict(self), default=CDIMemo.to_dict)
+
+    def toXMLStart(self):
+        """Get the XML opening tag, symbols, and attrib list in XML format.
+        """
+        memoRepr = "<"
+        if self.tag is not None:
+            memoRepr += f"{self.tag}"
+        if (self.element is not None):
+            for k, v in self.element.attrib.items():
+                if "'" in v:
+                    v = v.replace("'", "&quot;")
+                memoRepr += f" {k}='{v}'"
+        memoRepr += ">"
+        # NOTE: No self.content nor self.element.text is set yet if this
+        #   is called before parsing the end tag. See toXMLEnd.
+        return memoRepr
+
+    def toXMLEnd(self):
+        memoRepr = "</"
+        if self.tag is not None:
+            memoRepr += f"{self.tag}"
+        memoRepr += ">"
+        return memoRepr
 
     def toCDIVar(self):
         # type: () -> CDIVar
@@ -272,6 +367,24 @@ class CDIMemo(DataProcessorMemo):
         return result
 
     def getSize(self):
+        if self.tag == "group":
+            if not self.children:
+                offset = None
+                if self.element is not None:
+                    offset = self.element.attrib.get('offset')
+                logger.warning(
+                    "Tried to get size of empty group"
+                    " or before parsing end </group> tag"
+                    f" (address={self.address},"
+                    f" offset={offset})")
+                return 0  # since empty group is allowed
+            total = 0
+            for child in self.children:  # type: CDIMemo
+                childSize = child.getSize()
+                assert childSize is not None, \
+                    f"malformed {child.tag} or processed before </{child.tag}>"
+                total += childSize
+            return total
         if self.tag == "eventid":
             return 8
         if self.element is None:

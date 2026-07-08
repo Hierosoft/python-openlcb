@@ -19,7 +19,7 @@ from tkinter import EventType, ttk
 
 from collections import deque
 from logging import getLogger
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict, List, Union
 from xml.etree import ElementTree as ET
 
 from openlcb.cdivar import CLASSNAME_TYPES, CDIVar
@@ -57,6 +57,13 @@ except ImportError as ex:
 class CDIForm(ttk.Frame, XMLDataProcessor):
     """A GUI frame to represent the CDI visually as a tree.
 
+    Attributes:
+        enableRepDump (bool): Print XML to console while
+            performing replication. Replication is done in this class
+            rather than calling replicatedTree, so that widgets can be
+            generated in real time (while downloading XML).
+            In general, using replicatedTree is easier.
+
     Args:
         parent (TkWidget): Typically a ttk.Frame or tk.Frame with "root"
             attribute set.
@@ -86,6 +93,51 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         self.cdiSettingWidgets = []  # type: list[tk.Widget]
         self.cdiSettingRow = 0
         self.cdiSettingFrame = None  # type: Union[ttk.Frame, tk.Frame, None]
+        assert not hasattr(self, 'address'), "using redundant variable"
+        self._parsing_address = None
+        self._scope = []  # type: list[CDIMemo]
+        self.multilineTags = ["segment", "group"]
+        self.multilineTags += list(CLASSNAME_TYPES.keys())
+        self.multilineTags += ["map", "relation"]
+        self.enableRepDump = False
+
+    def scopeIndent(self, tab="    ") -> str:
+        """Get indent for debug lines
+        for showing tag scope visually (as indentation) during parsing.
+        """
+        return tab * len(self._scope)
+
+    def scopeTags(self, show_attrib=True) -> List[str]:
+        """Get debug info regarding XML stack
+        (current parsing scope). It is empty after document is finished.
+        """
+        items = []
+        for cm in self._scope:
+            tagRepr = cm.tag
+            if show_attrib:
+                assert cm.tag is not None
+                tagRepr = "<" + cm.tag
+                if cm.element is not None:
+                    for k, v in cm.element.attrib.items():
+                        tagRepr += f' {k}="{v}"'
+                tagRepr += ">"
+            items.append(tagRepr)
+        return items
+
+    def getScopeIdx(self, tag):
+        tag = tag.lower()
+        for idx in reversed(range(len(self._scope))):
+            cm = self._scope[idx]
+            assert cm.tag is not None
+            if cm.tag.lower() == tag:
+                return idx
+        return -1
+
+    def getScope(self, tag):
+        idx = self.getScopeIdx(tag)
+        if idx < 0:
+            return None
+        return self._scope[idx]
 
     def setSettingsContainer(self, container: Union[ttk.Frame, tk.Frame]):
         self.cdiSettingFrame = container
@@ -154,9 +206,9 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                 else:
                     raise TypeError("Device should not specify max for {}"
                                     .format(cdivar.className))
-
                 v_widget = ttk.LabeledScale(self.cdiSettingFrame, variable=tkvar)
                 # ^ widget.scale is ttk.Scale, widget.label is ttk.Label
+                # ^ a.k.a. Slider (if not using Tk)
                 v_widget.scale.cdivar = cdivar
                 v_widget.scale.tip = nameLabel.tip
             else:
@@ -241,22 +293,156 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         elif cm.done:
             show_status = "Done loading CDI."
         if show_status:
-            self.root.after(0, self.setStatus, show_status)
+            self.root.after_idle(self.setStatus, show_status)
         if cm.done:
             return True
         return False
 
-    def onPushScope(self, cm: CDIMemo) -> bool:
+    def onPushScope(self, cm: CDIMemo,
+                    replication_index: Union[int, None] = None) -> bool:
+        if self.enableRepDump:
+            if cm.tag not in self.multilineTags:
+                sys.stdout.write(self.scopeIndent() + cm.toXMLStart())
+            else:
+                print(self.scopeIndent() + cm.toXMLStart())
+        if self._scope:
+            if cm.parent is not self._scope[-1]:
+                old = self._scope[-1]
+                old_name = old.getChildContent('name')
+                new_name = cm.parent.getChildContent('name')
+                old_idx = old.element.attrib.get('replicated_index')
+                new_idx = cm.parent.element.attrib.get('replicated_index')
+                logger.info(
+                    "expected same parent"
+                    # f" {CDIMemo.to_dict(cm.parent, trim_blank=True)},"
+                    f" {old.tag} name={old_name} idx={old_idx}"
+                    f" got other parent {cm.parent.tag} name={new_name}"
+                    f" idx={new_idx},")
+        if replication_index is not None:
+            cm.element.attrib['replication_index'] = str(replication_index)
+        self._scope.append(cm)
         if cm.element is None:
             raise ValueError("No element for push tag event")
-        self.root.after(0, self._onPushScope, cm)
+        # Parse in realtime to prevent out-of-order processing
+        #   potentially caused by the UI framework's "after" method.
+        offset = cm.element.attrib.get('offset')
+        if offset is not None:
+            offset = int(offset)
+            assert self._parsing_address is not None, \
+                f"{cm.tag} offset before segment!"
+            self._parsing_address += offset
+
+        # NOTE: _onPushScope (not onPushScope) is on main thread which
+        #   is the only thread that can affect the GUI.
+        if cm.tag == "segment":
+            if self.getScope("group") is not None:
+                raise RuntimeError(
+                    "Tried to parse segment start before group end"
+                    " (or less likely, XML is non-standard"
+                    " having segment in group)")
+            self._parsing_space = int(cm.element.attrib['space'])
+            origin = cm.element.attrib.get('origin')
+            if origin is None:
+                origin = 0
+                logger.debug(f"Defaulting segment to origin={origin}")
+            self._parsing_address = int(origin)
+        elif cm.tag == "group":
+            assert self._parsing_address is not None, \
+                f"{cm.tag} before segment!"
+            # replication: See onPopScope (after entire size is known)
+        elif cm.tag in CLASSNAME_TYPES:
+            assert self._parsing_address is not None, \
+                f"{cm.tag} before segment!"
+            cm.space = self._parsing_space
+            cm.address = self._parsing_address
+            # NOTE: ^ This becomes the real address since onPopScope
+            #   performs replication and calls onPushScope again for
+            #   each (excluding first) copy.
+            varSize = cm.getSize()
+            assert varSize is not None, f"expected size for {cm.tag}"
+            varSize = int(varSize)
+            self._parsing_address += varSize
+        self.root.after_idle(self._onPushScope, cm)
         self.onStatusMemo(cm)
         return True
 
+    def recursiveParse(self, cm: CDIMemo,
+                      replication_index: Union[int, None] = None):
+        """Push a non-XML (generated) memo, simulating recursive parsing
+        """
+        self.onPushScope(cm, replication_index=replication_index)
+        for child in cm.children:
+            child.parent = cm
+            self.recursiveParse(child, replication_index=replication_index)
+        self.onPopScope(cm)
+
     def onPopScope(self, cm: CDIMemo) -> bool:
+        if cm.tag != self._scope[-1].tag:
+            space = None
+            origin = None
+            if cm.element is not None:
+                space = cm.element.get('space')
+                origin = cm.element.get('origin')
+            logger.warning(
+                f"Popping </{cm.tag}> (space={space} origin={origin})"
+                f" before </{self._scope[-1].tag}>"
+                f" (stack: {self.scopeTags()})")
+        topMemo = self._scope.pop()
+        assert topMemo is not None
+        assert cm is topMemo, \
+            f"Got {cm.toXMLStart()} different than top {topMemo.toXMLStart()}"
+        content = ""
+        # Content isn't collected until end tag.
+        if (cm.element is not None) and (cm.element.text is not None):
+            content = cm.element.text
+        elif cm.content is not None:
+            content = cm.content
+        if self.enableRepDump:
+            sys.stdout.write(content)
+            if cm.tag not in self.multilineTags:
+                print(cm.toXMLEnd())  # use print even for single line tag
+                #  since this is the end of the element.
+            else:
+                print(self.scopeIndent() + cm.toXMLEnd())
         if cm.element is None:
             raise ValueError("No element for pop tag event")
-        self.root.after(0, self._onPopScope, cm)
+        # memos = [cm]
+        replication = cm.element.attrib.get('replication')
+        if replication is not None:
+            # Replication must be during onPopScope since children
+            #   weren't processed until now.
+            replication = int(replication)
+            for i in range(replication):
+                if i == 0:
+                    # else onPushScope was already called for [0] (original)
+                    # cm.element.attrib['replication_index'] = str(i)
+                    self.root.after_idle(self._onPopScope, cm)
+                    continue
+                replicatedMemo = cm.copy()
+                replicatedMemo.iid = None  # Not in tree yet
+                #   (See _treeview.insert in onPushScope)
+                # Delete replication to prevent infinite replication:
+                assert replicatedMemo.element is not None
+                del replicatedMemo.element.attrib['replication']
+                replicatedMemo.element.attrib['replication_index'] = str(i)
+                # memos.append(replicatedMemo)
+                self.recursiveParse(
+                    replicatedMemo,
+                    replication_index=i
+                )
+                # self.onPushScope(replicatedMemo, replication_index=i)
+                # if replicatedMemo.children:
+                #     assert len(replicatedMemo.children) == len(cm.children)
+                #     for cI, child in enumerate(replicatedMemo.children):
+                #         child.parent = replicatedMemo
+                #         assert (len(child.children)
+                #                 == len(cm.children[cI].children))
+                #         self.recursiveParse(child, replication_index=i)
+                # self.onPopScope(replicatedMemo)
+            self.onStatusMemo(cm)
+            return True
+
+        self.root.after_idle(self._onPopScope, cm)
         self.onStatusMemo(cm)
         return True
 
@@ -282,9 +468,6 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                 - 'content' (str): Content (only set during this
                   callback, not start tag).
 
-        Raises:
-            NotImplementedError: _description_
-            NotImplementedError: _description_
         """
         if self.cursorCol != 0:
             self.debug()
@@ -292,19 +475,37 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         assert nameLower is not None  # only None for done/fail events
         cm.content
         assert self._treeview is not None
-        if nameLower == "name":
-            parentIID = self.getParentBranch(cm)
+        if nameLower in ("name", "repname"):
+            parentIID = self.getParentBranch(cm)  # source is cm.parent.iid
+            #   where parent is also a CDIMemo (if parent is None, then cm.iid
+            #   or "" to place at top level of tree)
             assert parentIID is not None, "name must be in a branch"
+            content = cm.content
+            if nameLower == "repname":
+                if content is not None:
+                    content = content.strip()
+                else:
+                    content = ""
+                assert cm.parent is not None
+                assert cm.parent.element is not None
+                idx = cm.parent.element.attrib.get('replication_index')
+                if idx is not None:
+                    idx = int(idx)
+                    content += f" #{idx+1}"
             if parentIID:
-                assert cm.content is not None
-                cm.content = cm.content.strip()
+                # assert content is not None
                 if cm.content is None:
                     logger.warning(
                         self.indent() + f"content is None for /{cm.tag}")
                     cm.content = ""
+                    content = ""
+                if nameLower == "repname":
+                    nameItem = self._treeview.item(parentIID)
+                    if nameItem:
+                        content = f"{nameItem['text']}: {content}"
                 # "name" applies to parent, such as "segment" or "string"
-                _ = self._treeview.item(
-                    parentIID, text=cm.content.strip())
+                if content is not None:
+                    _ = self._treeview.item(parentIID, text=content)
             origin = cm.element.attrib.get('origin') if cm.element else None
             if cm.content:
                 if cm.tag == "segment":
@@ -389,13 +590,10 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                   optional for identification and its children otherwise
                   required (previous start tags by XMLDataProcessor)
 
-        Raises:
-            NotImplementedError: _description_
-            NotImplementedError: _description_
         """
         # NOTE: If it is self-closing such as
         #   `<group offset='4'/>`,
-        #   then _onPopScope will also run (see endElement such
+        #   then onPopScope will run next (via endElement such
         #   as in python-openlcb's implementation of ContentHandler).
         assert cm.element is not None
         tag = cm.element.tag if cm.element is not None else None
@@ -441,14 +639,8 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             self._current_iid += 1  # TODO: associate with SubElement
         elif tagLower == "acdi":
             pass  # handled by superclass (sets self.acdi)
-        elif tagLower in ("int", "string", "float"):
-            content = ""
-            for child in cm.element:
-                if child.tag == "name":
-                    content = child.text
-                    if content is None:
-                        content = ""
-                    break
+        elif tagLower in CLASSNAME_TYPES:
+            content = ""  # NOTE: name sub-tag isn't parsed yet.
             new_branch = self._treeview.insert(
                 self.getParentBranch(cm),
                 index,
@@ -462,6 +654,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             cm.iid = new_branch
             self._current_iid += 1  # TODO: associate with SubElement
             #  and/or set values keyword argument to create association(s)
+        # NOTE: Can't get content of any tag such as name until onPopScope
 
 
 if __name__ == "__main__":
