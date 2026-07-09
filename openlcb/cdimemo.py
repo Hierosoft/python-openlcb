@@ -277,6 +277,67 @@ class CDIMemo(DataProcessorMemo):
         memoRepr += ">"
         return memoRepr
 
+    def valueMap(self):
+        # type: () -> Union[dict, None]
+        """Map each relation in a dict.
+        Property and value are swapped to make the result a lookup
+        table where the key is the user-facing caption.
+        """
+        mapMemo = self.getChildByTag("map")
+        if mapMemo is None:
+            return None
+        results = OrderedDict()
+        for childRelation in mapMemo.children:
+            if childRelation.tag != "relation":
+                logger.warning(f"expected relation got {childRelation.tag}")
+                continue
+            keyMemo = childRelation.getChildByTag("property")
+            valueMemo = childRelation.getChildByTag("value")
+            if not keyMemo:
+                logger.warning("expected property in relation for"
+                               f" {self.getChildContent('name')}")
+                continue
+            if not valueMemo:
+                logger.warning("expected value in relation for"
+                               f" {self.getChildContent('name')}")
+                continue
+            prop = keyMemo.content.strip() if keyMemo.content else None
+            value = valueMemo.content.strip() if valueMemo.content else None
+            if not prop:
+                logger.warning("expected content for property in relation for"
+                               f" {self.getChildContent('name')}")
+                continue
+            if not value:
+                logger.warning("expected content for value in relation for"
+                               f" {self.getChildContent('name')}")
+                continue
+            if value in results:
+                logger.warning(f"expected only one value {repr(value)}"
+                               f" (property {repr(prop)}) in relation for"
+                               f" {self.getChildContent('name')}")
+            results[value] = prop  # reverse to make it a lookup by caption
+        return results
+
+    def keyMap(self):
+        # type: () -> Union[dict, None]
+        """Map each relation in a dict where property is key.
+        NOTE: As per CDI, value is the visible caption.
+        """
+        tmp = self.valueMap()
+        if not tmp:
+            return None
+        results = OrderedDict()
+        for k, v in tmp.items():
+            results[v] = k
+        return results
+
+    def getChildByTag(self, tag):
+        # type: (str) -> Union[CDIMemo, None]
+        for child in self.children:
+            if child.tag == tag:
+                return child
+        return None
+
     def toCDIVar(self):
         # type: () -> CDIVar
         """Create a CDIVar from descriptors (child elements of self).

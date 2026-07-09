@@ -198,7 +198,15 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             cdivar = cm.toCDIVar()
             tkvar = None
             v_widget = None
-            if cdivar.max:
+            mapToValue = cm.valueMap()
+            self.mapToValue = mapToValue
+            if mapToValue:
+                tkvar = tk.StringVar(self.root)
+                v_widget = ttk.Combobox(self.cdiSettingFrame,
+                                        textvariable=tkvar,
+                                        values=list(mapToValue.keys()))
+                v_widget.mapToValue = mapToValue
+            elif cdivar.max:
                 if cdivar.className == "int":
                     tkvar = tk.IntVar(self.root)
                 elif cdivar.className == "float":
@@ -206,7 +214,8 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                 else:
                     raise TypeError("Device should not specify max for {}"
                                     .format(cdivar.className))
-                v_widget = ttk.LabeledScale(self.cdiSettingFrame, variable=tkvar)
+                v_widget = ttk.LabeledScale(self.cdiSettingFrame,
+                                            variable=tkvar)
                 # ^ widget.scale is ttk.Scale, widget.label is ttk.Label
                 # ^ a.k.a. Slider (if not using Tk)
                 v_widget.scale.cdivar = cdivar
