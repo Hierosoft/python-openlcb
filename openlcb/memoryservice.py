@@ -247,8 +247,13 @@ class MemoryReadMemo:
         self.error = None  # type: str|None
         self.errorCode = None  # type: int|None
         self.nodeID = nodeID
+        assert isinstance(size, int)
         self.size = size
+        if isinstance(space, MemorySpace):
+            space = space.value
+        assert isinstance(space, int)
         self.space = space
+        assert isinstance(address, int)
         self.address = address
         self.rejectedReply = rejectedReply
         self.dataReply = dataReply

@@ -278,10 +278,11 @@ class CDIMemo(DataProcessorMemo):
         return memoRepr
 
     def valueMap(self):
-        # type: () -> Union[dict, None]
+        # type: () -> Union[dict[str, CDIVar], None]
         """Map each relation in a dict.
-        Property and value are swapped to make the result a lookup
-        table where the key is the user-facing caption.
+        The "property" and "value" are swapped to make the result a
+        lookup table where the user-facing caption ("value") is used as
+        the key.
         """
         mapMemo = self.getChildByTag("map")
         if mapMemo is None:
@@ -315,7 +316,9 @@ class CDIMemo(DataProcessorMemo):
                 logger.warning(f"expected only one value {repr(value)}"
                                f" (property {repr(prop)}) in relation for"
                                f" {self.getChildContent('name')}")
-            results[value] = prop  # reverse to make it a lookup by caption
+            propVar = self.toCDIVar()
+            propVar.setFromString(prop)
+            results[value] = propVar  # reverse to make it a lookup by caption
         return results
 
     def keyMap(self):
@@ -328,7 +331,10 @@ class CDIMemo(DataProcessorMemo):
             return None
         results = OrderedDict()
         for k, v in tmp.items():
-            results[v] = k
+            vStr = v.value()
+            assert vStr is not None
+            vStr = str(vStr)
+            results[vStr] = k
         return results
 
     def getChildByTag(self, tag):

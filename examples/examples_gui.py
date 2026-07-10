@@ -453,6 +453,7 @@ class MainForm(ttk.Frame):
             command=self.cdiConnectClicked,
         )
         self.cdi_connect_button.grid(row=self.cdi_row, column=0)
+        self.cdi_row += 1
 
         self.cdi_refresh_button = ttk.Button(
             self.cdi_tab,
@@ -460,7 +461,7 @@ class MainForm(ttk.Frame):
             command=self.cdiRefreshClicked,
             state=tk.DISABLED,  # enabled on connect success callback
         )
-        self.cdi_refresh_button.grid(row=self.cdi_row, column=1)
+        self.cdi_refresh_button.grid(row=self.cdi_row, column=0)
         self.cdi_row += 1
 
         self.cdiSettingFrame = ttk.Frame(self.cdi_tab)
@@ -502,7 +503,7 @@ class MainForm(ttk.Frame):
 
     def setupNetwork(self):
         self.network = OpenLCBNetwork(self.getValue('localNodeID'))
-        self.cdi_form = CDIForm(self.network.canLink, self.cdi_tab)
+        self.cdi_form = CDIForm(self.cdi_tab, self.network.canLink, self)
         self.cdi_form.setSettingsContainer(self.cdiSettingFrame)
         self.cdi_form.setStatusCallback(self.setStatus)
         # ^ formerly OpenLCBNetwork() subclass
@@ -608,7 +609,6 @@ class MainForm(ttk.Frame):
         self._connect_thread.start()
         # This thread may end quickly after connection since
         #   start_receiving starts a thread.
-        self.cdi_connect_button.configure(state=tk.DISABLED)
         self.cdi_connect_button.configure(state=tk.DISABLED)
 
     def cdiRefreshClicked(self):

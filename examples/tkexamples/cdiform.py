@@ -9,6 +9,7 @@ This file is part of the python-openlcb project
 
 Contributors: Poikilos
 """
+from functools import partial
 import logging
 import os
 import sys
@@ -23,6 +24,9 @@ from typing import Any, Callable, Dict, List, Union
 from xml.etree import ElementTree as ET
 
 from openlcb.cdivar import CLASSNAME_TYPES, CDIVar
+from openlcb.memoryservice import MemoryReadMemo
+from openlcb.nodeid import NodeID
+from openlcb.openlcbnetwork import OpenLCBNetwork
 
 
 if __name__ == "__main__":
@@ -67,22 +71,30 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
     Args:
         parent (TkWidget): Typically a ttk.Frame or tk.Frame with "root"
             attribute set.
+        linkLayer (LinkLayer): Typically a CanLink instance.
     """
     def __init__(self, *args, **kwargs):
-        assert isinstance(args[0], LinkLayer), \
+        assert issubclass(type(args[1]), LinkLayer), \
             "Expected LinkLayer/subclass got {}".format(type(args[0]).__name__)
-        linkLayer = args[0]
-        args = args[1:]  # remove first argument (only for GUI)
+        linkLayer = args[1]
+        assert issubclass(type(args[0]), tk.Widget)
         XMLDataProcessor.__init__(self, linkLayer, MemorySpace.CDI)
-        ttk.Frame.__init__(self, *args, **kwargs)
+        ttk.Frame.__init__(self, *args[:1], **kwargs)
         self._top_widgets = []
         if len(args) < 1:
             raise ValueError("at least one argument (parent) is required")
         self.parent = args[0]
-        self.root = args[0]
+        self.mainform = args[2]
+        self.root = args[2]
+        assert hasattr(self.mainform, 'network'), \
+            "mainform must have 'network' OpenLCBNetwork"
+        assert hasattr(self.mainform, 'settings'), \
+            "mainform must have 'settings' dictionary with at least 'farNodeID'"
         self._status_callback = None
         if hasattr(self.parent, 'root'):
             self.root = self.parent.root
+        elif hasattr(self.mainform, 'root'):
+            self.root = self.mainform.root
         self._container = self  # where to put visible widgets
         self._treeview = None  # type: ttk.Treeview|None
         self._treeMemos = {}  # type: Dict[str, CDIMemo]
@@ -178,7 +190,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             cm = self._treeMemos[iid]
             # print(f"type(item)={type(item)}")
             # raise NotImplementedError(item)
-            # print(f"cm={cm}")
+            print(f"cm={cm}")
             self.clearSettingWidgets()
             if cm.tag not in CLASSNAME_TYPES:
                 # Non-value (such as segment or group)
@@ -199,7 +211,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             tkvar = None
             v_widget = None
             mapToValue = cm.valueMap()
-            self.mapToValue = mapToValue
+            # self.mapToValue = mapToValue
             if mapToValue:
                 tkvar = tk.StringVar(self.root)
                 v_widget = ttk.Combobox(self.cdiSettingFrame,
@@ -215,11 +227,18 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                     raise TypeError("Device should not specify max for {}"
                                     .format(cdivar.className))
                 v_widget = ttk.LabeledScale(self.cdiSettingFrame,
-                                            variable=tkvar)
+                                            variable=tkvar,
+                                            from_=cdivar.min,
+                                            to=cdivar.max)
                 # ^ widget.scale is ttk.Scale, widget.label is ttk.Label
                 # ^ a.k.a. Slider (if not using Tk)
                 v_widget.scale.cdivar = cdivar
                 v_widget.scale.tip = nameLabel.tip
+
+                def update_label_width(*args):
+                    # Fix label being too small to show value:
+                    v_widget.label.configure(width=len(str(int(tkvar.get()))) + 2)  # noqa: E501
+                tkvar.trace_add('write', update_label_width)
             else:
                 tkvar = tk.StringVar(self.root)
                 v_widget = ttk.Entry(self.cdiSettingFrame, textvariable=tkvar)
@@ -227,10 +246,39 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             self.cdiSettingRow += 1
             self.cdiSettingWidgets.append(v_widget)
             if cdivar.default is not None:
-                tkvar.set(cdivar.default)
+                defaultStr = cdivar.default
+                if mapToValue:
+                    mapToStr = cm.keyMap()
+                    assert mapToStr
+                    defaultStr = mapToStr[str(cdivar.default.value())]
+                tkvar.set(defaultStr)
             v_widget.cdivar = cdivar
             v_widget.tip = nameLabel.tip
+            try:
+                v_widget.configure(state='readonly')  # readonly until refresh
+            except tk.TclError:
+                pass  # N/A such as for Scale
+            #   so that previous value is known.
 
+            # Write and Read buttons
+            writeButton = ttk.Button(
+                self.cdiSettingFrame,
+                text="Write",
+                command=partial(self.onWriteValueClicked, v_widget, tkvar,
+                                cdivar, mapToValue=mapToValue),
+            )
+            # writeButton.grid(column=0, row=self.cdiSettingRow)
+
+            readButton = ttk.Button(
+                self.cdiSettingFrame,
+                text="Read",
+                command=partial(self.onReadValueClicked, v_widget, tkvar,
+                                cdivar, mapToValue=mapToValue),
+            )
+            readButton.grid(column=1, row=self.cdiSettingRow)
+            self.cdiSettingRow += 1
+
+            # Show the address
             address_str = ""
             if address_str is not None:
                 address_str = str(cm.address)
@@ -241,8 +289,96 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             self.cdiSettingWidgets.append(a_widget)
             self.cdiSettingWidgets.append(av_widget)
             self.cdiSettingRow += 1
-
             break
+
+    def onReadValueClicked(self, v_widget: tk.Widget,
+                           tkvar: Union[tk.StringVar, tk.IntVar, tk.DoubleVar],
+                           cdivar: CDIVar, mapToValue=None):
+        print("read:"
+              f" space={cdivar.space}={hex(cdivar.space)}"
+              f" address={cdivar.address}={hex(cdivar.address)}"
+              f" size={cdivar.size}={hex(cdivar.size)}")
+        # read 64 bytes from the CDI space starting at address zero
+        assert hasattr(self.mainform, 'settings'), \
+            "mainform must have 'settings' dictionary"
+        assert 'farNodeID' in self.mainform.settings, \
+            "mainform 'settings' dictionary is missing 'farNodeID'"
+        farNodeIDStr = self.mainform.settings['farNodeID']
+
+        memMemo = MemoryReadMemo(NodeID(farNodeIDStr),
+                                 cdivar.size, cdivar.space,
+                                 cdivar.address, self.memoryReadFail,
+                                 self.memoryReadSuccess)
+        memMemo.widget = v_widget
+        memMemo.tkvar = tkvar
+        memMemo.cdivar = cdivar
+        memMemo.mapToValue = mapToValue
+        network = self.mainform.network  # type: OpenLCBNetwork
+        network._memoryService.requestMemoryRead(memMemo)
+
+    def memoryReadFail(self, memo: MemoryReadMemo):
+        self.setStatus("Memory read...error.")
+
+    def memoryReadSuccess(self, memo: MemoryReadMemo):
+        self.setStatus("Memory read...success.")
+        widget = None  # type: tk.Widget | None
+        tkvar = None  # type: tk.StringVar | tk.IntVar | tk.DoubleVar | None
+        cdivar = None  # type: CDIVar | None
+        if hasattr(memo, 'widget'):
+            widget = memo.widget
+            try:
+                # widget['state'] = tk.NORMAL
+                widget.configure(state=tk.NORMAL)
+            except tk.TclError:
+                pass  # N/A (such as Scale)
+        value = None
+        mapToValue = None
+        found = None
+        if hasattr(memo, 'cdivar'):
+            cdivar = memo.cdivar
+            assert cdivar is not None
+            cdivar.setData(memo.data)
+            value = cdivar.value()
+            if (value is not None) and hasattr(memo, 'mapToValue'):
+                mapToValue = memo.mapToValue
+                if mapToValue:
+                    for k, v in mapToValue.items():
+                        # if str(v.value()) == str(value):
+                        if v.value() == value:
+                            value = k  # key is the user-facing string
+                            found = value
+                            break
+                    if found is None:
+                        logger.warning(
+                            f"Found no matching value for {repr(value)}"
+                            f" in {mapToValue}")
+                    else:
+                        logger.warning(
+                            f"Found matching value {repr(value)} for {found}")
+                else:
+                    logger.debug(
+                        f"There is no value map. Using {repr(value)} directly")
+            else:
+                logger.debug(
+                    f"There is no value map. Using {repr(value)} directly")
+        else:
+            logger.warning("There is no cdivar.")
+        if hasattr(memo, 'tkvar'):
+            tkvar = memo.tkvar
+            if value is not None:
+                if isinstance(tkvar, tk.StringVar):
+                    print(f"Set StringVar to {repr(value)}")
+                    tkvar.set(str(value))
+                else:
+                    print(f"Set {type(tkvar).__name__} to {repr(value)}"
+                          f" ({cdivar.data})")
+                    # Assume input already matches type of tk var
+                    tkvar.set(value)
+
+    def onWriteValueClicked(self, v_widget: tk.Widget,
+                            tkvar: Union[tk.StringVar, tk.IntVar, tk.DoubleVar],  # noqa: E501
+                            cdivar: CDIVar, mapToValue=None):
+        print(f"TODO: write: {cdivar.className}({repr(tkvar.get())})")
 
     def clearSettingWidgets(self):
         for widget in self.cdiSettingWidgets:

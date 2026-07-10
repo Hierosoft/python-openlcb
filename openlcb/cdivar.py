@@ -535,6 +535,13 @@ class CDIVar:
                     f"Tried to set {self.className} to a(n)"
                     f" {type(other).__name__}")
 
+    def setFromString(self, valueStr):
+        """Use this only for types that can be cast from str
+        (Or implement manual parsing).
+        """
+        value = CLASSNAME_TYPES[self.className](valueStr)
+        self.set(value)
+
     def getData(self):
         return self.data
 
