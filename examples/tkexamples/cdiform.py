@@ -24,7 +24,7 @@ from typing import Any, Callable, Dict, List, Union
 from xml.etree import ElementTree as ET
 
 from openlcb.cdivar import CLASSNAME_TYPES, CDIVar
-from openlcb.memoryservice import MemoryReadMemo
+from openlcb.memoryservice import MemoryReadMemo, MemoryWriteMemo
 from openlcb.nodeid import NodeID
 from openlcb.openlcbnetwork import OpenLCBNetwork
 
@@ -255,7 +255,12 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             v_widget.cdivar = cdivar
             v_widget.tip = nameLabel.tip
             try:
-                v_widget.configure(state='readonly')  # readonly until refresh
+                if hasattr(v_widget, 'scale'):
+                    v_widget.scale.configure(state=tk.DISABLED)
+                else:
+                    v_widget.configure(state="readonly")  # readonly until refresh
+                if hasattr(v_widget, 'label'):
+                    v_widget.label.configure(state=tk.DISABLED)
             except tk.TclError:
                 pass  # N/A such as for Scale
             #   so that previous value is known.
@@ -267,7 +272,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                 command=partial(self.onWriteValueClicked, v_widget, tkvar,
                                 cdivar, mapToValue=mapToValue),
             )
-            # writeButton.grid(column=0, row=self.cdiSettingRow)
+            writeButton.grid(column=0, row=self.cdiSettingRow)
 
             readButton = ttk.Button(
                 self.cdiSettingFrame,
@@ -314,6 +319,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         memMemo.cdivar = cdivar
         memMemo.mapToValue = mapToValue
         network = self.mainform.network  # type: OpenLCBNetwork
+        self.setStatus("Memory read...")
         network._memoryService.requestMemoryRead(memMemo)
 
     def memoryReadFail(self, memo: MemoryReadMemo):
@@ -328,7 +334,12 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             widget = memo.widget
             try:
                 # widget['state'] = tk.NORMAL
-                widget.configure(state=tk.NORMAL)
+                if hasattr(widget, 'scale'):
+                    widget.scale.configure(state=tk.NORMAL)
+                else:
+                    widget.configure(state=tk.NORMAL)  # readonly until refresh
+                if hasattr(widget, 'label'):
+                    widget.label.configure(state=tk.NORMAL)
             except tk.TclError:
                 pass  # N/A (such as Scale)
         value = None
@@ -378,7 +389,35 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
     def onWriteValueClicked(self, v_widget: tk.Widget,
                             tkvar: Union[tk.StringVar, tk.IntVar, tk.DoubleVar],  # noqa: E501
                             cdivar: CDIVar, mapToValue=None):
-        print(f"TODO: write: {cdivar.className}({repr(tkvar.get())})")
+        print(f"write: {cdivar.className}({repr(tkvar.get())})"
+              f" space={cdivar.space}={hex(cdivar.space)}"
+              f" address={cdivar.address}={hex(cdivar.address)}"
+              f" size={cdivar.size}={hex(cdivar.size)}")
+        # read 64 bytes from the CDI space starting at address zero
+        assert hasattr(self.mainform, 'settings'), \
+            "mainform must have 'settings' dictionary"
+        assert 'farNodeID' in self.mainform.settings, \
+            "mainform 'settings' dictionary is missing 'farNodeID'"
+        farNodeIDStr = self.mainform.settings['farNodeID']
+        cdivar.setFromString(tkvar.get())
+        memMemo = MemoryWriteMemo(NodeID(farNodeIDStr),
+                                  self.memoryWriteSuccess,
+                                  self.memoryWriteFail,
+                                  cdivar.size, cdivar.space,
+                                  cdivar.address, cdivar.getData())
+        memMemo.widget = v_widget
+        memMemo.tkvar = tkvar
+        memMemo.cdivar = cdivar
+        memMemo.mapToValue = mapToValue
+        network = self.mainform.network  # type: OpenLCBNetwork
+        self.setStatus("Memory write...")
+        network._memoryService.requestMemoryWrite(memMemo)
+
+    def memoryWriteSuccess(self, memo):
+        self.setStatus("Memory write...success.")
+
+    def memoryWriteFail(self, memo):
+        self.setStatus("Memory write...failed.")
 
     def clearSettingWidgets(self):
         for widget in self.cdiSettingWidgets:
