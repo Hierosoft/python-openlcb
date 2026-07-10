@@ -415,6 +415,19 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
 
     def memoryWriteSuccess(self, memo):
         self.setStatus("Memory write...success.")
+        if hasattr(memo, 'widget'):
+            widget = memo.widget
+            try:
+                # widget['state'] = tk.NORMAL
+                if hasattr(widget, 'scale'):
+                    widget.scale.configure(state=tk.NORMAL)
+                else:
+                    widget.configure(state=tk.NORMAL)  # readonly until refresh
+                if hasattr(widget, 'label'):
+                    widget.label.configure(state=tk.NORMAL)
+            except tk.TclError:
+                pass  # N/A (such as Scale)
+
 
     def memoryWriteFail(self, memo):
         self.setStatus("Memory write...failed.")
