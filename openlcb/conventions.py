@@ -146,6 +146,7 @@ def get_local_ip() -> Optional[str]:
 
 previous_three_octets = None
 initial_three_octets = None
+used_ids = set()
 
 
 def increment_octets(octets: bytearray):
@@ -234,6 +235,8 @@ def generate_node_id_str(id_range_prefix: str, increment: bool = False) -> str:
     instance (even of python-openlcb on same device) or
     locally-generated virtual node is unique.
 
+    See _generateNodeID for generating dummy IDs for internal use.
+
     Args:
         id_range_prefix (str): NodeID prefix in dotted hex notation
             (3 to 5. 3 at most recommended to make uniqueness more
@@ -241,6 +244,8 @@ def generate_node_id_str(id_range_prefix: str, increment: bool = False) -> str:
             python-openlcb (or as otherwise assigned by OpenLCB Group
             which reserves 05.* range). See
             <https://registry.openlcb.org/uniqueidranges>.
+        increment (bool): Increment such as more multiple
+            local IDs (virtual node(s) aside from local Node).
     Returns:
         str: Full 48-bit node ID in dotted hex string notation (Example:
             '05.01.01.4A.B7.19') that is unique (very likely...).
@@ -248,6 +253,7 @@ def generate_node_id_str(id_range_prefix: str, increment: bool = False) -> str:
 
     lastParts = [f"{p:02X}" for p in generate_last_three_octets(increment=increment)]  # noqa: E501
     assert len(lastParts) == 3
+    id_range_prefix = id_range_prefix.rstrip(".")
     prefixParts = id_range_prefix.split(".")
     if len(prefixParts) < 3:
         raise ValueError(
@@ -259,5 +265,10 @@ def generate_node_id_str(id_range_prefix: str, increment: bool = False) -> str:
             " (preferably less to increase likelihood of uniqueness). Got {}"
             .format(id_range_prefix))
     uniqueCount = 6 - len(prefixParts)
-    return ".".join(prefixParts+lastParts[-uniqueCount:])
+    id_str = ".".join(prefixParts+lastParts[-uniqueCount:])
     # ^ negative to keep last uniqueCount pairs
+    if used_ids in used_ids:
+        logger.warning(f"{id_str} was already used. Set increment=True"
+                       " if there is more than one local node!")
+    used_ids.add(id_str)
+    return id_str

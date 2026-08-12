@@ -53,6 +53,7 @@ def clean_file_name_char(c: str, placeholder: Union[str, None] = None) -> str:
 
 
 def clean_file_name(name: str, placeholder: Union[str, None] = None) -> str:
+    assert name is not None
     assert isinstance(name, str)
     if (os.path.sep in name) or ("/" in name):
         # or "/" since Python uses that even on Windows

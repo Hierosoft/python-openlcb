@@ -62,6 +62,10 @@ class MTI(Enum):
 
     New_Node_Seen                      = 0x2048   # alias resolution found new node; marked addressed (0x8 bit)  # noqa: E501
 
+    def isInternal(self, mti: 'MTI') -> bool:
+        assert isinstance(mti, MTI)
+        return mti.value >= 0x2000
+
     def priority(self) -> int:
         return (self.value & 0x0C00) >> 10
 

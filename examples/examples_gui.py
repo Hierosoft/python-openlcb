@@ -20,6 +20,8 @@ import threading
 
 from logging import getLogger
 
+from openlcb.memoryspace import MemorySpace
+
 try:
     import tkinter as tk
 except ImportError:
@@ -35,7 +37,6 @@ from examples_settings import Settings  # do 1st to fix path if no pip install
 
 
 from openlcb.cdimemo import CDIMemo
-from openlcb.memoryservice import MemorySpace
 from openlcb.message import Message
 from openlcb.xmldataprocessor import XMLDataProcessor
 from openlcb.mti import MTI
@@ -381,8 +382,9 @@ class MainForm(ttk.Frame):
             "Local Node ID",
             command=self.fillDefaultLocalNodeId,
             command_text="Default",
-            tooltip=('("05.01.01.01.03.01 for Python openlcb examples only:'),
+            tooltip=('"05.*.*.*.*.*" Node IDs are for OpenLCB only:'),
         )
+
         self.unique_ranges_url = "https://registry.openlcb.org/uniqueidranges"
         underlined_url = \
             ''.join([letter+'\u0332' for letter in self.unique_ranges_url])
@@ -392,7 +394,7 @@ class MainForm(ttk.Frame):
         #   a tk.Font instance.
         self.local_node_url_label = ttk.Label(
             self,
-            text='See ({})'.format(underlined_url),
+            text='See {}.'.format(underlined_url),
         )
         # A label is not a button, so must bind to mouse button event manually:
         self.local_node_url_label.bind(
@@ -451,6 +453,7 @@ class MainForm(ttk.Frame):
             command=self.cdiConnectClicked,
         )
         self.cdi_connect_button.grid(row=self.cdi_row, column=0)
+        self.cdi_row += 1
 
         self.cdi_refresh_button = ttk.Button(
             self.cdi_tab,
@@ -458,7 +461,7 @@ class MainForm(ttk.Frame):
             command=self.cdiRefreshClicked,
             state=tk.DISABLED,  # enabled on connect success callback
         )
-        self.cdi_refresh_button.grid(row=self.cdi_row, column=1)
+        self.cdi_refresh_button.grid(row=self.cdi_row, column=0)
         self.cdi_row += 1
 
         self.cdiSettingFrame = ttk.Frame(self.cdi_tab)
@@ -500,7 +503,7 @@ class MainForm(ttk.Frame):
 
     def setupNetwork(self):
         self.network = OpenLCBNetwork(self.getValue('localNodeID'))
-        self.cdi_form = CDIForm(self.network.canLink, self.cdi_tab)
+        self.cdi_form = CDIForm(self.cdi_tab, self.network.canLink, self)
         self.cdi_form.setSettingsContainer(self.cdiSettingFrame)
         self.cdi_form.setStatusCallback(self.setStatus)
         # ^ formerly OpenLCBNetwork() subclass
@@ -515,7 +518,7 @@ class MainForm(ttk.Frame):
         by the socket loop thread, so we must use self.root.after to
         trigger methods which affect the GUI (such as _handleMessage).
         """
-        self.root.after(0, self._handleMessage(message))
+        self.root.after_idle(self._handleMessage, message)
 
     def _handleMessage(self, message: Message):
         """Main thread Message handler.
@@ -537,6 +540,7 @@ class MainForm(ttk.Frame):
 
         # Can't communicate with LCC network, so disable related widget(s):
         self.cdi_refresh_button.configure(state=tk.DISABLED)
+        self.cdi_connect_button.configure(state=tk.NORMAL)
         self.setStatus("LCC network disconnected.")
 
     def _handleConnect(self):
@@ -587,11 +591,13 @@ class MainForm(ttk.Frame):
                 self._tcp_socket,
             )
             self._connect_thread = None
+            # self.cdi_connect_button.configure(state=tk.NORMAL)
         except Exception as ex:
             if self.cdi_form.getStatus() == msg:
                 # If error wasn't shown, clear startup message.
                 self.cdi_form.setStatus("")
             self.setStatus("Connect failed. {}".format(formatted_ex(ex)))
+            self.cdi_connect_button.configure(state=tk.NORMAL)
             raise  # show traceback still, in case in an IDE or Terminal.
         return result
 
@@ -603,7 +609,6 @@ class MainForm(ttk.Frame):
         self._connect_thread.start()
         # This thread may end quickly after connection since
         #   start_receiving starts a thread.
-        self.cdi_connect_button.configure(state=tk.DISABLED)
         self.cdi_connect_button.configure(state=tk.DISABLED)
 
     def cdiRefreshClicked(self):
@@ -632,7 +637,6 @@ class MainForm(ttk.Frame):
         self.setStatus("Downloading CDI...")
         assert self.cdi_form is not None
         assert self.network is not None
-        self.cdi_form.onStartDownload()
         try:
             self.network.download(farNodeID, MemorySpace.CDI,
                                   self.cdi_form)
@@ -658,6 +662,7 @@ class MainForm(ttk.Frame):
         self.setStatus(
             "Far Node ID has been set to {} portion of service name."
             .format(repr(id)))
+        self.cdi_connect_button.configure(state=tk.NORMAL)
 
     def getIdFromName(self, update_button=False):
         lcc_id = id_from_tcp_service_name(
@@ -751,7 +756,7 @@ class MainForm(ttk.Frame):
 
         # return field
         if tooltip is not None:
-            # Even if "", still add it.
+            # Even if "", still add it (used to provide feedback at runtime)
             field.tooltip = ttk.Label(self, text=tooltip)
             field.tooltip.grid(row=self.row, column=self.tooltip_column,
                                columnspan=self.tooltip_columnspan, sticky=tk.N)
@@ -759,6 +764,8 @@ class MainForm(ttk.Frame):
             #   field.widget above it.
             # ^ **self.gridargs is not necessary here (sticky is always tk.N).
             self.row += 1
+            if self.tooltip_column >= self.column:
+                self.column = self.tooltip_column + 1
 
         if self.column > self.column_count:
             self.column_count = self.column

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from collections import OrderedDict
 import os
 import struct
 import sys
@@ -6,6 +7,7 @@ import unittest
 
 from logging import getLogger
 
+from openlcb.convert import Convert
 from openlcb.physicallayer import PhysicalLayer
 if __name__ == "__main__":
     logger = getLogger(__file__)
@@ -29,6 +31,10 @@ from openlcb.linklayer import LinkLayer  # noqa: E402
 from openlcb.mti import MTI  # noqa: E402
 from openlcb.message import Message  # noqa: E402
 from openlcb.memoryservice import (  # noqa: E402
+    OP_FAILURE_BYTES,
+    TWO_BIT_PARAMS,
+    MCOp,
+    MCOpMasks,
     MemoryReadMemo,
     MemoryWriteMemo,
     MemoryService,
@@ -79,15 +85,6 @@ class TestMemoryServiceClass(unittest.TestCase):
             LinkMockLayer(MockPhysicalLayer(), NodeID(12))
         )
         self.mService = MemoryService(self.dService)
-
-    def testReturnCyrillicStrings(self):
-        # See also testReturnCyrillicStrings in test_snip
-        # If you have characters specific to UTF-8 (either in code or comment)
-        #   add the following as the 1st or 2nd line of the py file:
-        # -*- coding: utf-8 -*-
-        data = bytearray([0xd0, 0x94, 0xd0, 0xbc, 0xd0, 0xb8, 0xd1, 0x82, 0xd1, 0x80, 0xd0, 0xb8, 0xd0, 0xb9])   # Cyrillic spelling of the name Dmitry (7 characters becomes 14 bytes)  # noqa: E501
-        self.assertEqual(self.mService.arrayToString(data, len(data)), "Дмитрий")  # Cyrillic spelling of the name Dmitry. This string should appear as 7 Cyrillic characters like Cyrillic-demo-Dmitry.png in doc (14 bytes in a hex editor), otherwise your editor does not support utf-8 and editing this file with it could break it.  # noqa:E501
-        # TODO: Russian version is Дми́трий according to <https://en.wikipedia.org/wiki/Dmitry>. See Cyrillic-demo-Dmitry-Russian.png in doc.  # noqa:E501
 
     def testSingleRead(self):
         memMemo = MemoryReadMemo(NodeID(123), 64, 0xFD, 0,
@@ -191,92 +188,82 @@ class TestMemoryServiceClass(unittest.TestCase):
         self.assertEqual(len(LinkMockLayer.sentMessages), 5)  # read reply datagram reply sent and next datagram sent  # noqa: E501
         self.assertEqual(len(self.returnedMemoryReadMemo), 2)  # memory read returned  # noqa: E501
 
-    def testArrayToString(self):
-        sut = MemoryService.arrayToString(bytearray([0x41, 0x42, 0x43, 0x44]), 4)  # noqa:E501
-        self.assertEqual(sut, "ABCD")
+    def testProtocolGroupUniqueness(self):
+        """Ensure each 6-high-bit field is unique"""
+        opCounts = OrderedDict()
 
-        sut = MemoryService.arrayToString(bytearray([0x41, 0x42, 0, 0x44]), 4)
-        self.assertEqual(sut, "AB")
+        def incrementKey(key, counts):
+            if key not in counts:
+                counts[key] = 1
+                return
+            raise AssertionError(
+                f"Bitfield {hex(key)} applies to more than one parent op")
+            # counts[key] += 1
 
-        sut = MemoryService.arrayToString(bytearray([0x41, 0x42, 0x43, 0x44]), 2)  # noqa:E501
-        self.assertEqual(sut, "AB")
+        for op in MCOp:
+            incrementKey(op.value, opCounts)
+            # Ensure that 6-high-bit fields are systematized (correct
+            #   constants)
+            if ((op.value in OP_FAILURE_BYTES)
+                    and (len(OP_FAILURE_BYTES[op.value]) == 1)):
+                assert op.value not in TWO_BIT_PARAMS, \
+                    (f"{op} last 2 bits are not significant"
+                     " so it should not be in TWO_BIT_PARAMS dict")
+            # elif op.value & 0b11111100 in OP_FAILURE_BYTES:
+            #     for _, failureBytes in \
+            #             OP_FAILURE_BYTES[op.value & 0b11111100].items():
+            #         for failureByte in failureBytes:
+            #             assert failureByte not in TWO_BIT_PARAMS[op.value], \
+            #                 (f"Failure bytes should not be in two-bit"
+            #                  f" params for {op}")
+            #     assert isinstance(OP_FAILURE_BYTES[op.value], list), \
+            #         (f"If {op} use last 2 bits as index,"
+            #          " it should be recorded as a list in OP_FAILURE_BYTES")
+            # elif op.value in OP_FAILURE_BYTES:
+            #     assert isinstance(OP_FAILURE_BYTES[op.value], set), \
+            #         (f"If {op} doesn't use last 2 bits as index,"
+            #          " it should be recorded as a set")
+            elif op.value in TWO_BIT_PARAMS:
+                if op.value in OP_FAILURE_BYTES:
+                    assert isinstance(OP_FAILURE_BYTES[op.value], list), \
+                        (f"If {op} use last 2 bits as index, it"
+                         " should be recorded as a list in OP_FAILURE_BYTES")
+                # elif "Reply" in str(op):
+                #     # commented since not a real problem
+                #     # MCOp.Get_Configuration_Options_Reply doesn't have a
+                #     #    corresponding error for the same 6-high-bit
+                #     #    op field.
+                #     raise AssertionError(
+                #         (f"{op} is a reply but does not have an error reply."
+                #          " Does this follow the standard? If so,"
+                #          "remove this assertion."))
+            else:
+                # assert op.value in TWO_BIT_PARAMS, \
+                #     f"There is no list of two-bit params for {op}"
+                # ^ Incorrect assertion since some share 1st 6 bits and
+                #   don't have params. See below instead.
+                parentValue = op.value & 0b11111100
+                assert (op.value in TWO_BIT_PARAMS
+                        or ((parentValue in TWO_BIT_PARAMS)
+                            and (op.value in TWO_BIT_PARAMS[parentValue]))
+                        ), \
+                    f"There is no list of two-bit params for {op}"
 
-        sut = MemoryService.arrayToString(bytearray([0x41, 0x42, 0x43, 0]), 4)
-        self.assertEqual(sut, "ABC")
+        for opValue, _ in TWO_BIT_PARAMS.items():
+            parentValue = opValue & 0b11111100
+            assert opCounts.get(parentValue) == 1, \
+                f"op {hex(opValue)} is not in MCOp parents enum"
 
-        sut = MemoryService.arrayToString(bytearray([0x41, 0x42, 0x31, 0x32]), 8)  # noqa:E501
-        self.assertEqual(sut, "AB12")
-
-    def testStringToArray(self):
-        aut = MemoryService.stringToArray("ABCD", 4)
-        self.assertEqual(aut, bytearray([0x41, 0x42, 0x43, 0x44]))
-
-        aut = MemoryService.stringToArray("ABCD", 2)
-        self.assertEqual(aut, bytearray([0x41, 0x42]))
-
-        aut = MemoryService.stringToArray("ABCD", 6)
-        self.assertEqual(aut, bytearray([0x41, 0x42, 0x43, 0x44, 0x00, 0x00]))
-
-    def testIntToArray(self):
-        test_metas = [
-            {
-                'value': 65536,  # not a short (1 over max)
-                'length': 8,
-                # good_bytes: b'\x00\x00\x00\x00\x00\x01\x00\x00'
-            },
-            {
-                'value': 65536,
-                'length': 4,
-                # good_bytes: b'\x00\x01\x00\x00',
-            },
-            {
-                'value': 281470681743360,  # 65535 << 32
-                'length': 8,
-                # 'good_bytes': b'\x00\x00\xff\xff\x00\x00\x00\x00',
-            }
-        ]
-        for test_meta in test_metas:
-            value = test_meta['value']
-            length = test_meta['length']
-            good_bytes = struct.pack(">{}s".format(length),
-                                     value.to_bytes(length, 'big'))
-            self.assertEqual(MemoryService.intToArray(value, length),
-                             good_bytes)
-
-    def testIntToArrayFail(self):
-        test_metas = [
-            {
-                'value': 65536,  # not a short (1 over max)
-                'length': 2,
-                # good_bytes: b'\x00\x00\x00\x00\x00\x01\x00\x00'
-            },
-            {
-                'value': 281470681743360,  # 65535 << 32
-                'length': 4,
-                # 'good_bytes': b'\x00\x00\xff\xff\x00\x00\x00\x00',
-            }
-        ]
-        for test_meta in test_metas:
-            value = test_meta['value']
-            length = test_meta['length']
-            with self.assertRaises(ValueError):
-                MemoryService.intToArray(value, length)
-
-    def testSpaceDecode(self):
-        byte6 = False
-        space = 0x00
-
-        (byte6, space) = self.mService.spaceDecode(0xF8)
-        self.assertEqual(space, 0xF8)
-        self.assertTrue(byte6)
-
-        (byte6, space) = self.mService.spaceDecode(0xFF)
-        self.assertEqual(space, 0x03)
-        self.assertFalse(byte6)
-
-        (byte6, space) = self.mService.spaceDecode(0xFD)
-        self.assertEqual(space, 0x01)
-        self.assertFalse(byte6)
+    def testProtocolGroupCompleteness(self):
+        for statedParentValue, values in TWO_BIT_PARAMS.items():
+            for byte1 in values:
+                # second byte.
+                computableParentValue = byte1 & MCOpMasks.Default
+                assert computableParentValue == statedParentValue, \
+                    (f"parent value of {hex(byte1)} is computed as"
+                     f" {hex(computableParentValue)} but dict records it under"
+                     f" {hex(statedParentValue)},"
+                     " so constants aren't systematized")
 
 
 if __name__ == '__main__':

@@ -693,7 +693,8 @@ class CanLink(LinkLayer):
             raise
         except Exception as ex:
             unmapped = frame.header & 0xFFF
-            logger.warning("[CanLink]" + formatted_ex(ex))
+            if not isinstance(ex, KeyError):
+                logger.warning(f"[CanLink] aliasToNodeID {formatted_ex(ex)}")
             #    special case for JMRI before 5.1.5 which sends
             #    VerifiedNodeID but not AMD
             if mti == MTI.Verified_NodeID:
@@ -706,12 +707,12 @@ class CanLink(LinkLayer):
                 sourceID = NodeID(self.nextInternallyAssignedNodeID)
                 self.nextInternallyAssignedNodeID += 1
                 logger.warning(
-                    "message frame {} from unknown source alias: {},"
-                    " continue with created ID {}"
-                    .format(frame, unmapped, sourceID))
+                    f"message frame {frame} from unknown source alias:"
+                    f" {unmapped}, continue with created ID {sourceID}")
 
             #    register that internally-generated nodeID-alias association
             self.aliasToNodeID[frame.header & 0xFFF] = sourceID
+            logger.info(f"MAPPED ALIAS {(frame.header & 0xFFF)} -> {sourceID}")
             logger.info(
                 "handleReceivedData setting nodeIdToAlias[{}]"
                 " from a datagram from an unknown source"
@@ -866,7 +867,7 @@ class CanLink(LinkLayer):
                 standards), the node became disconnected, or a NodeID
                 was entered incorrectly such as in a GUI.
         """
-        error = None
+        error = None  # Leave/reset as None for fireMessageSent to run.
         #    special case for datagram
         if msg.mti == MTI.Datagram:
             header = 0x10_00_00_00
@@ -960,6 +961,7 @@ class CanLink(LinkLayer):
                         #    send the resulting frame
                         frame = CanFrame(header, content)
                         self.physicalLayer.sendFrameAfter(frame)
+                        error = None
                 else:
                     error = (
                         "Don't know alias for destination = {}"
@@ -970,6 +972,9 @@ class CanLink(LinkLayer):
                 #    protocol send the resulting frame
                 frame = CanFrame(header, msg.data)
                 self.physicalLayer.sendFrameAfter(frame)
+                error = None  # clear non-fatal error to allow fireMessageSent
+        if error is None:
+            self.fireMessageSent(msg)
 
     def segmentDatagramDataArray(self, data: bytearray) -> List[bytearray]:
         """Segment data into zero or more arrays

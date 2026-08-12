@@ -142,6 +142,7 @@ class TestLocalNodeProcessorClass(unittest.TestCase):
         self.assertEqual(len(LinkMockLayer.sentMessages), 1)
         self.assertEqual(LinkMockLayer.sentMessages[0].data[0:3],
                          bytearray([0x04, 0x53, 0x61]))
+        # ^ after 0x04 should be: self.node21.snip.manufacturerName
         self.assertEqual(len(LinkMockLayer.sentMessages[0].data), 46)
 
     def testIdentifyEventsAddressed(self):

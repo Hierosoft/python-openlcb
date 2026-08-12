@@ -28,7 +28,9 @@ from openlcb.canbus.canlink import CanLink
 from openlcb.cdimemo import CDIMemo
 from openlcb.datagramservice import DatagramReadMemo, DatagramService
 from openlcb.dataprocessor import DataFormat
-from openlcb.memoryservice import MemoryReadMemo, MemoryService, MemorySpace
+from openlcb.dataprocessormemo import DataProcessorMemo
+from openlcb.memoryservice import MemoryReadMemo, MemoryService
+from openlcb.memoryspace import MemorySpace
 from openlcb.message import Message
 from openlcb.xmldataprocessor import XMLDataProcessor
 from openlcb.mti import MTI
@@ -54,7 +56,7 @@ class OpenLCBNetwork:
             is a MemorySpace)
     """
     def __init__(self, localNodeID: Union[str, bytearray, int, NodeID]):
-        self._onConnect: Union[Callable[[CDIMemo], None], None] = None
+        self._onConnect: Union[Callable[[DataProcessorMemo], None], None] = None
         self._port: PortInterface = None
         self.physicalLayer: CanPhysicalLayerGridConnect = None
         self.canLink: CanLink = None
@@ -92,6 +94,10 @@ class OpenLCBNetwork:
         self._fireStatus("MemoryService...")
         self._memoryService = MemoryService(self._datagramService)
         self._dataProcessor: XMLDataProcessor = None
+
+    @property
+    def memoryService(self):
+        return self._memoryService
 
     def setConnectHandler(self, handler: Callable[[CDIMemo], None]):
         """Deprecated in favor of a Message handler,
@@ -152,6 +158,7 @@ class OpenLCBNetwork:
         """
         # read 64 bytes from the CDI space starting at address zero
         assert isinstance(self._dataProcessor.space, MemorySpace)
+        self._dataProcessor.onStartDownload()
         memMemo = MemoryReadMemo(NodeID(farNodeID), 64,
                                  self._dataProcessor.space.value,
                                  0,  # incremented on _memoryReadSuccess
@@ -189,7 +196,6 @@ class OpenLCBNetwork:
         assert isinstance(space, MemorySpace)
         self._dataProcessor = dataProcessor
         self._dataProcessor._space = space
-        self._dataProcessor._stringTerminated = False
 
         self._startMemoryRead(farNodeID)
         # ^ Following this, _memoryReadSuccess callback will
@@ -285,23 +291,29 @@ class OpenLCBNetwork:
             #   manually.
             #   - Usually "socket connection broken" due to no more
             #     bytes to read, but ok if "\0" terminator was reached.
-            if ((self._dataProcessor._data is not None)
-                    and (not self._dataProcessor._stringTerminated)):
-                # This boolean is managed by the memoryReadSuccess
-                # callback.
-                cm = CDIMemo()
-                cm.error = formatted_ex(ex)
-                cm.done = True  # stop progress in gui/other main thread
-                if self._dataProcessor._onElement:
-                    self._dataProcessor._onElement(cm)
-                raise  # re-raise since incomplete (prevent done OK state)
+            if self._dataProcessor is not None:
+                if ((self._dataProcessor._data is not None)
+                        and (not self._dataProcessor._stringTerminated)):
+                    # This boolean is managed by the memoryReadSuccess
+                    # callback.
+                    cm = DataProcessorMemo()
+                    cm.error = formatted_ex(ex)
+                    cm.done = True  # stop progress in gui/other main thread
+                    if self._dataProcessor.onStatusMemo:
+                        self._dataProcessor.onStatusMemo(cm)
+                    raise  # re-raise since incomplete (prevent done OK state)
+            else:
+                logger.warning(
+                    "Listen loop ended, but _dataProcessor not set"
+                    " (DataProcessorMemo will not be used to notify caller).")
+            raise
         finally:
             self.physicalLayer.physicalLayerDown()  # Link_Layer_Down, setState
         self._listenThread: Union[threading.Thread, None] = None
 
         # If we got here, the RuntimeError was ok since the
         #   null terminator '\0' was reached (otherwise re-raise occurs above)
-        cm = CDIMemo()
+        cm = DataProcessorMemo()
         cm.error = ("Listen loop stopped (caught_ex={})."
                     .format(formatted_ex(caught_ex)))
         cm.done = True
@@ -332,7 +344,7 @@ class OpenLCBNetwork:
         logger.debug("[_handleMessage]   message.mti={}".format(message.mti))
         if message.mti == MTI.Link_Layer_Down:
             if self._onConnect:
-                cm = CDIMemo()
+                cm = DataProcessorMemo()
                 cm.done = True
                 cm.error = "Disconnected"
                 cm.message = message
@@ -341,7 +353,7 @@ class OpenLCBNetwork:
                 return True
         elif message.mti == MTI.Link_Layer_Up:
             if self._onConnect:
-                cm = CDIMemo()
+                cm = DataProcessorMemo()
                 cm.done = True  # 'done' without error indicates connected.
                 cm.message = message
                 self._onConnect(cm)
@@ -357,9 +369,10 @@ class OpenLCBNetwork:
             print("OpenLCBNetwork callback_msg({})".format(repr(status)))
             callback(CDIMemo(status=status))
         else:
-            logger.warning("No callback, but set status: {}".format(status))
+            logger.warning(
+                f"[OpenLCBNetwork] No callback, but set status: {status}")
 
-    def _memoryReadSuccess(self, memo: MemoryReadMemo):
+    def _memoryReadSuccess(self, memo: MemoryReadMemo, force_end=False):
         """Handle a successful read
         Invoked when the memory read successfully returns,
         this queues a new read until the entire CDI has been
@@ -369,7 +382,8 @@ class OpenLCBNetwork:
             memo (MemoryReadMemo): Successful MemoryReadMemo
         """
         # print("successful memory read: {}".format(memo.data))
-        if len(memo.data) == 64 and 0 not in memo.data:  # *not* last chunk
+        if (not force_end) and (len(memo.data) == 64 and 0 not in memo.data):
+            # *not* last chunk
             self._dataProcessor._stringTerminated = False
             if self._dataProcessor.format != DataFormat.EOF:
                 # save content
@@ -401,7 +415,7 @@ class OpenLCBNetwork:
             if len(self._dataProcessor._tag_stack):
                 cm = self._dataProcessor._tag_stack[-1]
             else:
-                cm = CDIMemo()
+                cm = DataProcessorMemo()
             cm.error = error
             cm.done = True  # stop progress in gui/other main thread
             self._dataProcessor._onElement(cm)

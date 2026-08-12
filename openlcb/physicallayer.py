@@ -60,9 +60,9 @@ class PhysicalLayer:
         self._send_frames = deque()
         # self._send_chunks = deque()
         self.onQueuedFrame = None
-        self.linkLayer = None  # type: Any
+        self.linkLayer = None  # type: LinkLayer|None
         # ^ LinkLayer would be circular import,
-        #   so can't have type hint...Move it (or LinkLayer's
+        #   so can't have non-comment hint...Move it (or LinkLayer's
         #   physicalLayer) to subclass?
 
     def sendDataAfter(self, data: Union[bytes, bytearray], verbose=False):
@@ -226,15 +226,18 @@ class PhysicalLayer:
 
     def physicalLayerUp(self):
         """abstract method"""
-        raise NotImplementedError("Each subclass must implement this.")
+        raise NotImplementedError(
+            f"{type(self).__name__} subclass must implement physicalLayerUp.")
 
     def physicalLayerRestart(self):
         """abstract method"""
-        raise NotImplementedError("Each subclass must implement this.")
+        raise NotImplementedError(
+            f"{type(self).__name__} subclass must implement physicalLayerRestart.")
 
     def physicalLayerDown(self):
         """abstract method"""
-        raise NotImplementedError("Each subclass must implement this.")
+        raise NotImplementedError(
+            f"{type(self).__name__} subclass must implement physicalLayerDown.")
 
     def handleData(self, data: Union[bytes, bytearray]) -> int:
         """abstract method (accept data, return # of frames created)"""

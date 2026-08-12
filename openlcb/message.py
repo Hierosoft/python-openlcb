@@ -2,6 +2,7 @@
 based on Message.swift
 Created by Bob Jacobsen on 6/1/22.
 '''
+import copy
 from typing import Union
 
 from openlcb import emit_cast
@@ -26,14 +27,30 @@ class Message:
         if data is None:
             data = bytearray()
         self.mti = mti
+        assert isinstance(mti, MTI)
         self.source = source
         self.destination = destination  # Union[NodeID, None]
         self.originalMTI = None  # type: Union[int, None]
         self.assertTypes()
-        if not isinstance(data, bytearray):
+        if not isinstance(data, bytearray):  # None becomes bytearray() above
             raise TypeError("Expected bytearray, got {}"
                             .format(type(data).__name__))
         self.data = data
+
+    def copy(self) -> 'Message':
+        source = None
+        if self.source is not None:
+            source = NodeID(self.source.value)
+        destination = None
+        if self.destination is not None:
+            destination = NodeID(self.destination.value)
+        assert source is not None
+        return Message(
+            self.mti,  # Enums are assigned by value not reference
+            source,
+            destination=destination,
+            data=copy.deepcopy(self.data),  # returns copy or None
+        )
 
     def assertTypes(self):
         assert isinstance(self.mti, MTI)
@@ -49,6 +66,9 @@ class Message:
         return self.mti.value & 0x0008 == 0
 
     def isAddressed(self) -> bool:
+        """Contains destination alias
+        (not necessarily NodeID)
+        """
         return self.mti.value & 0x0008 != 0
 
     def __str__(self):

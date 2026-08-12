@@ -1,6 +1,6 @@
 import unittest
 
-from openlcb.memoryservice import MemorySpace
+from openlcb.memoryspace import MemorySpace
 
 
 class OpenLCBNetworkTest(unittest.TestCase):

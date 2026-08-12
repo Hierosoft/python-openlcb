@@ -108,11 +108,12 @@ class RemoteNodeProcessor(Processor) :
 
     def _newNodeSeen(self, message: Message, node: Node) :
         # send pip and snip requests for info from the new node
+        assert self.linkLayer is not None
         pip = Message(MTI.Protocol_Support_Inquiry,
                       self.linkLayer.localNodeID, node.id, bytearray())
         self.linkLayer.sendMessage(pip)
         # We request SNIP data on startup so that we can display node names.
-        #   Can consider deferring this is it's a issue on big networks
+        #   Can consider deferring this if it's a issue on big networks
         snip = Message(MTI.Simple_Node_Ident_Info_Request,
                        self.linkLayer.localNodeID, node.id, bytearray())
         self.linkLayer.sendMessage(snip)

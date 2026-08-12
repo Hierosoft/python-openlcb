@@ -9,6 +9,7 @@ This file is part of the python-openlcb project
 
 Contributors: Poikilos
 """
+from functools import partial
 import logging
 import os
 import sys
@@ -19,10 +20,13 @@ from tkinter import EventType, ttk
 
 from collections import deque
 from logging import getLogger
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict, List, Union
 from xml.etree import ElementTree as ET
 
 from openlcb.cdivar import CLASSNAME_TYPES, CDIVar
+from openlcb.memoryservice import MemoryReadMemo, MemoryWriteMemo
+from openlcb.nodeid import NodeID
+from openlcb.openlcbnetwork import OpenLCBNetwork
 
 
 if __name__ == "__main__":
@@ -44,7 +48,7 @@ try:
     from openlcb.xmldataprocessor import XMLDataProcessor
     from openlcb.cdimemo import CDIMemo
     from openlcb.linklayer import LinkLayer
-    from openlcb.memoryservice import MemorySpace
+    from openlcb.memoryspace import MemorySpace
     from openlcb.xmldataprocessor import element_to_dict
 except ImportError as ex:
     print("{}: {}".format(type(ex).__name__, ex), file=sys.stderr)
@@ -57,25 +61,40 @@ except ImportError as ex:
 class CDIForm(ttk.Frame, XMLDataProcessor):
     """A GUI frame to represent the CDI visually as a tree.
 
+    Attributes:
+        enableRepDump (bool): Print XML to console while
+            performing replication. Replication is done in this class
+            rather than calling replicatedTree, so that widgets can be
+            generated in real time (while downloading XML).
+            In general, using replicatedTree is easier.
+
     Args:
         parent (TkWidget): Typically a ttk.Frame or tk.Frame with "root"
             attribute set.
+        linkLayer (LinkLayer): Typically a CanLink instance.
     """
     def __init__(self, *args, **kwargs):
-        assert isinstance(args[0], LinkLayer), \
+        assert issubclass(type(args[1]), LinkLayer), \
             "Expected LinkLayer/subclass got {}".format(type(args[0]).__name__)
-        linkLayer = args[0]
-        args = args[1:]  # remove first argument (only for GUI)
+        linkLayer = args[1]
+        assert issubclass(type(args[0]), tk.Widget)
         XMLDataProcessor.__init__(self, linkLayer, MemorySpace.CDI)
-        ttk.Frame.__init__(self, *args, **kwargs)
+        ttk.Frame.__init__(self, *args[:1], **kwargs)
         self._top_widgets = []
         if len(args) < 1:
             raise ValueError("at least one argument (parent) is required")
         self.parent = args[0]
-        self.root = args[0]
+        self.mainform = args[2]
+        self.root = args[2]
+        assert hasattr(self.mainform, 'network'), \
+            "mainform must have 'network' OpenLCBNetwork"
+        assert hasattr(self.mainform, 'settings'), \
+            "mainform must have 'settings' dictionary with at least 'farNodeID'"
         self._status_callback = None
         if hasattr(self.parent, 'root'):
             self.root = self.parent.root
+        elif hasattr(self.mainform, 'root'):
+            self.root = self.mainform.root
         self._container = self  # where to put visible widgets
         self._treeview = None  # type: ttk.Treeview|None
         self._treeMemos = {}  # type: Dict[str, CDIMemo]
@@ -86,6 +105,51 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         self.cdiSettingWidgets = []  # type: list[tk.Widget]
         self.cdiSettingRow = 0
         self.cdiSettingFrame = None  # type: Union[ttk.Frame, tk.Frame, None]
+        assert not hasattr(self, 'address'), "using redundant variable"
+        self._parsing_address = None
+        self._scope = []  # type: list[CDIMemo]
+        self.multilineTags = ["segment", "group"]
+        self.multilineTags += list(CLASSNAME_TYPES.keys())
+        self.multilineTags += ["map", "relation"]
+        self.enableRepDump = False
+
+    def scopeIndent(self, tab="    ") -> str:
+        """Get indent for debug lines
+        for showing tag scope visually (as indentation) during parsing.
+        """
+        return tab * len(self._scope)
+
+    def scopeTags(self, show_attrib=True) -> List[str]:
+        """Get debug info regarding XML stack
+        (current parsing scope). It is empty after document is finished.
+        """
+        items = []
+        for cm in self._scope:
+            tagRepr = cm.tag
+            if show_attrib:
+                assert cm.tag is not None
+                tagRepr = "<" + cm.tag
+                if cm.element is not None:
+                    for k, v in cm.element.attrib.items():
+                        tagRepr += f' {k}="{v}"'
+                tagRepr += ">"
+            items.append(tagRepr)
+        return items
+
+    def getScopeIdx(self, tag):
+        tag = tag.lower()
+        for idx in reversed(range(len(self._scope))):
+            cm = self._scope[idx]
+            assert cm.tag is not None
+            if cm.tag.lower() == tag:
+                return idx
+        return -1
+
+    def getScope(self, tag):
+        idx = self.getScopeIdx(tag)
+        if idx < 0:
+            return None
+        return self._scope[idx]
 
     def setSettingsContainer(self, container: Union[ttk.Frame, tk.Frame]):
         self.cdiSettingFrame = container
@@ -126,7 +190,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             cm = self._treeMemos[iid]
             # print(f"type(item)={type(item)}")
             # raise NotImplementedError(item)
-            # print(f"cm={cm}")
+            print(f"cm={cm}")
             self.clearSettingWidgets()
             if cm.tag not in CLASSNAME_TYPES:
                 # Non-value (such as segment or group)
@@ -146,7 +210,15 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             cdivar = cm.toCDIVar()
             tkvar = None
             v_widget = None
-            if cdivar.max:
+            mapToValue = cm.valueMap()
+            # self.mapToValue = mapToValue
+            if mapToValue:
+                tkvar = tk.StringVar(self.root)
+                v_widget = ttk.Combobox(self.cdiSettingFrame,
+                                        textvariable=tkvar,
+                                        values=list(mapToValue.keys()))
+                v_widget.mapToValue = mapToValue
+            elif cdivar.max:
                 if cdivar.className == "int":
                     tkvar = tk.IntVar(self.root)
                 elif cdivar.className == "float":
@@ -154,11 +226,19 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                 else:
                     raise TypeError("Device should not specify max for {}"
                                     .format(cdivar.className))
-
-                v_widget = ttk.LabeledScale(self.cdiSettingFrame, variable=tkvar)
+                v_widget = ttk.LabeledScale(self.cdiSettingFrame,
+                                            variable=tkvar,
+                                            from_=cdivar.min,
+                                            to=cdivar.max)
                 # ^ widget.scale is ttk.Scale, widget.label is ttk.Label
+                # ^ a.k.a. Slider (if not using Tk)
                 v_widget.scale.cdivar = cdivar
                 v_widget.scale.tip = nameLabel.tip
+
+                def update_label_width(*args):
+                    # Fix label being too small to show value:
+                    v_widget.label.configure(width=len(str(int(tkvar.get()))) + 2)  # noqa: E501
+                tkvar.trace_add('write', update_label_width)
             else:
                 tkvar = tk.StringVar(self.root)
                 v_widget = ttk.Entry(self.cdiSettingFrame, textvariable=tkvar)
@@ -166,10 +246,44 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             self.cdiSettingRow += 1
             self.cdiSettingWidgets.append(v_widget)
             if cdivar.default is not None:
-                tkvar.set(cdivar.default)
+                defaultStr = cdivar.default
+                if mapToValue:
+                    mapToStr = cm.keyMap()
+                    assert mapToStr
+                    defaultStr = mapToStr[str(cdivar.default.value())]
+                tkvar.set(defaultStr)
             v_widget.cdivar = cdivar
             v_widget.tip = nameLabel.tip
+            try:
+                if hasattr(v_widget, 'scale'):
+                    v_widget.scale.configure(state=tk.DISABLED)
+                else:
+                    v_widget.configure(state="readonly")  # readonly until refresh
+                if hasattr(v_widget, 'label'):
+                    v_widget.label.configure(state=tk.DISABLED)
+            except tk.TclError:
+                pass  # N/A such as for Scale
+            #   so that previous value is known.
 
+            # Write and Read buttons
+            writeButton = ttk.Button(
+                self.cdiSettingFrame,
+                text="Write",
+                command=partial(self.onWriteValueClicked, v_widget, tkvar,
+                                cdivar, mapToValue=mapToValue),
+            )
+            writeButton.grid(column=0, row=self.cdiSettingRow)
+
+            readButton = ttk.Button(
+                self.cdiSettingFrame,
+                text="Read",
+                command=partial(self.onReadValueClicked, v_widget, tkvar,
+                                cdivar, mapToValue=mapToValue),
+            )
+            readButton.grid(column=1, row=self.cdiSettingRow)
+            self.cdiSettingRow += 1
+
+            # Show the address
             address_str = ""
             if address_str is not None:
                 address_str = str(cm.address)
@@ -180,8 +294,143 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             self.cdiSettingWidgets.append(a_widget)
             self.cdiSettingWidgets.append(av_widget)
             self.cdiSettingRow += 1
-
             break
+
+    def onReadValueClicked(self, v_widget: tk.Widget,
+                           tkvar: Union[tk.StringVar, tk.IntVar, tk.DoubleVar],
+                           cdivar: CDIVar, mapToValue=None):
+        print("read:"
+              f" space={cdivar.space}={hex(cdivar.space)}"
+              f" address={cdivar.address}={hex(cdivar.address)}"
+              f" size={cdivar.size}={hex(cdivar.size)}")
+        # read 64 bytes from the CDI space starting at address zero
+        assert hasattr(self.mainform, 'settings'), \
+            "mainform must have 'settings' dictionary"
+        assert 'farNodeID' in self.mainform.settings, \
+            "mainform 'settings' dictionary is missing 'farNodeID'"
+        farNodeIDStr = self.mainform.settings['farNodeID']
+
+        memMemo = MemoryReadMemo(NodeID(farNodeIDStr),
+                                 cdivar.size, cdivar.space,
+                                 cdivar.address, self.memoryReadFail,
+                                 self.memoryReadSuccess)
+        memMemo.widget = v_widget
+        memMemo.tkvar = tkvar
+        memMemo.cdivar = cdivar
+        memMemo.mapToValue = mapToValue
+        network = self.mainform.network  # type: OpenLCBNetwork
+        self.setStatus("Memory read...")
+        network._memoryService.requestMemoryRead(memMemo)
+
+    def memoryReadFail(self, memo: MemoryReadMemo):
+        self.setStatus("Memory read...error.")
+
+    def memoryReadSuccess(self, memo: MemoryReadMemo):
+        self.setStatus("Memory read...success.")
+        widget = None  # type: tk.Widget | None
+        tkvar = None  # type: tk.StringVar | tk.IntVar | tk.DoubleVar | None
+        cdivar = None  # type: CDIVar | None
+        if hasattr(memo, 'widget'):
+            widget = memo.widget
+            try:
+                # widget['state'] = tk.NORMAL
+                if hasattr(widget, 'scale'):
+                    widget.scale.configure(state=tk.NORMAL)
+                else:
+                    widget.configure(state=tk.NORMAL)  # readonly until refresh
+                if hasattr(widget, 'label'):
+                    widget.label.configure(state=tk.NORMAL)
+            except tk.TclError:
+                pass  # N/A (such as Scale)
+        value = None
+        mapToValue = None
+        found = None
+        if hasattr(memo, 'cdivar'):
+            cdivar = memo.cdivar
+            assert cdivar is not None
+            cdivar.setData(memo.data)
+            value = cdivar.value()
+            if (value is not None) and hasattr(memo, 'mapToValue'):
+                mapToValue = memo.mapToValue
+                if mapToValue:
+                    for k, v in mapToValue.items():
+                        # if str(v.value()) == str(value):
+                        if v.value() == value:
+                            value = k  # key is the user-facing string
+                            found = value
+                            break
+                    if found is None:
+                        logger.warning(
+                            f"Found no matching value for {repr(value)}"
+                            f" in {mapToValue}")
+                    else:
+                        logger.warning(
+                            f"Found matching value {repr(value)} for {found}")
+                else:
+                    logger.debug(
+                        f"There is no value map. Using {repr(value)} directly")
+            else:
+                logger.debug(
+                    f"There is no value map. Using {repr(value)} directly")
+        else:
+            logger.warning("There is no cdivar.")
+        if hasattr(memo, 'tkvar'):
+            tkvar = memo.tkvar
+            if value is not None:
+                if isinstance(tkvar, tk.StringVar):
+                    print(f"Set StringVar to {repr(value)}")
+                    tkvar.set(str(value))
+                else:
+                    print(f"Set {type(tkvar).__name__} to {repr(value)}"
+                          f" ({cdivar.data})")
+                    # Assume input already matches type of tk var
+                    tkvar.set(value)
+
+    def onWriteValueClicked(self, v_widget: tk.Widget,
+                            tkvar: Union[tk.StringVar, tk.IntVar, tk.DoubleVar],  # noqa: E501
+                            cdivar: CDIVar, mapToValue=None):
+        print(f"write: {cdivar.className}({repr(tkvar.get())})"
+              f" space={cdivar.space}={hex(cdivar.space)}"
+              f" address={cdivar.address}={hex(cdivar.address)}"
+              f" size={cdivar.size}={hex(cdivar.size)}")
+        # read 64 bytes from the CDI space starting at address zero
+        assert hasattr(self.mainform, 'settings'), \
+            "mainform must have 'settings' dictionary"
+        assert 'farNodeID' in self.mainform.settings, \
+            "mainform 'settings' dictionary is missing 'farNodeID'"
+        farNodeIDStr = self.mainform.settings['farNodeID']
+        cdivar.setFromString(tkvar.get())
+        memMemo = MemoryWriteMemo(NodeID(farNodeIDStr),
+                                  self.memoryWriteSuccess,
+                                  self.memoryWriteFail,
+                                  cdivar.size, cdivar.space,
+                                  cdivar.address, cdivar.getData())
+        memMemo.widget = v_widget
+        memMemo.tkvar = tkvar
+        memMemo.cdivar = cdivar
+        memMemo.mapToValue = mapToValue
+        network = self.mainform.network  # type: OpenLCBNetwork
+        self.setStatus("Memory write...")
+        network._memoryService.requestMemoryWrite(memMemo)
+
+    def memoryWriteSuccess(self, memo):
+        self.setStatus("Memory write...success.")
+        if hasattr(memo, 'widget'):
+            widget = memo.widget
+            try:
+                # widget['state'] = tk.NORMAL
+                if hasattr(widget, 'scale'):
+                    widget.scale.configure(state=tk.NORMAL)
+                else:
+                    widget.configure(state=tk.NORMAL)  # readonly until refresh
+                if hasattr(widget, 'label'):
+                    widget.label.configure(state=tk.NORMAL)
+            except tk.TclError:
+                pass  # N/A (such as Scale)
+
+
+    def memoryWriteFail(self, memo):
+        self.setStatus("Memory write...failed.")
 
     def clearSettingWidgets(self):
         for widget in self.cdiSettingWidgets:
@@ -204,13 +453,13 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
     def indent(self):
         return len(self._tag_stack) * "  "
 
-    def setStatus(self, message: str):
+    def setStatus(self, text: str):
         # See also MainForm
         if self._status_callback:
             self._status_var.set("")
-            self._status_callback(message)
+            self._status_callback(text)
             return
-        self._status_var.set(message)
+        self._status_var.set(text)
 
     def setStatusCallback(self, callback: Callable):
         self._status_callback = callback
@@ -221,13 +470,14 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
 
     def onStartDownload(self):
         """Initialize variables used by element handler(s)."""
-        self.onStart()
-        self._resetTree()
+        XMLDataProcessor.onStartDownload(self)
+        # TODO: clear tree?
 
     def onStatusMemo(self, cm: CDIMemo) -> bool:
         """Handler for incoming CDI tag
-        Use this for callback in downloadCDI, which sets parser
-        (_dataProcessor)'s _onElement.
+        Use this for callback in downloadCDI
+        (onStatusMemo replaces _dataProcessor's _onElement
+        formerly set by downloadCDI).
 
         Args:
             cm (CDIMemo): Document parsing state info
@@ -240,22 +490,156 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         elif cm.done:
             show_status = "Done loading CDI."
         if show_status:
-            self.root.after(0, self.setStatus, show_status)
+            self.root.after_idle(self.setStatus, show_status)
         if cm.done:
             return True
         return False
 
-    def onPushScope(self, cm: CDIMemo) -> bool:
+    def onPushScope(self, cm: CDIMemo,
+                    replication_index: Union[int, None] = None) -> bool:
+        if self.enableRepDump:
+            if cm.tag not in self.multilineTags:
+                sys.stdout.write(self.scopeIndent() + cm.toXMLStart())
+            else:
+                print(self.scopeIndent() + cm.toXMLStart())
+        if self._scope:
+            if cm.parent is not self._scope[-1]:
+                old = self._scope[-1]
+                old_name = old.getChildContent('name')
+                new_name = cm.parent.getChildContent('name')
+                old_idx = old.element.attrib.get('replicated_index')
+                new_idx = cm.parent.element.attrib.get('replicated_index')
+                logger.info(
+                    "expected same parent"
+                    # f" {CDIMemo.to_dict(cm.parent, trim_blank=True)},"
+                    f" {old.tag} name={old_name} idx={old_idx}"
+                    f" got other parent {cm.parent.tag} name={new_name}"
+                    f" idx={new_idx},")
+        if replication_index is not None:
+            cm.element.attrib['replication_index'] = str(replication_index)
+        self._scope.append(cm)
         if cm.element is None:
             raise ValueError("No element for push tag event")
-        self.root.after(0, self._onPushScope, cm)
+        # Parse in realtime to prevent out-of-order processing
+        #   potentially caused by the UI framework's "after" method.
+        offset = cm.element.attrib.get('offset')
+        if offset is not None:
+            offset = int(offset)
+            assert self._parsing_address is not None, \
+                f"{cm.tag} offset before segment!"
+            self._parsing_address += offset
+
+        # NOTE: _onPushScope (not onPushScope) is on main thread which
+        #   is the only thread that can affect the GUI.
+        if cm.tag == "segment":
+            if self.getScope("group") is not None:
+                raise RuntimeError(
+                    "Tried to parse segment start before group end"
+                    " (or less likely, XML is non-standard"
+                    " having segment in group)")
+            self._parsing_space = int(cm.element.attrib['space'])
+            origin = cm.element.attrib.get('origin')
+            if origin is None:
+                origin = 0
+                logger.debug(f"Defaulting segment to origin={origin}")
+            self._parsing_address = int(origin)
+        elif cm.tag == "group":
+            assert self._parsing_address is not None, \
+                f"{cm.tag} before segment!"
+            # replication: See onPopScope (after entire size is known)
+        elif cm.tag in CLASSNAME_TYPES:
+            assert self._parsing_address is not None, \
+                f"{cm.tag} before segment!"
+            cm.space = self._parsing_space
+            cm.address = self._parsing_address
+            # NOTE: ^ This becomes the real address since onPopScope
+            #   performs replication and calls onPushScope again for
+            #   each (excluding first) copy.
+            varSize = cm.getSize()
+            assert varSize is not None, f"expected size for {cm.tag}"
+            varSize = int(varSize)
+            self._parsing_address += varSize
+        self.root.after_idle(self._onPushScope, cm)
         self.onStatusMemo(cm)
         return True
 
+    def recursiveParse(self, cm: CDIMemo,
+                      replication_index: Union[int, None] = None):
+        """Push a non-XML (generated) memo, simulating recursive parsing
+        """
+        self.onPushScope(cm, replication_index=replication_index)
+        for child in cm.children:
+            child.parent = cm
+            self.recursiveParse(child, replication_index=replication_index)
+        self.onPopScope(cm)
+
     def onPopScope(self, cm: CDIMemo) -> bool:
+        if cm.tag != self._scope[-1].tag:
+            space = None
+            origin = None
+            if cm.element is not None:
+                space = cm.element.get('space')
+                origin = cm.element.get('origin')
+            logger.warning(
+                f"Popping </{cm.tag}> (space={space} origin={origin})"
+                f" before </{self._scope[-1].tag}>"
+                f" (stack: {self.scopeTags()})")
+        topMemo = self._scope.pop()
+        assert topMemo is not None
+        assert cm is topMemo, \
+            f"Got {cm.toXMLStart()} different than top {topMemo.toXMLStart()}"
+        content = ""
+        # Content isn't collected until end tag.
+        if (cm.element is not None) and (cm.element.text is not None):
+            content = cm.element.text
+        elif cm.content is not None:
+            content = cm.content
+        if self.enableRepDump:
+            sys.stdout.write(content)
+            if cm.tag not in self.multilineTags:
+                print(cm.toXMLEnd())  # use print even for single line tag
+                #  since this is the end of the element.
+            else:
+                print(self.scopeIndent() + cm.toXMLEnd())
         if cm.element is None:
             raise ValueError("No element for pop tag event")
-        self.root.after(0, self._onPopScope, cm)
+        # memos = [cm]
+        replication = cm.element.attrib.get('replication')
+        if replication is not None:
+            # Replication must be during onPopScope since children
+            #   weren't processed until now.
+            replication = int(replication)
+            for i in range(replication):
+                if i == 0:
+                    # else onPushScope was already called for [0] (original)
+                    # cm.element.attrib['replication_index'] = str(i)
+                    self.root.after_idle(self._onPopScope, cm)
+                    continue
+                replicatedMemo = cm.copy()
+                replicatedMemo.iid = None  # Not in tree yet
+                #   (See _treeview.insert in onPushScope)
+                # Delete replication to prevent infinite replication:
+                assert replicatedMemo.element is not None
+                del replicatedMemo.element.attrib['replication']
+                replicatedMemo.element.attrib['replication_index'] = str(i)
+                # memos.append(replicatedMemo)
+                self.recursiveParse(
+                    replicatedMemo,
+                    replication_index=i
+                )
+                # self.onPushScope(replicatedMemo, replication_index=i)
+                # if replicatedMemo.children:
+                #     assert len(replicatedMemo.children) == len(cm.children)
+                #     for cI, child in enumerate(replicatedMemo.children):
+                #         child.parent = replicatedMemo
+                #         assert (len(child.children)
+                #                 == len(cm.children[cI].children))
+                #         self.recursiveParse(child, replication_index=i)
+                # self.onPopScope(replicatedMemo)
+            self.onStatusMemo(cm)
+            return True
+
+        self.root.after_idle(self._onPopScope, cm)
         self.onStatusMemo(cm)
         return True
 
@@ -281,9 +665,6 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                 - 'content' (str): Content (only set during this
                   callback, not start tag).
 
-        Raises:
-            NotImplementedError: _description_
-            NotImplementedError: _description_
         """
         if self.cursorCol != 0:
             self.debug()
@@ -291,19 +672,37 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
         assert nameLower is not None  # only None for done/fail events
         cm.content
         assert self._treeview is not None
-        if nameLower == "name":
-            parentIID = self.getParentBranch(cm)
+        if nameLower in ("name", "repname"):
+            parentIID = self.getParentBranch(cm)  # source is cm.parent.iid
+            #   where parent is also a CDIMemo (if parent is None, then cm.iid
+            #   or "" to place at top level of tree)
             assert parentIID is not None, "name must be in a branch"
+            content = cm.content
+            if nameLower == "repname":
+                if content is not None:
+                    content = content.strip()
+                else:
+                    content = ""
+                assert cm.parent is not None
+                assert cm.parent.element is not None
+                idx = cm.parent.element.attrib.get('replication_index')
+                if idx is not None:
+                    idx = int(idx)
+                    content += f" #{idx+1}"
             if parentIID:
-                assert cm.content is not None
-                cm.content = cm.content.strip()
+                # assert content is not None
                 if cm.content is None:
                     logger.warning(
                         self.indent() + f"content is None for /{cm.tag}")
                     cm.content = ""
+                    content = ""
+                if nameLower == "repname":
+                    nameItem = self._treeview.item(parentIID)
+                    if nameItem:
+                        content = f"{nameItem['text']}: {content}"
                 # "name" applies to parent, such as "segment" or "string"
-                _ = self._treeview.item(
-                    parentIID, text=cm.content.strip())
+                if content is not None:
+                    _ = self._treeview.item(parentIID, text=content)
             origin = cm.element.attrib.get('origin') if cm.element else None
             if cm.content:
                 if cm.tag == "segment":
@@ -388,13 +787,10 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
                   optional for identification and its children otherwise
                   required (previous start tags by XMLDataProcessor)
 
-        Raises:
-            NotImplementedError: _description_
-            NotImplementedError: _description_
         """
         # NOTE: If it is self-closing such as
         #   `<group offset='4'/>`,
-        #   then _onPopScope will also run (see endElement such
+        #   then onPopScope will run next (via endElement such
         #   as in python-openlcb's implementation of ContentHandler).
         assert cm.element is not None
         tag = cm.element.tag if cm.element is not None else None
@@ -440,14 +836,8 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             self._current_iid += 1  # TODO: associate with SubElement
         elif tagLower == "acdi":
             pass  # handled by superclass (sets self.acdi)
-        elif tagLower in ("int", "string", "float"):
-            content = ""
-            for child in cm.element:
-                if child.tag == "name":
-                    content = child.text
-                    if content is None:
-                        content = ""
-                    break
+        elif tagLower in CLASSNAME_TYPES:
+            content = ""  # NOTE: name sub-tag isn't parsed yet.
             new_branch = self._treeview.insert(
                 self.getParentBranch(cm),
                 index,
@@ -461,6 +851,7 @@ class CDIForm(ttk.Frame, XMLDataProcessor):
             cm.iid = new_branch
             self._current_iid += 1  # TODO: associate with SubElement
             #  and/or set values keyword argument to create association(s)
+        # NOTE: Can't get content of any tag such as name until onPopScope
 
 
 if __name__ == "__main__":

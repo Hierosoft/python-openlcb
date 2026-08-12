@@ -55,6 +55,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         #   so CanLink now requires a PhysicalLayer instance
         #   such as this in its constructor.
         CanPhysicalLayer.__init__(self)  # creates self._send_frames
+        FrameEncoder.__init__(self)
         self.assertValidData = False
         # region moved to CanLink constructor
         # from canLink.linkPhysicalLayer(self)  # self.setCallBack(callback):
@@ -81,7 +82,8 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         #   bytes/bytearray has no attribute 'format')
         return self.encodeFrameAsString(frame).encode("utf-8")
 
-    def receiveAll(self, device: PortInterface, verbose=False) -> int:
+    def receiveAll(self, device: PortInterface, verbose=False,
+                   verbose_fn=None) -> int:
         """Receive all data on the given device.
         Args:
             device (PortInterface): Device which *must* be in
@@ -92,12 +94,15 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         Returns:
             int: number of bytes received
         """
+        if verbose_fn is None:
+            verbose_fn = print
         count = 0
         try:
             data = device.receive()  # If timeout, set non-blocking
             if data is None:
                 return count
-            _ = self.handleData(data, verbose=verbose)
+            _ = self.handleData(data, verbose=verbose,
+                                verbose_fn=verbose_fn)
             count += len(data)
         except BlockingIOError:
             # raised by receive if no data (non-blocking is
@@ -106,7 +111,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         return count
 
     def sendAll(self, device: PortInterface, mode="binary",
-                verbose=False) -> int:
+                verbose=False, verbose_fn=None) -> int:
         """Send all queued frames using the given device.
 
         Args:
@@ -127,6 +132,8 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
                 time all frames were polled.
         """
         assert mode in ("binary", "text")
+        if verbose_fn is None:
+            verbose_fn = print
         if self.linkLayer:
             self.linkLayer.pollState()  # Advance delayed state(s) if necessary
             #  (done first since may enqueue frames).
@@ -149,7 +156,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
                 self.onFrameSent(frame)  # Calls setState if necessary
                 #   (if frame.afterSendState is not None).
                 if verbose:
-                    print("- SENT: {}".format(data))
+                    verbose_fn("- SENT: {}".format(data))
                 count += 1
         except IndexError:
             # nothing more to do (queue is empty)
@@ -218,7 +225,8 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         return v
 
     def handleData(self, data: Union[bytes, bytearray],
-                   test_output=None, verbose=False) -> int:
+                   test_output=None, verbose=False,
+                   verbose_fn=None) -> int:
         """Provide characters from the outside link to be parsed
 
         Args:
@@ -238,6 +246,8 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         frameCount = 0
         self.inboundBuffer += data
         lastByte = 0  # last index is at ';'
+        if verbose_fn is None:
+            verbose_fn = print
 
         if GC_END_BYTE in self.inboundBuffer:
             #  ^ ';' ends message so we have at least one (CR/LF not required)
@@ -288,7 +298,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
                     frameCount += 1
                     self.fireFrameReceived(cf)
                     if verbose:
-                        print("- RECV {}".format(
+                        verbose_fn("- RECV {}".format(
                             self.inboundBuffer[index:lastByte+1].strip()))
 
             # shorten buffer by removing the processed message
@@ -296,7 +306,8 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         return frameCount
 
     def handleDataStrict(self, data: Union[bytes, bytearray],
-                         test_output=None, verbose=False) -> int:
+                         test_output=None, verbose=False,
+                         verbose_fn=None) -> int:
         """Provide characters from the outside link to be parsed
 
         Args:
@@ -316,6 +327,8 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
         #   with messages and error checking (effectively noise
         #   rejection).
         cls = type(self)
+        if verbose_fn is None:
+            verbose_fn = print
         frameCount = 0
         self.inboundBuffer += data
         # lastByte = 0  # last index is at ';'
@@ -386,7 +399,7 @@ class CanPhysicalLayerGridConnect(CanPhysicalLayer, FrameEncoder):
             frameCount += 1
             self.fireFrameReceived(cf)
             if verbose:
-                print("- RECV {}".format(
+                verbose_fn("- RECV {}".format(
                     self.inboundBuffer[first:end].strip()))
 
             start = end  # proceed to next packet (keep going until no : or ;)

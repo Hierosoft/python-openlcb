@@ -1,9 +1,13 @@
 from enum import Enum
+import os
+import platform
 import re
 import time
+import xml.etree.ElementTree as ET
 
 from collections import OrderedDict
 from typing import (
+    Any,
     List,  # in case list doesn't support `[` in this Python version
     Union,  # in case `|` doesn't support 'type' in this Python version
 )
@@ -23,11 +27,26 @@ ORD_f = 0x66
 ORD_z = 0x7A
 
 
-def only_hex_pairs(value: str) -> Union[re.Match[bytes], re.Match[str], None]:
+def get_config_dir(unique_software_name: str):
+    """Get a configuration directory for any program
+    (In the parent directory recommended by the specific platform).
+    """
+    CONFIGS = os.path.expanduser("~/.config")
+    if platform.system() == "Darwin":
+        CONFIGS = os.path.expanduser("~/Library/Application Support")
+    elif platform.system() == "Windows":
+        CONFIGS = os.environ['APPDATA']
+    return os.path.join(CONFIGS, unique_software_name)
+
+
+def only_hex_pairs(value: str):
+    # type: (str) -> Union[re.Match[bytes], re.Match[str], None]
     """Check if string contains only machine-readable hex pairs.
     See openlcb.conventions submodule for LCC ID dot notation
     functions (less restrictive).
     """
+    # ^ PEP8 (instead of Python) type hint is used to avoid
+    #   "TypeError: 'type' object is not subscriptable"
     if isinstance(value, (bytearray, bytes)):
         return hex_pairs_brc.fullmatch(value)
     assert isinstance(value, str)
@@ -36,6 +55,8 @@ def only_hex_pairs(value: str) -> Union[re.Match[bytes], re.Match[str], None]:
 
 def emit_cast(value) -> str:
     """Get type and value, such as for debug output."""
+    if value is None:
+        return "None"
     repr_str = repr(value)
     if isinstance(value, Enum):
         repr_str = "{}".format(value.value)
@@ -131,3 +152,98 @@ def from_hex_bytes(b: bytearray, start: int, stop: int,
 
 def from_all_hex_bytes(b: bytearray) -> bytearray:
     return from_hex_bytes(b, 0, len(b))
+
+
+def hr_repr(value, always_quote: bool = False) -> str:
+    """Represent value with double quotes
+    if str, otherwise as an unquoted string.
+    (Human-readable repr).
+    """
+    # repr_value = repr(value)
+    # repr_value = repr_value.replace("\\\\", "\\")
+    # if repr_value.startswith("'") and repr_value.endswith("'"):
+    #     return '"' + repr_value[1:-1].replace('"', '\\"') + '"'
+    repr_value = str(value)
+    if always_quote or isinstance(value, str):
+        return '"' + repr_value.replace('"', '\\"') + '"'
+    return repr(value)
+
+
+def d_quote(value) -> str:
+    """Represent any type of value in double-quotes
+    (with any already present escaped) such as for emitting XML
+    attribute debug messages or any other technical/literary use.
+    """
+    return hr_repr(value, always_quote=True)
+
+
+def prBold(text: Any):
+    """Print in bold
+    (or if not available, more intense if available).
+    See echoC for details"""
+    # echoC(message, "1:37:40")
+    ansiP(text, 1)
+
+
+def prDim(text: Any):
+    """Show dim text in console.
+    (resets to 00 [default colors] for text after prDim).
+    Note: 0;30;40 is non-bold dim, but that's invisible in cmd.exe.
+    """
+    ansiP(text, 2)
+
+
+def ansiP(text: Any, ansiColor: Union[int, str]):
+    """Print color text to consoles that support ANSI color codes.
+    Args:
+        message (Any): Any message (will be cast to str).
+        ansiColor: Numerical or multi-number (str) ansi
+            color code (semi-colon separated--same codes but allows
+            multiple codes in a row). See
+            <https://en.wikipedia.org/wiki/ANSI_escape_code> for a full
+            list. Examples:
+            - "1;30;40" for dim (NOTE: 0;30;40 is gray, but is invisible
+              in cmd.exe)
+            - "96": Cyan
+    """
+    # - `\033[` starts the ANSI escape sequence.
+    # - 91m, 92m, ... etc., are color codes for different foreground colors.
+    # - \033[00m resets the text style so the terminal returns to normal
+    #   formatting after each print.
+    print(f"\033[{ansiColor}m {str(text)}\033[00m")
+
+
+def assert_xml(xml_string):
+    """Validate XML string.
+    Returns:
+        the parsed ElementTree root if valid.
+    Raises:
+        ET.ParseError: XML is invalid.
+    """
+    if not isinstance(xml_string, str) or not xml_string.strip():
+        raise ValueError("XML input must be a non-empty string.")
+
+    # try:
+    root = ET.fromstring(xml_string)  # Try parsing
+    return root
+    # except ET.ParseError as e:
+    #     raise ValueError(f"Invalid XML: {e}") from None
+
+
+def valid_xml(xml_string):
+    try:
+        assert_xml(xml_string)
+        return True
+    except Exception as ex:
+        print(f"[valid_xml] not valid: {formatted_ex(ex)}")
+    return False
+
+
+def valid_xml_file(path):
+    if not os.path.isfile(path):
+        raise FileNotFoundError(path)
+    data = None
+    with open(path, 'r') as stream:
+        data = stream.read()
+    assert data is not None
+    return valid_xml(data)

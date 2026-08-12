@@ -246,6 +246,13 @@ class DatagramService:
         # match to the memo and remove from queue
         memo = self.matchToWriteMemo(message)  # type: DatagramWriteMemo|None
 
+        # check for whether a match was found, indicating this was for us
+        if memo is None:
+            logger.debug(
+                f"Unrelated OK reply discarded: from"
+                f" {message.source} to {message.destination}")
+            return
+
         # check of tracking logic
         if self.currentOutstandingMemo != memo:
             logger.error(
@@ -263,6 +270,13 @@ class DatagramService:
         '''Not OK reply to write'''
         # match to the memo and remove from queue
         memo = self.matchToWriteMemo(message)
+
+        # check for whether a match was found, indicating this was for us
+        if memo is None:
+            logger.debug(
+                f"Unrelated Rejected reply discarded: from"
+                f" {message.source} to {message.destination}")
+            return
 
         # check of tracking logic
         if self.currentOutstandingMemo != memo:

@@ -12,6 +12,7 @@ Process messages destined for a node implemented by this application.
 # multiple local nodes.
 
 import logging
+from logging import getLogger
 
 from typing import Union
 
@@ -21,6 +22,8 @@ from openlcb.mti import MTI
 from openlcb.message import Message
 from openlcb.processor import Processor
 from openlcb.nodeid import NodeID
+
+logger = getLogger(__name__)
 
 
 class LocalNodeProcessor(Processor):
@@ -44,6 +47,7 @@ class LocalNodeProcessor(Processor):
             self._linkDownMessage(message, node)
         elif message.mti == MTI.Verify_NodeID_Number_Global:
             self._verifyNodeIDNumberGlobal(message, node)
+        # TODO: ? elif message.mti == MTI.Verified_NodeID_Simple:
         elif message.mti == MTI.Verify_NodeID_Number_Addressed:
             self._verifyNodeIDNumberAddressed(message, node)
         elif message.mti == MTI.Protocol_Support_Inquiry:
@@ -86,9 +90,14 @@ class LocalNodeProcessor(Processor):
 
     def _verifyNodeIDNumberGlobal(self, message: Message, node: Node):
         if not (len(message.data) == 0 or node.id == NodeID(message.data)):
+            # not unaddressed *nor* to us, then *is* to someone else
+            logger.info(
+                "[LocalNodeProcessor] skipped _verifyNodeIDNumberGlobal,"
+                " not to us")
             return  # not to us
         msg = Message(MTI.Verified_NodeID, node.id, message.source,
                       node.id.toArray())
+        logger.info("[LocalNodeProcessor] sending Verified_NodeID")
         self.linkLayer.sendMessage(msg)
 
     def _verifyNodeIDNumberAddressed(self, message: Message, node: Node):
@@ -113,6 +122,8 @@ class LocalNodeProcessor(Processor):
     def _simpleNodeIdentInfoRequest(self, message: Message, node: Node):
         msg = Message(MTI.Simple_Node_Ident_Info_Reply, node.id,
                       message.source, node.snip.returnStrings())
+        logger.info(
+            f"Sending {msg.mti} from {msg.source} to {msg.destination}")
         self.linkLayer.sendMessage(msg)
 
     def _identifyEventsAddressed(self, message: Message, node: Node):

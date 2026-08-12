@@ -1,4 +1,5 @@
 from logging import getLogger
+from typing import Union
 
 from openlcb import only_hex_pairs
 from openlcb.conventions import hex_to_dotted_lcc_id
@@ -7,7 +8,7 @@ from openlcb.conventions import hex_to_dotted_lcc_id
 logger = getLogger(__name__)
 
 
-def id_from_tcp_service_name(service_name):
+def id_from_tcp_service_name(service_name) -> Union[str, None]:
     """Scrape an MDNS TCP service name, assuming it uses conventions
     (`"{org}_{model}_{id}._openlcb-can.{protocol}.{tld}".format(...)`
     where:

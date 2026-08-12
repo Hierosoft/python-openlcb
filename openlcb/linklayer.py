@@ -48,10 +48,13 @@ class LinkLayer:
     #   (enforced using type(self).__name__ != "LinkLayer" checks in methods)
 
     def __init__(self, physicalLayer: PhysicalLayer, localNodeID):
-        assert isinstance(physicalLayer, PhysicalLayer)  # allows any subclass
+        assert isinstance(physicalLayer, PhysicalLayer), \
+            f"Expected PhysicalLayer/subclass, got a(n) {type(physicalLayer)}"
+        # ^ allows any subclass
         # subclass should check type of localNodeID technically
         self.localNodeID = localNodeID
         self._messageReceivedListeners = []
+        self._messageSentListeners = []
         self._state = None  # LinkLayer.State.Undefined
         # region moved from CanLink linkPhysicalLayer
         self.physicalLayer = physicalLayer  # formerly self.link = cpl
@@ -156,7 +159,15 @@ class LinkLayer:
     def registerMessageReceivedListener(self, listener):
         self._messageReceivedListeners.append(listener)
 
+    def registerMessageSentListener(self, listener):
+        self._messageSentListeners.append(listener)
+
     def fireMessageReceived(self, msg: Message):
         """Fire *Message received* listeners."""
         for listener in self._messageReceivedListeners:
+            listener(msg)
+
+    def fireMessageSent(self, msg: Message):
+        """Fire *Message received* listeners."""
+        for listener in self._messageSentListeners:
             listener(msg)

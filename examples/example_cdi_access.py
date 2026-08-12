@@ -13,6 +13,8 @@ host|host:port            (optional) Set the address (or using a colon,
 # region same code as other examples
 import copy
 import sys
+import time
+from typing import Union
 import xml.sax
 import xml.sax.handler
 import xml.sax.xmlreader  # for static type hints, autocomplete in this case
@@ -21,6 +23,11 @@ from logging import getLogger
 
 from examples_settings import Settings  # do 1st to fix path if no pip install
 from openlcb import precise_sleep
+from openlcb.dataprocessor import DataFormat
+from openlcb.dataprocessormemo import DataProcessorMemo
+from openlcb.memoryreadjob import MemoryReadJob
+from openlcb.convert import Convert
+from openlcb.memoryspace import MemorySpace
 from openlcb.xmldataprocessor import attrs_to_dict
 from openlcb.tcplink.tcpsocket import TcpSocket
 settings = Settings()
@@ -107,70 +114,6 @@ datagramService.registerDatagramReceivedListener(printDatagram)
 
 memoryService = MemoryService(datagramService)
 
-
-# accumulate the CDI information
-resultingCDI = bytearray()
-
-# callbacks to get results of memory read
-
-complete_data = False
-read_failed = False
-
-
-def memoryReadSuccess(memo):
-    """Handle a successful read
-    Invoked when the memory read successfully returns,
-    this queues a new read until the entire CDI has been
-    returned.  At that point, it invokes the XML processing below.
-
-    Args:
-        memo (MemoryReadMemo): Successful MemoryReadMemo
-    """
-    # print("successful memory read: {}".format(memo.data))
-
-    global resultingCDI
-    global complete_data
-
-    # is this done?
-    if len(memo.data) == 64 and 0 not in memo.data:
-        # save content
-        resultingCDI += memo.data
-        logger.debug(
-            f"[{memo.address}] successful read"
-            f" {MemoryService.arrayToString(memo.data, len(memo.data))}"
-            "; next = address + 64")
-        # update the address
-        memo.address = memo.address+64
-        # and read again
-        memoryService.requestMemoryRead(memo)
-        # The last packet is not yet reached, so don't parse (However,
-        #   parser.feed could be called for realtime processing).
-    else :
-        # and we're done!
-        # save content
-        resultingCDI += memo.data
-        # concert resultingCDI to a string up to 1st zero
-        cdiString = ""
-        null_i = resultingCDI.find(b'\0')
-        terminate_i = len(resultingCDI)
-        if null_i > -1:
-            terminate_i = min(null_i, terminate_i)
-        cdiString = resultingCDI[:terminate_i].decode("utf-8")
-        # print (cdiString)
-
-        # and process that
-        processXML(cdiString)
-        complete_data = True
-
-        # done
-
-
-def memoryReadFail(memo):
-    global read_failed
-    print("memory read failed: {}".format(memo.data))
-    read_failed = True
-
-
 #######################
 # The XML parsing section.
 #
@@ -189,10 +132,8 @@ class MyHandler(xml.sax.handler.ContentHandler):
         _chunks (list[str]): Collects chunks of data.
             This is implementation-specific, and not
             required if streaming (parser.feed).
-        _tmp_address (int|None): Where we are in the memory space (starting
-            at origin, and calculated using offset and/or size of start
-            tags).
-        _tmp_space (int|None): What space we are currently on.
+        _tmp_address (int|None): For sanity check, not actual address.
+            See replicatedTree docstring.
     """
 
     def __init__(self):
@@ -270,26 +211,6 @@ class MyHandler(xml.sax.handler.ContentHandler):
 
 handler = MyHandler()
 
-
-def processXML(content: str) :
-    """process the XML and invoke callbacks
-
-    Args:
-        content (str): Raw XML data
-    """
-    # NOTE: The data is complete in this example since processXML is
-    #   only called when there is a null terminator, which indicates the
-    #   last packet was reached for the requested read.
-    #   - See memoryReadSuccess comments for details.
-    with open("cached-cdi.xml", 'w') as stream:
-        # NOTE: Actual caching should key by all SNIP info that could
-        #   affect CDI/FDI: manufacturer, model, and version. Without
-        #   all 3 being present in SNIP, the cache may be incorrect.
-        stream.write(content)
-    xml.sax.parseString(content, handler)
-    print("\nParser done")
-
-
 #######################
 
 # have the socket layer report up to bring the link layer up and get an alias
@@ -314,37 +235,48 @@ while canLink.pollState() != CanLink.State.Permitted:
 print("      SENT frames : link up")
 
 
-def memoryRead():
-    """Create and send a read datagram.
-    This is a read of 20 bytes from the start of CDI space.
-    We will fire it on a separate thread to give time for other nodes to reply
-    to AME
-    """
-    import time
-    time.sleep(.21)
-    # ^ 200ms: See section 6.2.1 of CAN Frame Transfer Standard
-    #   (CanLink.State.Permitted will only occur after that, but waiting
-    #   now will reduce output & delays below in this example).
-    while canLink.getState() != CanLink.State.Permitted:
-        print("Waiting for connection sequence to complete...")
-        # This delay could be .2 (per alias collision), but longer to
-        #   reduce console messages:
-        time.sleep(.5)
-    print("Requesting memory read. Please wait...")
-    # read 64 bytes from the CDI space starting at address zero
-    memMemo = MemoryReadMemo(NodeID(settings['farNodeID']), 64, 0xFF, 0,
-                             memoryReadFail, memoryReadSuccess)
-    memoryService.requestMemoryRead(memMemo)
+job = MemoryReadJob(memoryService)
 
 
-import threading  # noqa E402
-thread = threading.Thread(target=memoryRead)
-thread.start()
+def statusCallback(memo: DataProcessorMemo):
+    if memo.status:
+        print(memo.status)
+
+
+farNodeID = NodeID(settings['farNodeID'])
+
+time.sleep(.21)
+# ^ 200ms: See section 6.2.1 of CAN Frame Transfer Standard
+#   (CanLink.State.Permitted will only occur after that, but waiting
+#   now will reduce output & delays below in this example).
+while canLink.getState() != CanLink.State.Permitted:
+    print("Waiting for connection sequence to complete...")
+    # This delay could be .2 (per alias collision), but longer to
+    #   reduce console messages:
+    time.sleep(.5)
+
+print(f"CanLink state={canLink.getState()}")
+
+waited = 0
+delaySec = 1
+while farNodeID not in canLink.nodeIdToAlias:
+    # canLink.pollState()
+    physicalLayer.receiveAll(sock)
+    physicalLayer.sendAll(sock)
+    time.sleep(delaySec)
+    waited += delaySec
+    print(f"Connected nodes: {canLink.nodeIdToAlias}")
+    print(f"Waiting for {farNodeID} ({waited}s)...")
+
+job.readMemory(canLink, farNodeID, MemorySpace.CDI,
+               handler=handler,
+               callback=statusCallback)
+
 previous_nodes = copy.deepcopy(canLink.nodeIdToAlias)
 # process resulting activity
 print()
 print("This example will exit on failure or complete data.")
-while not complete_data and not read_failed:
+while not job.completeData and not job.failed:
     # In this example, requests are initiate by the
     #   memoryRead thread, and receiveAll actually
     #   receives the data from the requested memory space (CDI in this
@@ -363,7 +295,7 @@ while not complete_data and not read_failed:
 
 physicalLayer.physicalLayerDown()
 
-if read_failed:
+if job.failed:
     print("Read complete (FAILED)")
 else:
     print("Read complete (OK)")
